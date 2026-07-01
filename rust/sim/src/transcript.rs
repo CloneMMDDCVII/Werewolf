@@ -69,7 +69,10 @@ fn phase_label(prompt: Prompt) -> &'static str {
         | Prompt::MayorReveal
         | Prompt::PacifistPeace
         | Prompt::TroublemakerTrouble
-        | Prompt::LynchVote => "Day",
+        | Prompt::LynchVote
+        // Only ever asked right after a lynch, which only ever happens in
+        // the day phase - unlike `HunterFinalShotKilled`, unambiguous.
+        | Prompt::HunterFinalShotLynched => "Day",
         _ => "Night",
     }
 }

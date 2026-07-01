@@ -7,8 +7,8 @@
 //! isolation.
 
 use crate::orchestrator::{
-    apply_day_results, apply_night_results, resolve_day, resolve_night, AlivePlayer,
-    NarrationEvent, Presenter,
+    apply_day_results, apply_night_results, resolve_day, resolve_hunter_shots, resolve_night,
+    AlivePlayer, NarrationEvent, Presenter,
 };
 use crate::roles::{PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
@@ -54,11 +54,10 @@ pub async fn run_game(
     for round in 1..=max_rounds {
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
         let night_deaths = apply_night_results(&night_actions, wolf_target);
-        let night_died_with_roles = record_deaths(&alive, &night_deaths, &mut kills, &mut deaths);
-        narrate_deaths(&night_deaths, &night_died_with_roles, presenter).await;
-        alive.retain(|p| !night_deaths.iter().any(|&(v, _)| v == p.id));
-        let night_transforms = apply_transforms(&mut alive, &states, &night_died_with_roles);
-        narrate_all(night_transforms, presenter).await;
+        let night_died_with_roles =
+            process_deaths(&night_deaths, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
+        let night_shots = resolve_hunter_shots(&night_deaths, &night_died_with_roles, &alive, presenter).await;
+        process_deaths(&night_shots, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
 
         if let Some(outcome) = resolved_winner(&alive, &kills) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
@@ -72,11 +71,10 @@ pub async fn run_game(
         let (day_actions, lynch_target) = resolve_day(&alive, &mut states, presenter).await;
         let lynch_target_role = lynch_target.and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
-        let day_died_with_roles = record_deaths(&alive, &day_deaths, &mut kills, &mut deaths);
-        narrate_deaths(&day_deaths, &day_died_with_roles, presenter).await;
-        alive.retain(|p| !day_deaths.iter().any(|&(v, _)| v == p.id));
-        let day_transforms = apply_transforms(&mut alive, &states, &day_died_with_roles);
-        narrate_all(day_transforms, presenter).await;
+        let day_died_with_roles =
+            process_deaths(&day_deaths, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
+        let day_shots = resolve_hunter_shots(&day_deaths, &day_died_with_roles, &alive, presenter).await;
+        process_deaths(&day_shots, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
 
         if let Some(outcome) = resolved_winner(&alive, &kills) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
@@ -151,6 +149,30 @@ async fn narrate_deaths(
             .narrate(NarrationEvent::Death { victim, role, method })
             .await;
     }
+}
+
+/// Records, narrates, removes from `alive`, and resolves any transform
+/// triggered by one batch of deaths - the full sequence every source of
+/// deaths needs (night, day, and now Hunter's revenge shot), pulled into
+/// one place instead of copy-pasted a third time. Returns the
+/// (victim, role-at-death) pairs so a caller that needs them for
+/// something *else* deaths trigger (`resolve_hunter_shots`, checking
+/// whether any of this batch was a Hunter) doesn't have to re-derive
+/// them.
+async fn process_deaths(
+    new_deaths: &[(PlayerId, KillMethod)],
+    alive: &mut Vec<AlivePlayer>,
+    states: &HashMap<PlayerId, RoleState>,
+    kills: &mut Vec<KillEvent>,
+    deaths: &mut Vec<(PlayerId, KillMethod)>,
+    presenter: &mut dyn Presenter,
+) -> Vec<(PlayerId, Role)> {
+    let died_with_roles = record_deaths(alive, new_deaths, kills, deaths);
+    narrate_deaths(new_deaths, &died_with_roles, presenter).await;
+    alive.retain(|p| !new_deaths.iter().any(|&(v, _)| v == p.id));
+    let transforms = apply_transforms(alive, states, &died_with_roles);
+    narrate_all(transforms, presenter).await;
+    died_with_roles
 }
 
 /// Tells the presenter about a batch of already-built events, in order.

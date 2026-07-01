@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use game_engine::orchestrator::{AlivePlayer, Presenter, Prompt};
 use game_engine::roles::PlayerId;
 use game_engine::{run_game, WinOutcome};
-use shared::{Role, Team};
+use shared::{KillMethod, Role, Team};
 
 /// A presenter with a fixed script per round: the wolf always eats the
 /// same target, villagers always vote to lynch the same (wrong) target,
@@ -140,6 +140,80 @@ async fn a_lynched_tanner_wins_immediately_even_mid_game() {
 
     assert_eq!(outcome.winner, WinOutcome::Team(Team::Tanner));
     assert_eq!(outcome.rounds_played, 1);
+}
+
+#[tokio::test]
+async fn a_lynched_hunter_takes_someone_down_with_them() {
+    // The village mistakenly lynches the Hunter, who uses their final
+    // shot to take a villager with them - resolve_hunter_shots's "a death
+    // can trigger one more question" hook, end to end through run_game.
+    let wolf = PlayerId(1);
+    let hunter = PlayerId(2);
+    let doomed_villager = PlayerId(3);
+    let survivor = PlayerId(4);
+
+    let players = vec![
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: hunter,
+            role: Role::Hunter,
+        },
+        AlivePlayer {
+            id: doomed_villager,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: survivor,
+            role: Role::Villager,
+        },
+    ];
+
+    struct HunterRevengePresenter {
+        hunter: PlayerId,
+        shot: PlayerId,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for HunterRevengePresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 {
+                return None;
+            }
+            match prompt {
+                Prompt::LynchVote => Some(vec![self.hunter]),
+                Prompt::HunterFinalShotLynched if player == self.hunter => Some(vec![self.shot]),
+                _ => None,
+            }
+        }
+    }
+
+    let mut presenter = HunterRevengePresenter {
+        hunter,
+        shot: doomed_villager,
+    };
+    let outcome = run_game(&players, &mut presenter, 10).await;
+
+    // Only wolf and survivor remain (1 wolf >= 1 other), so the wolf wins
+    // - and only because the Hunter's shot claimed a *second* death this
+    // round, not just the lynch itself.
+    assert_eq!(outcome.winner, WinOutcome::Team(Team::Wolf));
+    let mut deaths = outcome.deaths.clone();
+    deaths.sort_by_key(|(id, _)| id.0);
+    assert_eq!(
+        deaths,
+        vec![
+            (hunter, KillMethod::Lynch),
+            (doomed_villager, KillMethod::HunterShot),
+        ]
+    );
 }
 
 #[tokio::test]

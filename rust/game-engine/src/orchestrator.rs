@@ -75,6 +75,17 @@ pub enum Prompt {
     /// Yes/no — see `Presenter::ask_toggle`.
     TroublemakerTrouble,
     SpumpkinDetonate,
+    /// Hunter's revenge shot, asked the moment they die by lynch
+    /// (Werewolf.cs:5420-5441: `HunterLynchedChoice`) — see
+    /// `resolve_hunter_shots`. Kept distinct from `HunterFinalShotKilled`
+    /// because the legacy game asks a genuinely different question
+    /// depending on `killMethod == KillMthd.Lynch`, not just cosmetic
+    /// phrasing — same reasoning as never reusing another role's
+    /// `Prompt` variant just because the shape matches.
+    HunterFinalShotLynched,
+    /// Hunter's revenge shot, asked when they die any other way
+    /// (Werewolf.cs:5420-5441: `HunterShotChoice`).
+    HunterFinalShotKilled,
 }
 
 /// Maps a `Prompt` to the real `Languages/English.xml` key the legacy game
@@ -117,6 +128,8 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
         Prompt::ChemistBrew => Some("AskChemist"),
         Prompt::ArsonistDouse | Prompt::ArsonistSpark => Some("AskArsonist"),
         Prompt::TroublemakerTrouble => Some("AskTroublemaker"),
+        Prompt::HunterFinalShotLynched => Some("HunterLynchedChoice"),
+        Prompt::HunterFinalShotKilled => Some("HunterShotChoice"),
         // WitchHeal/WitchPoison belong to a role that isn't in the legacy
         // game at all. BlacksmithSilver and SpumpkinDetonate are
         // menu-driven in Werewolf.cs but have no corresponding key in
@@ -156,6 +169,8 @@ pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::ArsonistSpark,
     Prompt::TroublemakerTrouble,
     Prompt::SpumpkinDetonate,
+    Prompt::HunterFinalShotLynched,
+    Prompt::HunterFinalShotKilled,
 ];
 
 /// Something that happened, worth narrating, that *isn't* a question —
@@ -887,6 +902,61 @@ pub fn apply_night_results(
     deaths
 }
 
+/// The "a death can trigger one more question" case `apply_night_results`/
+/// `apply_day_results` can't express by themselves — they only ever turn
+/// already-made decisions into deaths, never ask a new one afterward
+/// (Werewolf.cs:5420-5484: `HunterFinalShot`, called the moment a Hunter
+/// dies, by *any* method). Called by `run_game` right after a batch of
+/// deaths is applied, with the roster still reflecting who survived that
+/// batch: every dead Hunter in `died_with_roles` gets asked one
+/// `ask_targets` question — a different `Prompt` depending on whether they
+/// were lynched or killed some other way, since the legacy game's own
+/// text differs by exactly that (`killMethod == KillMthd.Lynch`) — and
+/// whoever they pick dies too, via `KillMethod::HunterShot`.
+///
+/// **Scoped to the core mechanic only.** The legacy code passes
+/// `hunterFinalShot: false` (skipping this entirely) for several specific
+/// cases this proof-of-concept doesn't distinguish: dying by falling into
+/// a Grave Digger's trap, an idle/flee death, an Arsonist's mass burn, a
+/// wolf-standoff sub-case where the Hunter already shot back at a visiting
+/// wolf, and a couple of hardcoded 2-player endgame shortcuts. Every one
+/// of those would incorrectly grant a shot here. Also doesn't model
+/// "Domino" chaining (a Hunter's shot landing on *another* Hunter, who
+/// would get their own final shot in turn, Werewolf.cs:5480-5481) — this
+/// only asks each already-dead Hunter from the triggering batch once, not
+/// recursively.
+pub async fn resolve_hunter_shots(
+    new_deaths: &[(PlayerId, KillMethod)],
+    died_with_roles: &[(PlayerId, Role)],
+    alive: &[AlivePlayer],
+    presenter: &mut dyn Presenter,
+) -> Vec<(PlayerId, KillMethod)> {
+    let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
+    let mut shots = vec![];
+
+    for &(hunter_id, role) in died_with_roles {
+        if role != Role::Hunter {
+            continue;
+        }
+        let method = new_deaths
+            .iter()
+            .find(|&&(id, _)| id == hunter_id)
+            .map(|&(_, m)| m)
+            .expect("every id in died_with_roles has a matching entry in new_deaths");
+        let prompt = if method == KillMethod::Lynch {
+            Prompt::HunterFinalShotLynched
+        } else {
+            Prompt::HunterFinalShotKilled
+        };
+        let options: Vec<PlayerId> = alive_ids.iter().copied().filter(|&id| id != hunter_id).collect();
+        if let Some(target) = ask_one(presenter, hunter_id, prompt, &options).await {
+            shots.push((target, KillMethod::HunterShot));
+        }
+    }
+
+    shots
+}
+
 #[cfg(test)]
 mod apply_night_results_tests {
     use super::*;
@@ -946,6 +1016,113 @@ mod apply_night_results_tests {
             apply_night_results(&actions, None),
             vec![(target, KillMethod::SerialKilled)]
         );
+    }
+}
+
+#[cfg(test)]
+mod hunter_shot_tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    /// Records the prompt/options it was asked, and answers with a fixed
+    /// target (or declines if `answer` is `None`) — enough to prove both
+    /// *which* question got asked and that the answer becomes a shot.
+    struct ScriptedHunterPresenter {
+        answer: Option<PlayerId>,
+        asked: Vec<(PlayerId, Prompt, Vec<PlayerId>)>,
+    }
+
+    #[async_trait(?Send)]
+    impl Presenter for ScriptedHunterPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            self.asked.push((player, prompt, options.to_vec()));
+            if count != 1 {
+                return None;
+            }
+            self.answer.map(|t| vec![t])
+        }
+    }
+
+    fn alive_roster() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(2), role: Role::Villager },
+            AlivePlayer { id: PlayerId(3), role: Role::Seer },
+        ]
+    }
+
+    #[tokio::test]
+    async fn a_lynched_hunter_is_asked_the_lynched_prompt_and_shoots() {
+        let hunter = PlayerId(1);
+        let target = PlayerId(2);
+        let mut presenter = ScriptedHunterPresenter {
+            answer: Some(target),
+            asked: vec![],
+        };
+        let new_deaths = [(hunter, KillMethod::Lynch)];
+        let died_with_roles = [(hunter, Role::Hunter)];
+
+        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+
+        assert_eq!(shots, vec![(target, KillMethod::HunterShot)]);
+        assert_eq!(presenter.asked.len(), 1);
+        assert_eq!(presenter.asked[0].0, hunter);
+        assert_eq!(presenter.asked[0].1, Prompt::HunterFinalShotLynched);
+        assert!(
+            !presenter.asked[0].2.contains(&hunter),
+            "the dead hunter should never be offered as their own target"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_hunter_killed_any_other_way_gets_the_killed_prompt() {
+        let hunter = PlayerId(1);
+        let mut presenter = ScriptedHunterPresenter {
+            answer: None,
+            asked: vec![],
+        };
+        let new_deaths = [(hunter, KillMethod::Eat)];
+        let died_with_roles = [(hunter, Role::Hunter)];
+
+        resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+
+        assert_eq!(presenter.asked[0].1, Prompt::HunterFinalShotKilled);
+    }
+
+    #[tokio::test]
+    async fn declining_the_final_shot_kills_nobody() {
+        let hunter = PlayerId(1);
+        let mut presenter = ScriptedHunterPresenter {
+            answer: None,
+            asked: vec![],
+        };
+        let new_deaths = [(hunter, KillMethod::Lynch)];
+        let died_with_roles = [(hunter, Role::Hunter)];
+
+        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+
+        assert_eq!(shots, vec![]);
+    }
+
+    #[tokio::test]
+    async fn non_hunters_are_never_asked() {
+        let villager = PlayerId(1);
+        let mut presenter = ScriptedHunterPresenter {
+            answer: Some(PlayerId(2)),
+            asked: vec![],
+        };
+        let new_deaths = [(villager, KillMethod::Lynch)];
+        let died_with_roles = [(villager, Role::Villager)];
+
+        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+
+        assert_eq!(shots, vec![]);
+        assert!(presenter.asked.is_empty(), "a non-Hunter death should never trigger a final-shot question");
     }
 }
 
