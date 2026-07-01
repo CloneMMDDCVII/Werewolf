@@ -250,3 +250,101 @@ fn majority_eat_target(actions: &[NightAction]) -> Option<PlayerId> {
         Some(*first.0)
     }
 }
+
+/// Turns resolved night decisions into actual deaths — the step
+/// `resolve_night`'s own doc comment flagged as future work. Deliberately
+/// narrow: only the two cases this codebase's role logic actually models
+/// resolve to a death.
+///
+/// - The wolves' `wolf_target` dies of `KillMethod::Eat`, **unless**
+///   Witch's `Heal` action names that exact same player (that's the whole
+///   point of the heal potion — see `witch` module).
+/// - Witch's `Poison` target dies of `KillMethod::Poison`, unconditionally
+///   and independently of the wolf kill.
+///
+/// Everything else this proof-of-concept resolves as a *decision*
+/// (`Visit`, `Protect`, `Investigate`, `CheckTeam`, `ChooseRoleModel`) has
+/// no death consequence modeled yet — Harlot dying from visiting a wolf,
+/// Guardian Angel's protection actually working or the GA dying instead,
+/// are real legacy mechanics (see `harlot`/`guardian_angel` module docs)
+/// that need cross-player resolution logic this function doesn't attempt.
+/// If the wolf target and the poison target are the same player, they
+/// appear twice, once per cause — deduplicating "someone already dead"
+/// is future work for whoever applies this to real running game state.
+pub fn apply_night_results(
+    actions: &[NightAction],
+    wolf_target: Option<PlayerId>,
+) -> Vec<(PlayerId, shared::KillMethod)> {
+    let mut deaths = vec![];
+
+    let healed_target = actions.iter().find_map(|a| match a {
+        NightAction::Heal { target } => Some(*target),
+        _ => None,
+    });
+
+    if let Some(target) = wolf_target {
+        if healed_target != Some(target) {
+            deaths.push((target, shared::KillMethod::Eat));
+        }
+    }
+
+    for action in actions {
+        if let NightAction::Poison { target } = action {
+            deaths.push((*target, shared::KillMethod::Poison));
+        }
+    }
+
+    deaths
+}
+
+#[cfg(test)]
+mod apply_night_results_tests {
+    use super::*;
+    use shared::KillMethod;
+
+    #[test]
+    fn wolf_target_dies_when_nobody_heals() {
+        let target = PlayerId(1);
+        let deaths = apply_night_results(&[], Some(target));
+        assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
+    }
+
+    #[test]
+    fn heal_on_the_wolf_target_cancels_the_kill() {
+        let target = PlayerId(1);
+        let actions = [NightAction::Heal { target }];
+        let deaths = apply_night_results(&actions, Some(target));
+        assert_eq!(deaths, vec![], "healing the wolf's own target should cancel it");
+    }
+
+    #[test]
+    fn heal_on_someone_else_does_not_cancel_the_wolf_kill() {
+        let target = PlayerId(1);
+        let actions = [NightAction::Heal {
+            target: PlayerId(2),
+        }];
+        let deaths = apply_night_results(&actions, Some(target));
+        assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
+    }
+
+    #[test]
+    fn poison_kills_independently_of_the_wolf_target() {
+        let wolf_target = PlayerId(1);
+        let poisoned = PlayerId(2);
+        let actions = [NightAction::Poison { target: poisoned }];
+        let mut deaths = apply_night_results(&actions, Some(wolf_target));
+        deaths.sort_by_key(|(id, _)| id.0);
+        assert_eq!(
+            deaths,
+            vec![
+                (wolf_target, KillMethod::Eat),
+                (poisoned, KillMethod::Poison)
+            ]
+        );
+    }
+
+    #[test]
+    fn no_wolf_target_means_no_eat_death() {
+        assert_eq!(apply_night_results(&[], None), vec![]);
+    }
+}

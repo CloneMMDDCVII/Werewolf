@@ -110,6 +110,9 @@ pub enum KillMethod {
     LoverDied,
     SerialKilled,
     Spotted,
+    /// Not in the legacy game (there was no Witch to poison anyone) — new
+    /// kill method for `shared::Role::Witch`'s poison potion.
+    Poison,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

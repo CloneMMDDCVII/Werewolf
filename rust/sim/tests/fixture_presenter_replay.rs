@@ -2,9 +2,15 @@
 //! a test-local scripted one, reproduces actual historical outcomes — not
 //! just "the final winner matches" (that's `win_condition_replay.rs`), but
 //! "the wolves' night-1 kill tally, computed fresh by resolve_night, comes
-//! out the same as what really happened."
+//! out the same as what really happened," and now "applying that tally
+//! via apply_night_results produces the same death that history recorded."
+//! None of these 100 games include a Witch (she's not a legacy role), so
+//! there's never a heal to cancel the kill here — this only proves the
+//! unconditional-death path, not the heal-cancels-it path (that's already
+//! covered by orchestrator's own unit tests, which don't need real fixture
+//! data to check a rule that never happened historically).
 
-use game_engine::orchestrator::{resolve_night, NightPlayer};
+use game_engine::orchestrator::{apply_night_results, resolve_night, NightPlayer};
 use game_engine::roles::{PlayerId, RoleState};
 use shared::{KillMethod, Role};
 use sim::{load_fixtures, FixturePresenter, GameFixture};
@@ -52,7 +58,7 @@ async fn resolve_night_reproduces_the_historical_night1_wolf_kill() {
 
         let mut presenter = FixturePresenter::new(game, 1);
         let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
-        let (_actions, wolf_target) = resolve_night(&players, &mut states, &mut presenter).await;
+        let (actions, wolf_target) = resolve_night(&players, &mut states, &mut presenter).await;
 
         assert_eq!(
             wolf_target,
@@ -60,6 +66,15 @@ async fn resolve_night_reproduces_the_historical_night1_wolf_kill() {
             "game {}: orchestrator's resolved wolf target should match history",
             game.game_id
         );
+
+        let deaths = apply_night_results(&actions, wolf_target);
+        assert_eq!(
+            deaths,
+            vec![(PlayerId(expected_victim as u64), KillMethod::Eat)],
+            "game {}: applying the resolved night should produce exactly the historical death",
+            game.game_id
+        );
+
         checked += 1;
     }
 
