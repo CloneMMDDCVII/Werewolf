@@ -6,9 +6,10 @@ edition.workspace = true
 [dependencies]
 shared = { path = "../shared" }
 game-engine = { path = "../game-engine" }
+i18n = { path = "../i18n" }
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true

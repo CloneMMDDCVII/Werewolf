@@ -1,1 +1,10 @@
 target/
+
+# The repo-root .gitignore (legacy .NET) has a blanket `[Bb]in/` rule meant
+# for build-output folders, which also swallows real Cargo source
+# directories like `sim/src/bin/`. Un-ignore those explicitly so a new
+# `src/bin/*.rs` doesn't silently fail to be tracked (as `sim/src/bin/
+# narrate.rs` did) - `git add -f` fixed the one file, this stops the next
+# one from needing the same rescue.
+!**/src/bin/
+!**/src/bin/**

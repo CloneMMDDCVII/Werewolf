@@ -57,6 +57,9 @@ pub struct GameFixture {
 #[derive(Debug)]
 pub struct PlayerFixture {
     pub telegram_id: i64,
+    /// Anonymized display name (e.g. `"2B2A"`) — not a real Telegram
+    /// handle, safe to print in a transcript. See `RawPlayer::name`.
+    pub name: String,
     pub role: Role,
     pub survived: bool,
     pub won: bool,
@@ -137,6 +140,7 @@ pub fn load_fixtures(path: impl AsRef<Path>) -> Result<Vec<GameFixture>, Fixture
                 .map(|p| {
                     Ok(PlayerFixture {
                         telegram_id: p.telegram_id,
+                        name: p.name,
                         role: parse_role(g.game_id, &p.role)?,
                         survived: p.survived,
                         won: p.won,
