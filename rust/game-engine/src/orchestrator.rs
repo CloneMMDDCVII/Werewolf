@@ -1,10 +1,20 @@
 //! Ties the individual role files together into an actual night
 //! resolution, without ever knowing where questions go or answers come
 //! from. That's the `Presenter` trait: the orchestrator calls
-//! `ask_target`/`ask_two_targets` and gets an answer back, and has no idea
-//! whether it's talking to a real Telegram chat or a scripted test
-//! harness. `sim` and (eventually) `control` each implement `Presenter`
-//! their own way; this file never depends on either.
+//! `ask_targets` and gets answers back, and has no idea whether it's
+//! talking to a real Telegram chat or a scripted test harness. `sim` and
+//! (eventually) `control` each implement `Presenter` their own way; this
+//! file never depends on either.
+//!
+//! `Presenter` has exactly one question-asking method, parameterized by
+//! how many targets are wanted, rather than one method per arity
+//! (`ask_target`, `ask_two_targets`, ...). A one-per-arity design is fine
+//! for exactly one extra case, but it doesn't stop there — the moment a
+//! third arity shows up (a role linking three players, say), every
+//! `Presenter` implementation would need a matching new method forever.
+//! Collapsing to `ask_targets(.., count)` means "how many" is just a
+//! number, and implementers (a real Telegram adapter, a test double)
+//! never need to know or care how many roles-that-pick-N-players exist.
 //!
 //! Resolution happens in dependency order, derived from
 //! `RoleBehavior::requires()` rather than a hardcoded phase list: every
@@ -47,23 +57,51 @@ pub enum Prompt {
 /// answered synchronously.
 #[async_trait]
 pub trait Presenter {
-    /// Ask `player` to pick one of `options` for the given `prompt`.
-    /// Returns `None` if the player declines/times out — declining is a
-    /// legitimate answer (e.g. Harlot choosing to stay home), not an error.
-    async fn ask_target(
+    /// Ask `player` to pick `count` distinct players from `options` for
+    /// the given `prompt`. Returns `None` if the player declines/times out
+    /// (a legitimate answer, e.g. Harlot choosing to stay home) — an
+    /// implementer that returns `Some(v)` should return exactly `count`
+    /// entries; the orchestrator treats anything else as "no answer"
+    /// rather than trusting a malformed response.
+    async fn ask_targets(
         &mut self,
         player: PlayerId,
         prompt: Prompt,
         options: &[PlayerId],
-    ) -> Option<PlayerId>;
+        count: usize,
+    ) -> Option<Vec<PlayerId>>;
+}
 
-    /// Cupid-shaped question: pick two distinct players from `options`.
-    async fn ask_two_targets(
-        &mut self,
-        player: PlayerId,
-        prompt: Prompt,
-        options: &[PlayerId],
-    ) -> Option<(PlayerId, PlayerId)>;
+/// Thin convenience wrapper for the overwhelmingly common case (one
+/// target), so call sites in `resolve_night` read as "ask for one player"
+/// rather than "ask for a list and hope it has one element." Not a trait
+/// method — implementers only ever deal with `ask_targets`.
+async fn ask_one(
+    presenter: &mut dyn Presenter,
+    player: PlayerId,
+    prompt: Prompt,
+    options: &[PlayerId],
+) -> Option<PlayerId> {
+    let mut picked = presenter.ask_targets(player, prompt, options, 1).await?;
+    if picked.len() == 1 {
+        picked.pop()
+    } else {
+        None
+    }
+}
+
+/// Same idea for exactly two targets (Cupid today).
+async fn ask_two(
+    presenter: &mut dyn Presenter,
+    player: PlayerId,
+    prompt: Prompt,
+    options: &[PlayerId],
+) -> Option<(PlayerId, PlayerId)> {
+    let picked = presenter.ask_targets(player, prompt, options, 2).await?;
+    match picked.as_slice() {
+        [a, b] if a != b => Some((*a, *b)),
+        _ => None,
+    }
 }
 
 /// What every alive player brings into a night: who they are and what
@@ -116,9 +154,7 @@ pub async fn resolve_night(
         let state = states.entry(player.id).or_default();
 
         if player.role == Role::Cupid {
-            let chosen = presenter
-                .ask_two_targets(player.id, Prompt::CupidLink, &alive)
-                .await;
+            let chosen = ask_two(presenter, player.id, Prompt::CupidLink, &alive).await;
             let ctx = NightContext {
                 alive: &alive,
                 self_id: player.id,
@@ -133,7 +169,7 @@ pub async fn resolve_night(
         }
 
         let chosen_target = match one_target_prompt(player.role) {
-            Some(prompt) => presenter.ask_target(player.id, prompt, &alive).await,
+            Some(prompt) => ask_one(presenter, player.id, prompt, &alive).await,
             None => None,
         };
 
@@ -172,12 +208,8 @@ pub async fn resolve_night(
         // (whether she's dealt into the game at all), not enforced here —
         // if she's in `players`, the orchestrator resolves her correctly
         // regardless, which is what proves the dependency plumbing works.
-        let heal_target = presenter
-            .ask_target(player.id, Prompt::WitchHeal, &alive)
-            .await;
-        let poison_target = presenter
-            .ask_target(player.id, Prompt::WitchPoison, &alive)
-            .await;
+        let heal_target = ask_one(presenter, player.id, Prompt::WitchHeal, &alive).await;
+        let poison_target = ask_one(presenter, player.id, Prompt::WitchPoison, &alive).await;
 
         let ctx = NightContext {
             alive: &alive,

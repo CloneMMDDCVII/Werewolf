@@ -21,22 +21,22 @@ struct ScriptedPresenter {
 
 #[async_trait]
 impl Presenter for ScriptedPresenter {
-    async fn ask_target(
+    async fn ask_targets(
         &mut self,
         player: PlayerId,
         prompt: Prompt,
         _options: &[PlayerId],
-    ) -> Option<PlayerId> {
-        self.one_target_answers.get(&(player, prompt)).copied()
-    }
-
-    async fn ask_two_targets(
-        &mut self,
-        _player: PlayerId,
-        _prompt: Prompt,
-        _options: &[PlayerId],
-    ) -> Option<(PlayerId, PlayerId)> {
-        None
+        count: usize,
+    ) -> Option<Vec<PlayerId>> {
+        // None of these tests exercise Cupid's two-target ask; only the
+        // one-target case is scripted.
+        if count != 1 {
+            return None;
+        }
+        self.one_target_answers
+            .get(&(player, prompt))
+            .copied()
+            .map(|p| vec![p])
     }
 }
 
