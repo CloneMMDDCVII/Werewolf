@@ -17,6 +17,11 @@ use std::collections::HashMap;
 /// under test ever knowing the difference.
 struct ScriptedPresenter {
     one_target_answers: HashMap<(PlayerId, Prompt), PlayerId>,
+    /// Deliberately untyped as `Vec` (not a tuple) so a test can script a
+    /// malformed answer, e.g. the same player picked twice, to prove
+    /// `ask_exact`'s distinctness check rejects it before it ever reaches
+    /// Cupid's own logic.
+    two_target_answer: Option<Vec<PlayerId>>,
 }
 
 #[async_trait]
@@ -28,10 +33,8 @@ impl Presenter for ScriptedPresenter {
         _options: &[PlayerId],
         count: usize,
     ) -> Option<Vec<PlayerId>> {
-        // None of these tests exercise Cupid's two-target ask; only the
-        // one-target case is scripted.
-        if count != 1 {
-            return None;
+        if count == 2 {
+            return self.two_target_answer.clone();
         }
         self.one_target_answers
             .get(&(player, prompt))
@@ -68,6 +71,7 @@ async fn witch_is_asked_only_after_the_wolves_target_resolves() {
 
     let mut presenter = ScriptedPresenter {
         one_target_answers: answers,
+        two_target_answer: None,
     };
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
@@ -104,6 +108,7 @@ async fn witch_heal_does_not_fire_if_her_choice_disagrees_with_the_resolved_wolf
 
     let mut presenter = ScriptedPresenter {
         one_target_answers: answers,
+        two_target_answer: None,
     };
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
@@ -133,9 +138,35 @@ async fn a_tied_wolf_vote_resolves_to_no_target() {
 
     let mut presenter = ScriptedPresenter {
         one_target_answers: answers,
+        two_target_answer: None,
     };
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
     let (_actions, wolf_target) = resolve_night(&players, &mut states, &mut presenter).await;
     assert_eq!(wolf_target, None, "a tied vote should not resolve to either target");
+}
+
+/// Proves the distinctness check lives in the orchestrator's shared
+/// `ask_exact`, not just in Cupid's own role logic — a presenter
+/// misbehaving (or a future two-target role's presenter side) can't slip
+/// a duplicate past the orchestrator before it ever reaches a role file.
+#[tokio::test]
+async fn cupid_link_is_rejected_if_the_presenter_returns_a_duplicate_target() {
+    let target = PlayerId(8);
+    let players = vec![
+        NightPlayer { id: PlayerId(9), role: Role::Cupid },
+        NightPlayer { id: target, role: Role::Villager },
+    ];
+
+    let mut presenter = ScriptedPresenter {
+        one_target_answers: HashMap::new(),
+        two_target_answer: Some(vec![target, target]),
+    };
+    let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
+
+    let (actions, _) = resolve_night(&players, &mut states, &mut presenter).await;
+    assert!(
+        !actions.iter().any(|a| matches!(a, NightAction::LinkLovers { .. })),
+        "a duplicate-target answer should never produce a LinkLovers action: {actions:?}"
+    );
 }

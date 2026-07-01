@@ -72,36 +72,42 @@ pub trait Presenter {
     ) -> Option<Vec<PlayerId>>;
 }
 
-/// Thin convenience wrapper for the overwhelmingly common case (one
-/// target), so call sites in `resolve_night` read as "ask for one player"
-/// rather than "ask for a list and hope it has one element." Not a trait
-/// method — implementers only ever deal with `ask_targets`.
+/// The one place that validates a presenter's answer actually matches what
+/// was asked for: exactly `count` entries, all distinct. Every call site
+/// below goes through this — including `ask_one` — so "what counts as a
+/// well-formed answer" is defined once, not re-derived per arity.
+async fn ask_exact(
+    presenter: &mut dyn Presenter,
+    player: PlayerId,
+    prompt: Prompt,
+    options: &[PlayerId],
+    count: usize,
+) -> Option<Vec<PlayerId>> {
+    let picked = presenter.ask_targets(player, prompt, options, count).await?;
+    let all_distinct = (1..picked.len()).all(|i| !picked[..i].contains(&picked[i]));
+    if picked.len() == count && all_distinct {
+        Some(picked)
+    } else {
+        None
+    }
+}
+
+/// Convenience for the one-target case, since it's by far the common one
+/// (every role in `one_target_prompt` below, plus both of Witch's potion
+/// questions — nine call sites and counting). Cupid's two-target ask has
+/// exactly one call site, so it isn't given the same treatment: naming a
+/// function for something called once is the same mistake as `ask_target`/
+/// `ask_two_targets` being separate trait methods, just moved down a
+/// layer — it goes straight through `ask_exact` at its call site instead.
 async fn ask_one(
     presenter: &mut dyn Presenter,
     player: PlayerId,
     prompt: Prompt,
     options: &[PlayerId],
 ) -> Option<PlayerId> {
-    let mut picked = presenter.ask_targets(player, prompt, options, 1).await?;
-    if picked.len() == 1 {
-        picked.pop()
-    } else {
-        None
-    }
-}
-
-/// Same idea for exactly two targets (Cupid today).
-async fn ask_two(
-    presenter: &mut dyn Presenter,
-    player: PlayerId,
-    prompt: Prompt,
-    options: &[PlayerId],
-) -> Option<(PlayerId, PlayerId)> {
-    let picked = presenter.ask_targets(player, prompt, options, 2).await?;
-    match picked.as_slice() {
-        [a, b] if a != b => Some((*a, *b)),
-        _ => None,
-    }
+    ask_exact(presenter, player, prompt, options, 1)
+        .await
+        .and_then(|v| v.into_iter().next())
 }
 
 /// What every alive player brings into a night: who they are and what
@@ -154,7 +160,9 @@ pub async fn resolve_night(
         let state = states.entry(player.id).or_default();
 
         if player.role == Role::Cupid {
-            let chosen = ask_two(presenter, player.id, Prompt::CupidLink, &alive).await;
+            let chosen = ask_exact(presenter, player.id, Prompt::CupidLink, &alive, 2)
+                .await
+                .map(|v| (v[0], v[1]));
             let ctx = NightContext {
                 alive: &alive,
                 self_id: player.id,
