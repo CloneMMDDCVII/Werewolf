@@ -65,6 +65,16 @@ pub enum Prompt {
     PacifistPeace,
     /// Yes/no — see `Presenter::ask_toggle`.
     SandmanSleep,
+    ThiefSteal,
+    ChemistBrew,
+    /// Arsonist's douse target. See `ArsonistSpark` for the toggle half of
+    /// the same night decision.
+    ArsonistDouse,
+    /// Yes/no — see `Presenter::ask_toggle`.
+    ArsonistSpark,
+    /// Yes/no — see `Presenter::ask_toggle`.
+    TroublemakerTrouble,
+    SpumpkinDetonate,
 }
 
 /// The seam: real I/O (or a test double) lives entirely behind this trait.
@@ -179,7 +189,10 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
         Role::Sorcerer => Some(Prompt::SorcererInvestigate),
         Role::Oracle => Some(Prompt::OracleInvestigate),
         Role::Cultist => Some(Prompt::CultistConvert),
-        Role::AlphaWolf | Role::WolfCub | Role::Lycan => Some(Prompt::WolfEat),
+        Role::AlphaWolf | Role::WolfCub | Role::Lycan | Role::SnowWolf => Some(Prompt::WolfEat),
+        Role::Thief => Some(Prompt::ThiefSteal),
+        Role::Chemist => Some(Prompt::ChemistBrew),
+        Role::Arsonist => Some(Prompt::ArsonistDouse),
         _ => None,
     }
 }
@@ -188,6 +201,7 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
 fn toggle_night_prompt(role: Role) -> Option<Prompt> {
     match role {
         Role::Sandman => Some(Prompt::SandmanSleep),
+        Role::Arsonist => Some(Prompt::ArsonistSpark),
         _ => None,
     }
 }
@@ -332,6 +346,7 @@ fn one_target_day_prompt(role: Role) -> Option<Prompt> {
     match role {
         Role::Gunner => Some(Prompt::GunnerShoot),
         Role::Blacksmith => Some(Prompt::BlacksmithSilver),
+        Role::Spumpkin => Some(Prompt::SpumpkinDetonate),
         _ => None,
     }
 }
@@ -341,6 +356,7 @@ fn toggle_day_prompt(role: Role) -> Option<Prompt> {
     match role {
         Role::Mayor => Some(Prompt::MayorReveal),
         Role::Pacifist => Some(Prompt::PacifistPeace),
+        Role::Troublemaker => Some(Prompt::TroublemakerTrouble),
         _ => None,
     }
 }
@@ -428,7 +444,10 @@ pub fn apply_day_results(
 ) -> Vec<(PlayerId, KillMethod)> {
     let mut deaths = vec![];
 
-    let pacified = day_actions.iter().any(|a| matches!(a, DayAction::Pacify));
+    // "Trouble overrides peace" (Werewolf.cs:971): a same-day Troublemaker
+    // veto cancels a Pacifist's veto, so Trouble wins if both fire.
+    let troubled = day_actions.iter().any(|a| matches!(a, DayAction::Trouble));
+    let pacified = !troubled && day_actions.iter().any(|a| matches!(a, DayAction::Pacify));
 
     if !pacified {
         if let Some(target) = lynch_target {
@@ -445,7 +464,11 @@ pub fn apply_day_results(
     for action in day_actions {
         match action {
             DayAction::Shoot { target } => deaths.push((*target, KillMethod::Shoot)),
-            DayAction::SpreadSilver { .. } | DayAction::Reveal | DayAction::Pacify => {}
+            DayAction::SpreadSilver { .. }
+            | DayAction::Reveal
+            | DayAction::Pacify
+            | DayAction::Trouble
+            | DayAction::Detonate { .. } => {}
         }
     }
 
@@ -508,6 +531,21 @@ mod apply_day_results_tests {
             &mut states,
         );
         assert_eq!(deaths, vec![(shot_target, KillMethod::Shoot)]);
+    }
+
+    /// "Trouble overrides peace" (Werewolf.cs:971) — a same-day
+    /// Troublemaker veto beats a Pacifist veto, so the lynch still lands.
+    #[test]
+    fn trouble_overrides_a_same_day_pacify() {
+        let target = PlayerId(1);
+        let mut states = HashMap::new();
+        let deaths = apply_day_results(
+            &[DayAction::Pacify, DayAction::Trouble],
+            Some(target),
+            Some(Role::Villager),
+            &mut states,
+        );
+        assert_eq!(deaths, vec![(target, KillMethod::Lynch)]);
     }
 }
 

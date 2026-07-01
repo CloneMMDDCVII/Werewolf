@@ -14,8 +14,13 @@
 
 pub mod alpha_wolf;
 pub mod apprentice_seer;
+pub mod arsonist;
+pub mod augur;
+pub mod barkeep;
 pub mod beholder;
 pub mod blacksmith;
+pub mod chef;
+pub mod chemist;
 pub mod clumsy_guy;
 pub mod cultist;
 pub mod cultist_hunter;
@@ -25,6 +30,7 @@ pub mod detective;
 pub mod doppelganger;
 pub mod drunk;
 pub mod fool;
+pub mod grave_digger;
 pub mod gunner;
 pub mod guardian_angel;
 pub mod harlot;
@@ -39,15 +45,20 @@ pub mod prince;
 pub mod sandman;
 pub mod seer;
 pub mod serial_killer;
+pub mod snow_wolf;
 pub mod sorcerer;
+pub mod spumpkin;
 pub mod tanner;
+pub mod thief;
 pub mod traitor;
+pub mod troublemaker;
 pub mod villager;
 pub mod wild_child;
 pub mod wise_elder;
 pub mod witch;
 pub mod wolf;
 pub mod wolf_cub;
+pub mod wolf_man;
 
 pub use lovers::LoversState;
 
@@ -110,6 +121,34 @@ pub enum NightAction {
     /// actually suppresses (other roles' actions) is resolution logic
     /// this proof-of-concept doesn't attempt.
     SandmanSleep,
+    /// Thief stealing a target's role, night 1 only (Werewolf.cs:4132-4163:
+    /// `StealRole(thief, target)`). Unlike Doppelganger's `ChooseRoleModel`
+    /// (which waits for the role model to die), the steal is immediate —
+    /// modeled as its own variant so a reader isn't left wondering why an
+    /// "immediate" and a "wait for death" mechanic share one action shape.
+    /// The actual role swap, and the RNG success chance the legacy code
+    /// rolls in `ThiefFull` mode (Werewolf.cs:4173), is resolution logic
+    /// this proof-of-concept doesn't attempt.
+    StealRole { target: PlayerId },
+    /// Chemist's nightly gambit (Werewolf.cs:3792-3821): visit a target,
+    /// with an RNG chance of killing them (`KillMthd.Chemistry`) or,
+    /// on failure, killing the Chemist instead. Only the target-picking
+    /// half is modeled here; the coin flip and self-kill fallback are
+    /// resolution logic, same caveat as `Visit`/`Protect`.
+    Chemistry { target: PlayerId },
+    /// Arsonist dousing a target with kerosene, any night, as many nights
+    /// as they like (Werewolf.cs:3792 region / `x.Doused`) — there's no
+    /// `primary_used`-style gate in the legacy code, doused players just
+    /// accumulate. This proof-of-concept only tracks the *most recent*
+    /// douse via `RoleState::remembered_player`, not the full doused set
+    /// (which would need a `Vec`, not a single slot) — see `arsonist`
+    /// module doc for why that's an honest gap, not a bug.
+    Douse { target: PlayerId },
+    /// Arsonist choosing to detonate ("Spark", Werewolf.cs:1013,
+    /// `player.Choice = -2`) instead of dousing this night: burns every
+    /// doused player at once. This proof-of-concept doesn't attempt the
+    /// actual mass-burn resolution (`KillMthd.Burn`, Werewolf.cs:3198-3202).
+    Detonate,
 }
 
 /// A piece of information about tonight that some role's decision depends
@@ -179,6 +218,21 @@ pub enum DayAction {
     /// `apply_day_results`, which cancels the resolved lynch target if
     /// this action is present.
     Pacify,
+    /// Troublemaker forcing a second lynch vote the same day, once
+    /// (Werewolf.cs:965-973: `_doubleLynch = true`), and explicitly
+    /// overriding a Pacifist's veto if both fire the same day
+    /// (Werewolf.cs:971: `_pacifistUsed = false; // trouble overrides peace`)
+    /// — that override *is* modeled, in `apply_day_results`, since it's a
+    /// one-line interaction between two actions this proof-of-concept
+    /// already has. The actual "run the whole lynch vote again" mechanic
+    /// is not modeled — this only cancels a same-day `Pacify`.
+    Trouble,
+    /// Spumpkin's day detonation (Werewolf.cs:2901-2926): pick a target,
+    /// with an RNG chance (40%, Werewolf.cs:2907) of killing both the
+    /// target and the Spumpkin himself. Only "is this a valid target to
+    /// detonate on" is modeled; the coin flip and the mutual-kill
+    /// resolution are for a future orchestrator, same caveat as `Shoot`.
+    Detonate { target: PlayerId },
 }
 
 /// Same shape as `NightContext`, for the day phase. Kept as its own type
@@ -311,10 +365,16 @@ pub fn behavior_for(role: Role) -> Box<dyn RoleBehavior> {
         WiseElder => Box::new(wise_elder::WiseElder),
         Oracle => Box::new(oracle::Oracle),
         Sandman => Box::new(sandman::Sandman),
-
-        // Not yet ported to the new structure. Listed explicitly (not
-        // behind `_`) so the exhaustiveness guarantee above actually holds.
-        WolfMan | Thief | Troublemaker | Chemist | SnowWolf | GraveDigger | Augur
-        | Arsonist | Spumpkin | Chef | Barkeep => Box::new(Unimplemented(role)),
+        WolfMan => Box::new(wolf_man::WolfMan),
+        Thief => Box::new(thief::Thief),
+        Troublemaker => Box::new(troublemaker::Troublemaker),
+        Chemist => Box::new(chemist::Chemist),
+        SnowWolf => Box::new(snow_wolf::SnowWolf),
+        GraveDigger => Box::new(grave_digger::GraveDigger),
+        Augur => Box::new(augur::Augur),
+        Arsonist => Box::new(arsonist::Arsonist),
+        Spumpkin => Box::new(spumpkin::Spumpkin),
+        Chef => Box::new(chef::Chef),
+        Barkeep => Box::new(barkeep::Barkeep),
     }
 }
