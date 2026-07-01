@@ -6,8 +6,11 @@
 //! an abstract `Presenter` trait — this crate never depends on Telegram
 //! (or on `sim`), only on the idea that *something* can answer a question.
 
+pub mod game;
 pub mod orchestrator;
 pub mod roles;
+
+pub use game::{run_game, GameOutcome};
 
 use shared::{KillMethod, Role, Team};
 
