@@ -54,13 +54,29 @@ pub enum Prompt {
     /// See `resolve_day`.
     LynchVote,
     GunnerShoot,
+    BlacksmithSilver,
+    CultistHunterInvestigate,
+    SorcererInvestigate,
+    OracleInvestigate,
+    CultistConvert,
+    /// Yes/no — see `Presenter::ask_toggle`.
+    MayorReveal,
+    /// Yes/no — see `Presenter::ask_toggle`.
+    PacifistPeace,
+    /// Yes/no — see `Presenter::ask_toggle`.
+    SandmanSleep,
 }
 
 /// The seam: real I/O (or a test double) lives entirely behind this trait.
 /// Async because a real Telegram presenter is fundamentally waiting on
 /// network events (a callback query arriving), not something that can be
-/// answered synchronously.
-#[async_trait]
+/// answered synchronously. `?Send`: everything in this crate runs on a
+/// single-threaded executor (current-thread `tokio` in tests, and a real
+/// bot has no need to hand a `dyn Presenter` across threads), so requiring
+/// `Send` futures — `async_trait`'s default — is a constraint nothing
+/// here actually needs, and it broke the moment `ask_toggle` got a
+/// default body.
+#[async_trait(?Send)]
 pub trait Presenter {
     /// Ask `player` to pick `count` distinct players from `options` for
     /// the given `prompt`. Returns `None` if the player declines/times out
@@ -75,6 +91,18 @@ pub trait Presenter {
         options: &[PlayerId],
         count: usize,
     ) -> Option<Vec<PlayerId>>;
+
+    /// A genuinely different question shape from `ask_targets`: yes/no,
+    /// no player selection at all (Sandman's "sleep everyone?", Mayor's
+    /// "reveal?", Pacifist's "veto the lynch?"). Kept as its own method
+    /// rather than shoehorned into `ask_targets` with `count: 0` — that
+    /// would be reusing one method for two different question shapes,
+    /// the mirror-image mistake of collapsing `ask_target`/
+    /// `ask_two_targets` into one arity-parameterized method. Default
+    /// `false`: most presenters (and most roles) never need this.
+    async fn ask_toggle(&mut self, _player: PlayerId, _prompt: Prompt) -> bool {
+        false
+    }
 
     /// Called by `run_game` between rounds (after both night and day have
     /// resolved with no winner yet). Default no-op — a real Telegram
@@ -147,6 +175,19 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
         Role::Detective => Some(Prompt::DetectiveInvestigate),
         Role::Fool => Some(Prompt::FoolInvestigate),
         Role::WildChild => Some(Prompt::WildChildRoleModel),
+        Role::CultistHunter => Some(Prompt::CultistHunterInvestigate),
+        Role::Sorcerer => Some(Prompt::SorcererInvestigate),
+        Role::Oracle => Some(Prompt::OracleInvestigate),
+        Role::Cultist => Some(Prompt::CultistConvert),
+        Role::AlphaWolf | Role::WolfCub | Role::Lycan => Some(Prompt::WolfEat),
+        _ => None,
+    }
+}
+
+/// Roles with a yes/no night decision instead of a target pick.
+fn toggle_night_prompt(role: Role) -> Option<Prompt> {
+    match role {
+        Role::Sandman => Some(Prompt::SandmanSleep),
         _ => None,
     }
 }
@@ -186,6 +227,7 @@ pub async fn resolve_night(
                 poison_target: None,
                 love_targets: chosen,
                 wolf_target: None,
+                toggle_choice: false,
             };
             actions.extend(behavior.night_action(&ctx, state));
             continue;
@@ -194,6 +236,10 @@ pub async fn resolve_night(
         let chosen_target = match one_target_prompt(player.role) {
             Some(prompt) => ask_one(presenter, player.id, prompt, &alive).await,
             None => None,
+        };
+        let toggle_choice = match toggle_night_prompt(player.role) {
+            Some(prompt) => presenter.ask_toggle(player.id, prompt).await,
+            None => false,
         };
 
         let ctx = NightContext {
@@ -204,6 +250,7 @@ pub async fn resolve_night(
             poison_target: None,
             love_targets: None,
             wolf_target: None,
+            toggle_choice,
         };
         actions.extend(behavior.night_action(&ctx, state));
     }
@@ -242,6 +289,7 @@ pub async fn resolve_night(
             poison_target,
             love_targets: None,
             wolf_target,
+            toggle_choice: false,
         };
         actions.extend(behavior.night_action(&ctx, state));
     }
@@ -283,6 +331,16 @@ fn majority_eat_target(actions: &[NightAction]) -> Option<PlayerId> {
 fn one_target_day_prompt(role: Role) -> Option<Prompt> {
     match role {
         Role::Gunner => Some(Prompt::GunnerShoot),
+        Role::Blacksmith => Some(Prompt::BlacksmithSilver),
+        _ => None,
+    }
+}
+
+/// Roles with a yes/no day decision instead of a target pick.
+fn toggle_day_prompt(role: Role) -> Option<Prompt> {
+    match role {
+        Role::Mayor => Some(Prompt::MayorReveal),
+        Role::Pacifist => Some(Prompt::PacifistPeace),
         _ => None,
     }
 }
@@ -300,11 +358,15 @@ pub async fn resolve_day(
 ) -> (Vec<DayAction>, Option<PlayerId>) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut day_actions = vec![];
-    let mut lynch_votes = vec![];
+    // Tracks voter identity, not just the target, so Mayor's own vote can
+    // be found again and doubled below (Werewolf.cs:2649-2652) — a flat
+    // Vec<PlayerId> of targets alone can't answer "which one was Mayor's."
+    let mut votes_by_voter: Vec<(PlayerId, PlayerId)> = vec![];
+    let mut mayor_revealed: Option<PlayerId> = None;
 
     for player in players {
         if let Some(target) = ask_one(presenter, player.id, Prompt::LynchVote, &alive).await {
-            lynch_votes.push(target);
+            votes_by_voter.push((player.id, target));
         }
 
         let behavior = behavior_for(player.role);
@@ -314,43 +376,139 @@ pub async fn resolve_day(
             Some(prompt) => ask_one(presenter, player.id, prompt, &alive).await,
             None => None,
         };
+        let toggle_choice = match toggle_day_prompt(player.role) {
+            Some(prompt) => presenter.ask_toggle(player.id, prompt).await,
+            None => false,
+        };
 
         let ctx = DayContext {
             alive: &alive,
             self_id: player.id,
             chosen_target,
+            toggle_choice,
         };
-        day_actions.extend(behavior.day_action(&ctx, state));
+        let actions = behavior.day_action(&ctx, state);
+        if player.role == Role::Mayor && actions.contains(&DayAction::Reveal) {
+            mayor_revealed = Some(player.id);
+        }
+        day_actions.extend(actions);
     }
 
-    let lynch_target = majority_target(lynch_votes.into_iter());
+    let mut all_votes: Vec<PlayerId> = votes_by_voter.iter().map(|&(_, target)| target).collect();
+    if let Some(mayor_id) = mayor_revealed {
+        if let Some(&(_, target)) = votes_by_voter.iter().find(|&&(voter, _)| voter == mayor_id) {
+            all_votes.push(target); // counts twice, once revealed
+        }
+    }
+    let lynch_target = majority_target(all_votes.into_iter());
     (day_actions, lynch_target)
 }
 
 /// Turns resolved day decisions into actual deaths — the day-phase twin of
-/// `apply_night_results`. The lynch target dies of `KillMethod::Lynch`
-/// unconditionally: nothing in this codebase's role logic models a way to
-/// survive a completed lynch (unlike the wolf kill, which Witch's heal can
-/// cancel). Gunner's `Shoot` target dies of `KillMethod::Shoot`,
-/// independently — same "each cause listed separately, no dedup" contract
-/// as `apply_night_results` if the same player is targeted twice.
+/// `apply_night_results`. Two things can cancel the lynch entirely, unlike
+/// `apply_night_results` where only Witch's heal can cancel a death:
+///
+/// - Pacifist's `Pacify` action vetoes the *entire* day's lynch
+///   (Werewolf.cs:913-925) — checked first, since it overrides everything.
+/// - Prince's first lynch is survived, not fatal (Werewolf.cs:2745-2751:
+///   `!lynched.HasUsedAbility`). This needs `lynch_target_role` (who the
+///   target actually is) and `states` (to check/spend the one-time
+///   immunity via `RoleState::primary_used`) — parameters
+///   `apply_night_results` doesn't need, since nothing on the night side
+///   has this "am I this specific role, and have I used my one save yet"
+///   shape.
+///
+/// Gunner's `Shoot` target dies of `KillMethod::Shoot` independently of
+/// either check above. `SpreadSilver`/`Reveal` have no death consequence.
 pub fn apply_day_results(
     day_actions: &[DayAction],
     lynch_target: Option<PlayerId>,
+    lynch_target_role: Option<Role>,
+    states: &mut HashMap<PlayerId, RoleState>,
 ) -> Vec<(PlayerId, KillMethod)> {
     let mut deaths = vec![];
 
-    if let Some(target) = lynch_target {
-        deaths.push((target, KillMethod::Lynch));
+    let pacified = day_actions.iter().any(|a| matches!(a, DayAction::Pacify));
+
+    if !pacified {
+        if let Some(target) = lynch_target {
+            let prince_has_immunity = lynch_target_role == Some(Role::Prince)
+                && !states.entry(target).or_default().primary_used;
+            if prince_has_immunity {
+                states.entry(target).or_default().primary_used = true;
+            } else {
+                deaths.push((target, KillMethod::Lynch));
+            }
+        }
     }
 
     for action in day_actions {
         match action {
             DayAction::Shoot { target } => deaths.push((*target, KillMethod::Shoot)),
+            DayAction::SpreadSilver { .. } | DayAction::Reveal | DayAction::Pacify => {}
         }
     }
 
     deaths
+}
+
+#[cfg(test)]
+mod apply_day_results_tests {
+    use super::*;
+
+    #[test]
+    fn a_lynched_prince_survives_his_first_lynch() {
+        let prince = PlayerId(1);
+        let mut states = HashMap::new();
+        let deaths = apply_day_results(&[], Some(prince), Some(Role::Prince), &mut states);
+        assert_eq!(deaths, vec![], "Prince's first lynch should not kill him");
+        assert!(
+            states.get(&prince).unwrap().primary_used,
+            "immunity should be spent even though he survived"
+        );
+    }
+
+    #[test]
+    fn a_second_lynched_prince_dies() {
+        let prince = PlayerId(1);
+        let mut states = HashMap::new();
+        states.insert(
+            prince,
+            RoleState {
+                primary_used: true, // already spent his one save
+                ..Default::default()
+            },
+        );
+        let deaths = apply_day_results(&[], Some(prince), Some(Role::Prince), &mut states);
+        assert_eq!(deaths, vec![(prince, KillMethod::Lynch)]);
+    }
+
+    #[test]
+    fn pacify_vetoes_the_lynch_entirely() {
+        let target = PlayerId(1);
+        let mut states = HashMap::new();
+        let deaths = apply_day_results(
+            &[DayAction::Pacify],
+            Some(target),
+            Some(Role::Villager),
+            &mut states,
+        );
+        assert_eq!(deaths, vec![], "Pacifist's veto should cancel the lynch");
+    }
+
+    #[test]
+    fn pacify_does_not_cancel_a_gunner_shot() {
+        let lynch_target = PlayerId(1);
+        let shot_target = PlayerId(2);
+        let mut states = HashMap::new();
+        let deaths = apply_day_results(
+            &[DayAction::Pacify, DayAction::Shoot { target: shot_target }],
+            Some(lynch_target),
+            Some(Role::Villager),
+            &mut states,
+        );
+        assert_eq!(deaths, vec![(shot_target, KillMethod::Shoot)]);
+    }
 }
 
 /// Turns resolved night decisions into actual deaths — the step
@@ -481,9 +639,10 @@ mod day_tests {
     struct ScriptedDayPresenter {
         lynch_votes: HashMap<PlayerId, PlayerId>,
         gunner_shot: Option<PlayerId>,
+        mayor_reveals: bool,
     }
 
-    #[async_trait]
+    #[async_trait(?Send)]
     impl Presenter for ScriptedDayPresenter {
         async fn ask_targets(
             &mut self,
@@ -500,6 +659,10 @@ mod day_tests {
                 Prompt::GunnerShoot => self.gunner_shot.map(|t| vec![t]),
                 _ => None,
             }
+        }
+
+        async fn ask_toggle(&mut self, _player: PlayerId, prompt: Prompt) -> bool {
+            matches!(prompt, Prompt::MayorReveal) && self.mayor_reveals
         }
     }
 
@@ -529,13 +692,16 @@ mod day_tests {
         let mut presenter = ScriptedDayPresenter {
             lynch_votes: votes,
             gunner_shot: None,
+            mayor_reveals: false,
         };
         let mut states = HashMap::new();
 
         let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
         assert_eq!(lynch_target, Some(target));
 
-        let deaths = apply_day_results(&day_actions, lynch_target);
+        let mut states2 = HashMap::new();
+        let deaths =
+            apply_day_results(&day_actions, lynch_target, Some(Role::Villager), &mut states2);
         assert_eq!(deaths, vec![(target, KillMethod::Lynch)]);
     }
 
@@ -570,12 +736,17 @@ mod day_tests {
         let mut presenter = ScriptedDayPresenter {
             lynch_votes: votes,
             gunner_shot: None,
+            mayor_reveals: false,
         };
         let mut states = HashMap::new();
 
         let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
         assert_eq!(lynch_target, None);
-        assert_eq!(apply_day_results(&day_actions, lynch_target), vec![]);
+        let mut states2 = HashMap::new();
+        assert_eq!(
+            apply_day_results(&day_actions, lynch_target, None, &mut states2),
+            vec![]
+        );
     }
 
     #[tokio::test]
@@ -603,6 +774,7 @@ mod day_tests {
         let mut presenter = ScriptedDayPresenter {
             lynch_votes: votes,
             gunner_shot: Some(shot_target),
+            mayor_reveals: false,
         };
         let mut states = HashMap::new();
 
@@ -610,7 +782,9 @@ mod day_tests {
         assert_eq!(lynch, Some(lynch_target));
         assert!(day_actions.contains(&DayAction::Shoot { target: shot_target }));
 
-        let mut deaths = apply_day_results(&day_actions, lynch);
+        let mut states2 = HashMap::new();
+        let mut deaths =
+            apply_day_results(&day_actions, lynch, Some(Role::Villager), &mut states2);
         deaths.sort_by_key(|(id, _)| id.0);
         assert_eq!(
             deaths,
@@ -619,5 +793,93 @@ mod day_tests {
                 (shot_target, KillMethod::Shoot),
             ]
         );
+    }
+
+    /// Without the reveal, this is a tie (one vote each) and nobody dies.
+    /// The Mayor revealing doubles his own vote, breaking the tie in his
+    /// candidate's favor — proving `resolve_day`'s vote-doubling actually
+    /// changes the outcome rather than just being tracked and ignored.
+    #[tokio::test]
+    async fn a_revealed_mayor_s_doubled_vote_breaks_a_tie() {
+        let mayor = PlayerId(1);
+        let other_voter = PlayerId(2);
+        let mayors_pick = PlayerId(3);
+        let other_pick = PlayerId(4);
+        let players = vec![
+            AlivePlayer {
+                id: mayor,
+                role: Role::Mayor,
+            },
+            AlivePlayer {
+                id: other_voter,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: mayors_pick,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: other_pick,
+                role: Role::Villager,
+            },
+        ];
+
+        let mut votes = HashMap::new();
+        votes.insert(mayor, mayors_pick);
+        votes.insert(other_voter, other_pick);
+        let mut presenter = ScriptedDayPresenter {
+            lynch_votes: votes,
+            gunner_shot: None,
+            mayor_reveals: true,
+        };
+        let mut states = HashMap::new();
+
+        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        assert_eq!(
+            lynch_target,
+            Some(mayors_pick),
+            "the Mayor's revealed vote should count twice and break the tie"
+        );
+    }
+
+    /// Same votes as above, but the Mayor declines to reveal: no doubling,
+    /// so it's a genuine tie and nobody is lynched.
+    #[tokio::test]
+    async fn an_unrevealed_mayor_s_vote_only_counts_once() {
+        let mayor = PlayerId(1);
+        let other_voter = PlayerId(2);
+        let mayors_pick = PlayerId(3);
+        let other_pick = PlayerId(4);
+        let players = vec![
+            AlivePlayer {
+                id: mayor,
+                role: Role::Mayor,
+            },
+            AlivePlayer {
+                id: other_voter,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: mayors_pick,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: other_pick,
+                role: Role::Villager,
+            },
+        ];
+
+        let mut votes = HashMap::new();
+        votes.insert(mayor, mayors_pick);
+        votes.insert(other_voter, other_pick);
+        let mut presenter = ScriptedDayPresenter {
+            lynch_votes: votes,
+            gunner_shot: None,
+            mayor_reveals: false,
+        };
+        let mut states = HashMap::new();
+
+        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        assert_eq!(lynch_target, None);
     }
 }

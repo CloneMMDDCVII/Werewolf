@@ -1,17 +1,22 @@
-//! Mirrors the wolves' night-eat vote (Werewolf.cs's wolf night-action
-//! handling). Each wolf submits a candidate; the orchestrator (not part of
-//! this proof-of-concept) is responsible for tallying votes across all
-//! wolves and resolving the actual kill — this file only validates one
-//! wolf's own vote.
+//! Lycan is wolf-team muscle (`WolfRoles`, Werewolf.cs:48) and shares the
+//! same night eat vote as `wolf::Wolf`.
+//!
+//! The real distinguishing quirk — Seer/Sorcerer checks show Lycan as a
+//! Villager instead of revealing the wolf team (Werewolf.cs:3961-3962,
+//! the "sneaky wuff" comment) — is purely about what information an
+//! `Investigate`/`CheckTeam` reveals, which this proof-of-concept already
+//! treats as unresolved display-layer detail for every investigate-shaped
+//! role (see `seer`/`sorcerer` module docs). Nothing extra to model here.
+//! Team is already correct via `is_wolf_muscle`.
 
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
 use shared::{Role, Team};
 
-pub struct Wolf;
+pub struct Lycan;
 
-impl RoleBehavior for Wolf {
+impl RoleBehavior for Lycan {
     fn team(&self) -> Team {
-        Role::Wolf.team()
+        Role::Lycan.team()
     }
 
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
@@ -33,25 +38,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wolf_cannot_target_itself() {
-        let wolf = Wolf;
-        let ctx = NightContext {
-            alive: &[PlayerId(1), PlayerId(2)],
-            self_id: PlayerId(1),
-            chosen_target: Some(PlayerId(1)),
-            heal_target: None,
-            poison_target: None,
-            love_targets: None,
-            wolf_target: None,
-            toggle_choice: false,
-        };
-        let mut state = RoleState::default();
-        assert_eq!(wolf.night_action(&ctx, &mut state), vec![]);
-    }
-
-    #[test]
-    fn wolf_votes_for_a_valid_alive_target() {
-        let wolf = Wolf;
+    fn lycan_votes_for_a_valid_alive_target() {
+        let lycan = Lycan;
         let ctx = NightContext {
             alive: &[PlayerId(1), PlayerId(2)],
             self_id: PlayerId(1),
@@ -64,7 +52,7 @@ mod tests {
         };
         let mut state = RoleState::default();
         assert_eq!(
-            wolf.night_action(&ctx, &mut state),
+            lycan.night_action(&ctx, &mut state),
             vec![NightAction::EatVote {
                 target: PlayerId(2)
             }]

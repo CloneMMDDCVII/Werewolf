@@ -15,6 +15,8 @@
 pub mod alpha_wolf;
 pub mod apprentice_seer;
 pub mod beholder;
+pub mod blacksmith;
+pub mod clumsy_guy;
 pub mod cultist;
 pub mod cultist_hunter;
 pub mod cupid;
@@ -28,7 +30,13 @@ pub mod guardian_angel;
 pub mod harlot;
 pub mod hunter;
 pub mod lovers;
+pub mod lycan;
 pub mod mason;
+pub mod mayor;
+pub mod oracle;
+pub mod pacifist;
+pub mod prince;
+pub mod sandman;
 pub mod seer;
 pub mod serial_killer;
 pub mod sorcerer;
@@ -36,8 +44,10 @@ pub mod tanner;
 pub mod traitor;
 pub mod villager;
 pub mod wild_child;
+pub mod wise_elder;
 pub mod witch;
 pub mod wolf;
+pub mod wolf_cub;
 
 pub use lovers::LoversState;
 
@@ -94,6 +104,12 @@ pub enum NightAction {
     /// Killer, so there's no consensus to tally — `apply_night_results`
     /// applies this as a direct, unconditional kill.
     SerialKillVote { target: PlayerId },
+    /// Sandman choosing to put everyone to sleep tonight
+    /// (Werewolf.cs:950-961: `_sandmanSleep = true`), a once-per-game
+    /// no-target toggle rather than picking a player. What "asleep"
+    /// actually suppresses (other roles' actions) is resolution logic
+    /// this proof-of-concept doesn't attempt.
+    SandmanSleep,
 }
 
 /// A piece of information about tonight that some role's decision depends
@@ -124,6 +140,14 @@ pub struct NightContext<'a> {
     /// proof-of-concept doesn't yet distinguish the two, since there's no
     /// orchestrator to produce either case for real.
     pub wolf_target: Option<PlayerId>,
+    /// Generic yes/no decision, for the roles whose action isn't "pick a
+    /// player" at all — e.g. Sandman's once-per-game "put everyone to
+    /// sleep?" (Werewolf.cs:950-961). Same "generic slot, documented per
+    /// role" idea as `RoleState`'s fields; kept separate from
+    /// `chosen_target` rather than repurposing `Some`/`None` as a boolean,
+    /// since that would make a reader guess whether presence or the
+    /// specific value mattered.
+    pub toggle_choice: bool,
 }
 
 /// What a day action resolves to. Separate from `NightAction` because it's
@@ -139,6 +163,22 @@ pub enum DayAction {
     /// (Werewolf.cs:2887-2889) — is resolution logic for a future
     /// orchestrator; this only covers "is this a valid target to shoot."
     Shoot { target: PlayerId },
+    /// Blacksmith spreading protective silver to a target
+    /// (Werewolf.cs:935, 5083). Whether it actually protects them from a
+    /// wolf attack is resolution logic this proof-of-concept doesn't
+    /// attempt, same caveat as `NightAction::Visit`/`Protect`.
+    SpreadSilver { target: PlayerId },
+    /// Mayor publicly revealing their role, once
+    /// (Werewolf.cs:899-908). Purely informational on its own — the real
+    /// payoff (their lynch vote counting twice afterward,
+    /// Werewolf.cs:2649-2652) is handled by `orchestrator::resolve_day`
+    /// directly, since it's a change to vote *tallying*, not a death.
+    Reveal,
+    /// Pacifist vetoing the day's lynch entirely, once
+    /// (Werewolf.cs:913-925: `_pacifistUsed = true`). Applied by
+    /// `apply_day_results`, which cancels the resolved lynch target if
+    /// this action is present.
+    Pacify,
 }
 
 /// Same shape as `NightContext`, for the day phase. Kept as its own type
@@ -151,6 +191,9 @@ pub struct DayContext<'a> {
     pub alive: &'a [PlayerId],
     pub self_id: PlayerId,
     pub chosen_target: Option<PlayerId>,
+    /// See `NightContext::toggle_choice` — same idea, for day-phase
+    /// yes/no decisions (Mayor's reveal, Pacifist's peace).
+    pub toggle_choice: bool,
 }
 
 /// Per-player state that must persist across nights (e.g. "has the Witch
@@ -258,12 +301,20 @@ pub fn behavior_for(role: Role) -> Box<dyn RoleBehavior> {
         SerialKiller => Box::new(serial_killer::SerialKiller),
         Sorcerer => Box::new(sorcerer::Sorcerer),
         AlphaWolf => Box::new(alpha_wolf::AlphaWolf),
+        WolfCub => Box::new(wolf_cub::WolfCub),
+        Blacksmith => Box::new(blacksmith::Blacksmith),
+        ClumsyGuy => Box::new(clumsy_guy::ClumsyGuy),
+        Mayor => Box::new(mayor::Mayor),
+        Prince => Box::new(prince::Prince),
+        Lycan => Box::new(lycan::Lycan),
+        Pacifist => Box::new(pacifist::Pacifist),
+        WiseElder => Box::new(wise_elder::WiseElder),
+        Oracle => Box::new(oracle::Oracle),
+        Sandman => Box::new(sandman::Sandman),
 
         // Not yet ported to the new structure. Listed explicitly (not
         // behind `_`) so the exhaustiveness guarantee above actually holds.
-        WolfCub | Blacksmith
-        | ClumsyGuy | Mayor | Prince | Lycan | Pacifist | WiseElder | Oracle | Sandman
-        | WolfMan | Thief | Troublemaker | Chemist | SnowWolf | GraveDigger | Augur
+        WolfMan | Thief | Troublemaker | Chemist | SnowWolf | GraveDigger | Augur
         | Arsonist | Spumpkin | Chef | Barkeep => Box::new(Unimplemented(role)),
     }
 }

@@ -50,6 +50,7 @@ mod tests {
             poison_target: None,
             love_targets: None,
             wolf_target: None,
+            toggle_choice: false,
         };
         let mut state = RoleState::default();
         assert_eq!(
@@ -71,6 +72,7 @@ mod tests {
             poison_target: None,
             love_targets: None,
             wolf_target: None,
+            toggle_choice: false,
         };
         let mut state = RoleState::default();
         assert_eq!(alpha.night_action(&ctx, &mut state), vec![]);

@@ -17,7 +17,7 @@ struct FixedScriptPresenter {
     village_lynches: PlayerId,
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Presenter for FixedScriptPresenter {
     async fn ask_targets(
         &mut self,
@@ -116,7 +116,7 @@ async fn a_lynched_tanner_wins_immediately_even_mid_game() {
     struct LynchTannerPresenter {
         tanner: PlayerId,
     }
-    #[async_trait]
+    #[async_trait(?Send)]
     impl Presenter for LynchTannerPresenter {
         async fn ask_targets(
             &mut self,
@@ -147,7 +147,7 @@ async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
     // Nobody ever answers anything -> no deaths, ever -> the win
     // condition never resolves. run_game must still terminate.
     struct SilentPresenter;
-    #[async_trait]
+    #[async_trait(?Send)]
     impl Presenter for SilentPresenter {
         async fn ask_targets(
             &mut self,

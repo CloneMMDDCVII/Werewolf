@@ -16,7 +16,7 @@ struct FixedScriptPresenter {
     wild_child_picks: PlayerId,
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Presenter for FixedScriptPresenter {
     async fn ask_targets(
         &mut self,

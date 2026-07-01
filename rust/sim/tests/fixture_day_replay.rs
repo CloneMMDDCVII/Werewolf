@@ -59,7 +59,8 @@ async fn resolve_day_reproduces_the_historical_day1_lynch() {
             game.game_id
         );
 
-        let deaths = apply_day_results(&day_actions, lynch_target);
+        let lynch_target_role = lynch_target.and_then(|t| players.iter().find(|p| p.id == t).map(|p| p.role));
+        let deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
         assert!(
             deaths.contains(&(PlayerId(expected_victim as u64), KillMethod::Lynch)),
             "game {}: applying the resolved day should include the historical lynch death: {deaths:?}",

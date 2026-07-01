@@ -66,7 +66,8 @@ pub async fn run_game(
         }
 
         let (day_actions, lynch_target) = resolve_day(&alive, &mut states, presenter).await;
-        let day_deaths = apply_day_results(&day_actions, lynch_target);
+        let lynch_target_role = lynch_target.and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
+        let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
         let day_died_with_roles = record_deaths(&alive, &day_deaths, &mut kills, &mut deaths);
         alive.retain(|p| !day_deaths.iter().any(|&(v, _)| v == p.id));
         apply_transforms(&mut alive, &states, &day_died_with_roles);

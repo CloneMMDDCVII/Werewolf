@@ -78,6 +78,7 @@ mod tests {
             poison_target: Some(PlayerId(3)),
             love_targets: None,
             wolf_target: Some(PlayerId(2)),
+            toggle_choice: false,
         };
         let mut state = RoleState::default();
         let actions = witch.night_action(&ctx, &mut state);
@@ -97,6 +98,7 @@ mod tests {
             poison_target: None,
             love_targets: None,
             wolf_target: Some(PlayerId(2)),
+            toggle_choice: false,
         };
         let mut state = RoleState {
             primary_used: true,
@@ -120,6 +122,7 @@ mod tests {
             poison_target: None,
             love_targets: None,
             wolf_target: None,
+            toggle_choice: false,
         };
         let mut state = RoleState::default();
         assert_eq!(witch.night_action(&ctx, &mut state), vec![]);
@@ -137,6 +140,7 @@ mod tests {
             poison_target: None,
             love_targets: None,
             wolf_target: Some(PlayerId(3)),
+            toggle_choice: false,
         };
         let mut state = RoleState::default();
         assert_eq!(witch.night_action(&ctx, &mut state), vec![]);

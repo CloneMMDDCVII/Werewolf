@@ -60,7 +60,7 @@ impl<'a> FixturePresenter<'a> {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl<'a> Presenter for FixturePresenter<'a> {
     async fn ask_targets(
         &mut self,

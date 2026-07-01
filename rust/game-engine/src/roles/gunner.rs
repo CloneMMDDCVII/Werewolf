@@ -50,6 +50,7 @@ mod tests {
             alive: &[PlayerId(1), PlayerId(2), PlayerId(3)][..],
             self_id: PlayerId(1),
             chosen_target: target,
+            toggle_choice: false,
         }
     }
 

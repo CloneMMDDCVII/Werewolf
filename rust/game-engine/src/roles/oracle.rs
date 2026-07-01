@@ -1,20 +1,17 @@
-//! Fool investigates one player overnight, same action shape as Detective
-//! (Werewolf.cs:5174-5179, grouped with Seer/Sorcerer/Oracle under
-//! `AskSee`) — but the answer the Fool gets back is fake: the legacy code
-//! shows a *random* role from the remaining player pool, masking any wolf
-//! variant as generically "Wolf" (Werewolf.cs:3985-4000). That
-//! randomization is a display-layer detail for a future orchestrator to
-//! produce, not something this file decides — it only validates the
-//! target, same as Detective.
+//! Oracle checks one player overnight — a "negative" Seer, revealing a
+//! decoy role that isn't the target's (Werewolf.cs:4021-4034) rather than
+//! the target's actual team. Same shape as every other investigate-style
+//! role: validate a target, emit `Investigate`; what comes back is
+//! resolution/display logic this file doesn't attempt.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
 
-pub struct Fool;
+pub struct Oracle;
 
-impl RoleBehavior for Fool {
+impl RoleBehavior for Oracle {
     fn team(&self) -> Team {
-        Role::Fool.team()
+        Role::Oracle.team()
     }
 
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
@@ -33,8 +30,8 @@ mod tests {
     use crate::roles::PlayerId;
 
     #[test]
-    fn fool_investigates_a_valid_target() {
-        let fool = Fool;
+    fn oracle_investigates_a_valid_target() {
+        let oracle = Oracle;
         let ctx = NightContext {
             alive: &[PlayerId(1), PlayerId(2)],
             self_id: PlayerId(1),
@@ -47,7 +44,7 @@ mod tests {
         };
         let mut state = RoleState::default();
         assert_eq!(
-            fool.night_action(&ctx, &mut state),
+            oracle.night_action(&ctx, &mut state),
             vec![NightAction::Investigate {
                 target: PlayerId(2)
             }]

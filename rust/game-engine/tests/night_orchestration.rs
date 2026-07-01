@@ -24,7 +24,7 @@ struct ScriptedPresenter {
     two_target_answer: Option<Vec<PlayerId>>,
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Presenter for ScriptedPresenter {
     async fn ask_targets(
         &mut self,

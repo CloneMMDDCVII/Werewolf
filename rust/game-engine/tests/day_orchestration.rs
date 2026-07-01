@@ -17,7 +17,7 @@ struct ScriptedDayPresenter {
     votes: HashMap<PlayerId, PlayerId>,
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Presenter for ScriptedDayPresenter {
     async fn ask_targets(
         &mut self,
@@ -70,7 +70,7 @@ async fn lynching_a_tanner_wins_the_game_for_tanner_end_to_end() {
     let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
     assert_eq!(lynch_target, Some(tanner));
 
-    let deaths = apply_day_results(&day_actions, lynch_target);
+    let deaths = apply_day_results(&day_actions, lynch_target, Some(Role::Tanner), &mut states);
 
     // Feed the resolved death into the (previously separately-built)
     // win-condition evaluator, exactly as a real orchestrator loop would.
