@@ -363,16 +363,20 @@ pub fn apply_day_results(
 ///   point of the heal potion — see `witch` module).
 /// - Witch's `Poison` target dies of `KillMethod::Poison`, unconditionally
 ///   and independently of the wolf kill.
+/// - The Serial Killer's `SerialKillVote` target dies of
+///   `KillMethod::SerialKilled`, unconditionally — same "no consensus
+///   needed" reasoning as the role file itself.
 ///
 /// Everything else this proof-of-concept resolves as a *decision*
-/// (`Visit`, `Protect`, `Investigate`, `CheckTeam`, `ChooseRoleModel`) has
-/// no death consequence modeled yet — Harlot dying from visiting a wolf,
-/// Guardian Angel's protection actually working or the GA dying instead,
-/// are real legacy mechanics (see `harlot`/`guardian_angel` module docs)
+/// (`Visit`, `Protect`, `Investigate`, `CheckTeam`, `ChooseRoleModel`,
+/// `ConvertVote`) has no death consequence modeled yet — Harlot dying
+/// from visiting a wolf, Guardian Angel's protection actually working or
+/// the GA dying instead, cult conversion's RNG resolution, are real
+/// legacy mechanics (see `harlot`/`guardian_angel`/`cultist` module docs)
 /// that need cross-player resolution logic this function doesn't attempt.
-/// If the wolf target and the poison target are the same player, they
-/// appear twice, once per cause — deduplicating "someone already dead"
-/// is future work for whoever applies this to real running game state.
+/// If several causes target the same player, they appear once per cause —
+/// deduplicating "someone already dead" is future work for whoever
+/// applies this to real running game state.
 pub fn apply_night_results(
     actions: &[NightAction],
     wolf_target: Option<PlayerId>,
@@ -391,8 +395,14 @@ pub fn apply_night_results(
     }
 
     for action in actions {
-        if let NightAction::Poison { target } = action {
-            deaths.push((*target, shared::KillMethod::Poison));
+        match action {
+            NightAction::Poison { target } => {
+                deaths.push((*target, shared::KillMethod::Poison));
+            }
+            NightAction::SerialKillVote { target } => {
+                deaths.push((*target, shared::KillMethod::SerialKilled));
+            }
+            _ => {}
         }
     }
 
@@ -448,6 +458,16 @@ mod apply_night_results_tests {
     #[test]
     fn no_wolf_target_means_no_eat_death() {
         assert_eq!(apply_night_results(&[], None), vec![]);
+    }
+
+    #[test]
+    fn serial_kill_vote_kills_unconditionally() {
+        let target = PlayerId(5);
+        let actions = [NightAction::SerialKillVote { target }];
+        assert_eq!(
+            apply_night_results(&actions, None),
+            vec![(target, KillMethod::SerialKilled)]
+        );
     }
 }
 

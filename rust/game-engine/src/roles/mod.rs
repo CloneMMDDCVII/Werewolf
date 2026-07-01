@@ -12,16 +12,26 @@
 //! about, and go read its one small file. Nothing else in the game
 //! depends on you understanding any other role first.
 
+pub mod alpha_wolf;
+pub mod apprentice_seer;
+pub mod beholder;
+pub mod cultist;
+pub mod cultist_hunter;
 pub mod cupid;
 pub mod cursed;
 pub mod detective;
+pub mod doppelganger;
 pub mod drunk;
 pub mod fool;
 pub mod gunner;
 pub mod guardian_angel;
 pub mod harlot;
+pub mod hunter;
 pub mod lovers;
+pub mod mason;
 pub mod seer;
+pub mod serial_killer;
+pub mod sorcerer;
 pub mod tanner;
 pub mod traitor;
 pub mod villager;
@@ -67,11 +77,23 @@ pub enum NightAction {
     /// and, for Detective, the chance of tipping off the wolves
     /// (Werewolf.cs:2937) — is resolution logic, not modeled here.
     Investigate { target: PlayerId },
-    /// Wild Child's one-time pick of a "role model" player
-    /// (Werewolf.cs:1757, 1909) — if that player dies, Wild Child turns
-    /// Wolf. The turn-on-death trigger itself needs an `on_death` hook
-    /// this trait doesn't have yet; see `wild_child` module doc.
+    /// Wild Child's (and Doppelganger's — same shape, different transform
+    /// payoff) one-time pick of a "role model" player (Werewolf.cs:1757,
+    /// 1909 for Wild Child; 1927-1938 for Doppelganger). If that player
+    /// dies, `game::apply_transforms` turns the picker into a Wolf (Wild
+    /// Child) or a copy of the dead player's role (Doppelganger).
     ChooseRoleModel { target: PlayerId },
+    /// The cult's proposed conversion target for tonight
+    /// (Werewolf.cs:3690-3735 onward: each surviving cultist effectively
+    /// votes by choosing a target, with a per-target-role success chance).
+    /// This models only the *proposal*; the conversion itself is
+    /// RNG-and-role-dependent resolution logic not modeled here.
+    ConvertVote { target: PlayerId },
+    /// The Serial Killer's personal kill choice (Werewolf.cs:2340-2348,
+    /// 2380 onward). Unlike `EatVote`, there's normally only one Serial
+    /// Killer, so there's no consensus to tally — `apply_night_results`
+    /// applies this as a direct, unconditional kill.
+    SerialKillVote { target: PlayerId },
 }
 
 /// A piece of information about tonight that some role's decision depends
@@ -226,11 +248,20 @@ pub fn behavior_for(role: Role) -> Box<dyn RoleBehavior> {
         Tanner => Box::new(tanner::Tanner),
         Fool => Box::new(fool::Fool),
         WildChild => Box::new(wild_child::WildChild),
+        Beholder => Box::new(beholder::Beholder),
+        ApprenticeSeer => Box::new(apprentice_seer::ApprenticeSeer),
+        Cultist => Box::new(cultist::Cultist),
+        CultistHunter => Box::new(cultist_hunter::CultistHunter),
+        Mason => Box::new(mason::Mason),
+        Doppelganger => Box::new(doppelganger::Doppelganger),
+        Hunter => Box::new(hunter::Hunter),
+        SerialKiller => Box::new(serial_killer::SerialKiller),
+        Sorcerer => Box::new(sorcerer::Sorcerer),
+        AlphaWolf => Box::new(alpha_wolf::AlphaWolf),
 
         // Not yet ported to the new structure. Listed explicitly (not
         // behind `_`) so the exhaustiveness guarantee above actually holds.
-        Beholder | ApprenticeSeer | Cultist | CultistHunter | Mason
-        | Doppelganger | Hunter | SerialKiller | Sorcerer | AlphaWolf | WolfCub | Blacksmith
+        WolfCub | Blacksmith
         | ClumsyGuy | Mayor | Prince | Lycan | Pacifist | WiseElder | Oracle | Sandman
         | WolfMan | Thief | Troublemaker | Chemist | SnowWolf | GraveDigger | Augur
         | Arsonist | Spumpkin | Chef | Barkeep => Box::new(Unimplemented(role)),

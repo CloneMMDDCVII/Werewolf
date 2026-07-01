@@ -53,9 +53,9 @@ pub async fn run_game(
     for round in 1..=max_rounds {
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
         let night_deaths = apply_night_results(&night_actions, wolf_target);
-        record_deaths(&alive, &night_deaths, &mut kills, &mut deaths);
+        let night_died_with_roles = record_deaths(&alive, &night_deaths, &mut kills, &mut deaths);
         alive.retain(|p| !night_deaths.iter().any(|&(v, _)| v == p.id));
-        apply_transforms(&mut alive, &states);
+        apply_transforms(&mut alive, &states, &night_died_with_roles);
 
         if let Some(outcome) = resolved_winner(&alive, &kills) {
             return GameOutcome {
@@ -67,9 +67,9 @@ pub async fn run_game(
 
         let (day_actions, lynch_target) = resolve_day(&alive, &mut states, presenter).await;
         let day_deaths = apply_day_results(&day_actions, lynch_target);
-        record_deaths(&alive, &day_deaths, &mut kills, &mut deaths);
+        let day_died_with_roles = record_deaths(&alive, &day_deaths, &mut kills, &mut deaths);
         alive.retain(|p| !day_deaths.iter().any(|&(v, _)| v == p.id));
-        apply_transforms(&mut alive, &states);
+        apply_transforms(&mut alive, &states, &day_died_with_roles);
 
         if let Some(outcome) = resolved_winner(&alive, &kills) {
             return GameOutcome {
@@ -97,12 +97,16 @@ pub async fn run_game(
 /// turned Wolf in an earlier round) rather than their original assignment.
 /// Must be called with `still_alive` from before `.retain()` removes the
 /// victims, since that's the only place their pre-death role is available.
+/// Returns the same (victim, role-at-death) pairs for `apply_transforms`'
+/// Doppelganger case, which needs to know not just *that* its role model
+/// died but *what they were*.
 fn record_deaths(
     still_alive: &[AlivePlayer],
     new_deaths: &[(PlayerId, KillMethod)],
     kills: &mut Vec<KillEvent>,
     deaths: &mut Vec<(PlayerId, KillMethod)>,
-) {
+) -> Vec<(PlayerId, Role)> {
+    let mut died_with_roles = vec![];
     for &(victim, method) in new_deaths {
         let victim_role = still_alive
             .iter()
@@ -113,25 +117,40 @@ fn record_deaths(
             victim_role,
             method,
         });
+        died_with_roles.push((victim, victim_role));
     }
     deaths.extend(new_deaths.iter().copied());
+    died_with_roles
 }
 
-/// Applies role transforms triggered by the current alive roster's
-/// composition rather than by reacting to one specific death event — "no
-/// wolf muscle currently alive" and "role model not in the alive list" are
-/// the same check either way, and evaluating them fresh each round is
-/// simpler than threading through exactly which death caused it.
+/// Applies role transforms. Most are triggered by the current alive
+/// roster's composition rather than by reacting to one specific death
+/// event — "no wolf muscle currently alive," "no Seer currently alive,"
+/// "role model not in the alive list" are the same check either way, and
+/// evaluating them fresh each round is simpler than threading through
+/// exactly which death caused it. Doppelganger is the one exception that
+/// needs to know more than "did my role model die" — it needs *what they
+/// were*, hence `just_died`.
 ///
 /// - Traitor turns Wolf once no wolf-muscle role remains alive
 ///   (Werewolf.cs:4499-4512).
+/// - Apprentice Seer turns Seer once no Seer remains alive
+///   (Werewolf.cs:4053).
 /// - Wild Child turns Wolf once her remembered role model (see
 ///   `roles::wild_child`) is no longer among the alive.
+/// - Doppelganger copies whatever role their remembered role model had
+///   the moment they died (Werewolf.cs:1936-1937) — not always Wolf,
+///   unlike Wild Child.
 ///
-/// Idempotent: once a player's role becomes `Role::Wolf`, neither branch
-/// matches them again on a later call.
-fn apply_transforms(alive: &mut [AlivePlayer], states: &HashMap<PlayerId, RoleState>) {
+/// Idempotent: once a player's role has been transformed away from the
+/// one a given branch matches on, that branch doesn't match them again.
+fn apply_transforms(
+    alive: &mut [AlivePlayer],
+    states: &HashMap<PlayerId, RoleState>,
+    just_died: &[(PlayerId, Role)],
+) {
     let any_wolf_muscle = alive.iter().any(|p| is_wolf_muscle(p.role));
+    let any_seer = alive.iter().any(|p| p.role == Role::Seer);
     let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
 
     for player in alive.iter_mut() {
@@ -139,10 +158,21 @@ fn apply_transforms(alive: &mut [AlivePlayer], states: &HashMap<PlayerId, RoleSt
             Role::Traitor if !any_wolf_muscle => {
                 player.role = Role::Wolf;
             }
+            Role::ApprenticeSeer if !any_seer => {
+                player.role = Role::Seer;
+            }
             Role::WildChild => {
                 if let Some(model) = states.get(&player.id).and_then(|s| s.remembered_player) {
                     if !alive_ids.contains(&model) {
                         player.role = Role::Wolf;
+                    }
+                }
+            }
+            Role::Doppelganger => {
+                if let Some(model) = states.get(&player.id).and_then(|s| s.remembered_player) {
+                    if let Some(&(_, model_role)) = just_died.iter().find(|&&(id, _)| id == model)
+                    {
+                        player.role = model_role;
                     }
                 }
             }
@@ -189,7 +219,7 @@ mod transform_tests {
                 role: Role::Villager,
             },
         ];
-        apply_transforms(&mut alive, &HashMap::new());
+        apply_transforms(&mut alive, &HashMap::new(), &[]);
         assert_eq!(alive[0].role, Role::Wolf);
     }
 
@@ -205,7 +235,7 @@ mod transform_tests {
                 role: Role::Wolf,
             },
         ];
-        apply_transforms(&mut alive, &HashMap::new());
+        apply_transforms(&mut alive, &HashMap::new(), &[]);
         assert_eq!(alive[0].role, Role::Traitor);
     }
 
@@ -224,7 +254,7 @@ mod transform_tests {
                 ..Default::default()
             },
         );
-        apply_transforms(&mut alive, &states);
+        apply_transforms(&mut alive, &states, &[]);
         assert_eq!(alive[0].role, Role::Wolf);
     }
 
@@ -250,7 +280,81 @@ mod transform_tests {
                 ..Default::default()
             },
         );
-        apply_transforms(&mut alive, &states);
+        apply_transforms(&mut alive, &states, &[]);
         assert_eq!(alive[0].role, Role::WildChild);
+    }
+
+    #[test]
+    fn apprentice_seer_becomes_seer_once_no_seer_remains() {
+        let mut alive = vec![
+            AlivePlayer {
+                id: PlayerId(1),
+                role: Role::ApprenticeSeer,
+            },
+            AlivePlayer {
+                id: PlayerId(2),
+                role: Role::Villager,
+            },
+        ];
+        apply_transforms(&mut alive, &HashMap::new(), &[]);
+        assert_eq!(alive[0].role, Role::Seer);
+    }
+
+    #[test]
+    fn apprentice_seer_stays_apprentice_while_the_seer_lives() {
+        let mut alive = vec![
+            AlivePlayer {
+                id: PlayerId(1),
+                role: Role::ApprenticeSeer,
+            },
+            AlivePlayer {
+                id: PlayerId(2),
+                role: Role::Seer,
+            },
+        ];
+        apply_transforms(&mut alive, &HashMap::new(), &[]);
+        assert_eq!(alive[0].role, Role::ApprenticeSeer);
+    }
+
+    #[test]
+    fn doppelganger_copies_the_dead_role_models_actual_role() {
+        let doppelganger = PlayerId(1);
+        let role_model = PlayerId(2);
+        let mut alive = vec![AlivePlayer {
+            id: doppelganger,
+            role: Role::Doppelganger,
+        }];
+        let mut states = HashMap::new();
+        states.insert(
+            doppelganger,
+            RoleState {
+                remembered_player: Some(role_model),
+                ..Default::default()
+            },
+        );
+        let just_died = [(role_model, Role::SerialKiller)];
+        apply_transforms(&mut alive, &states, &just_died);
+        assert_eq!(alive[0].role, Role::SerialKiller);
+    }
+
+    #[test]
+    fn doppelganger_stays_itself_if_someone_else_died() {
+        let doppelganger = PlayerId(1);
+        let role_model = PlayerId(2);
+        let mut alive = vec![AlivePlayer {
+            id: doppelganger,
+            role: Role::Doppelganger,
+        }];
+        let mut states = HashMap::new();
+        states.insert(
+            doppelganger,
+            RoleState {
+                remembered_player: Some(role_model),
+                ..Default::default()
+            },
+        );
+        let just_died = [(PlayerId(3), Role::SerialKiller)]; // not the role model
+        apply_transforms(&mut alive, &states, &just_died);
+        assert_eq!(alive[0].role, Role::Doppelganger);
     }
 }
