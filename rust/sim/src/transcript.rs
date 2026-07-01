@@ -1,74 +1,35 @@
 //! Turns a simulated game into the same kind of text a real Telegram bot
 //! would have sent — one line per message, in order — instead of just a
-//! pass/fail assertion. `TranscriptPresenter` wraps any other `Presenter`
-//! (typically `FixturePresenter`, replaying real history) and, for every
-//! question asked, logs the flavor text pulled from the real
-//! `Languages/English.xml` locale pack alongside the question and answer.
+//! pass/fail assertion. `TranscriptPresenter` wraps another `Presenter`
+//! (typically `FixturePresenter`, replaying real history) and logs a line
+//! every time it's asked something (`ask_targets`/`ask_toggle`) or told
+//! something happened (`narrate`), pulling real flavor text from
+//! `Languages/English.xml` via the canonical `Prompt`/`NarrationEvent`
+//! lookup tables `game_engine::orchestrator` owns — this file has no
+//! mapping of its own to keep in sync with those; it only decides
+//! *fallback* wording for the handful of cases with no exact legacy key
+//! (Cupid's second target, Blacksmith, Spumpkin, anything about the
+//! Witch), which genuinely is a presentation choice, not a fact about
+//! what a `Prompt`/`NarrationEvent` means.
 //!
-//! This is deliberately *not* a faithful re-implementation of Werewolf.cs's
-//! messaging: a few prompts (Cupid's second target, Blacksmith, Spumpkin,
-//! anything about the Witch) have no exact matching locale key, either
-//! because there's no locale entry for that menu at all or because the
-//! role isn't in the legacy game. Those get an honestly-labeled generic
-//! line instead of a fabricated locale-perfect one — see
-//! `prompt_fallback_text`. Augur has no `Prompt` at all (see
-//! `roles::augur`'s doc: it has no player-facing choice to narrate).
-//! Everything else — including Fool/Sorcerer/Oracle, which this file
-//! initially mismapped as having no locale key before checking
-//! Werewolf.cs:5174-5178 directly — uses the exact real menu text.
+//! Death announcements arrive through `narrate` at the moment `run_game`
+//! resolves them — interleaved with the questions that led to them, in
+//! the order they actually happened — rather than being reconstructed
+//! from `GameOutcome` after the whole game ends.
 
 use async_trait::async_trait;
-use game_engine::orchestrator::{Presenter, Prompt};
+use game_engine::orchestrator::{death_locale_key, prompt_locale_key, NarrationEvent, Presenter, Prompt};
 use game_engine::roles::PlayerId;
 use i18n::LanguagePack;
-use shared::KillMethod;
 use std::collections::HashMap;
 
-/// Looks up the real flavor text for a prompt, where the legacy game asked
-/// one via an exact-matching locale key. `None` means "no such key" (the
-/// question is either automatic in the legacy game, or new to this
-/// proof-of-concept) — callers fall back to a generic description rather
-/// than inventing wording that was never actually shown to a player.
-fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
-    match prompt {
-        Prompt::WolfEat => Some("AskEat"),
-        // Seer, Fool, Sorcerer, and Oracle are all asked the exact same
-        // "Who do you want to see?" menu in the legacy game
-        // (Werewolf.cs:5174-5178: one `case` block covers all four) - an
-        // earlier version of this map wrongly treated Fool/Sorcerer/Oracle
-        // as having no matching prompt at all.
-        Prompt::SeerCheck | Prompt::FoolInvestigate | Prompt::SorcererInvestigate | Prompt::OracleInvestigate => {
-            Some("AskSee")
-        }
-        Prompt::HarlotVisit => Some("AskVisit"),
-        Prompt::GuardianAngelProtect => Some("AskGuard"),
-        Prompt::DetectiveInvestigate => Some("AskDetect"),
-        // Werewolf.cs:5216-5219.
-        Prompt::CultistHunterInvestigate => Some("AskHunt"),
-        Prompt::WildChildRoleModel => Some("AskRoleModel"),
-        Prompt::CupidLink => Some("AskCupid1"),
-        Prompt::LynchVote => Some("AskLynch"),
-        Prompt::GunnerShoot => Some("AskShoot"),
-        Prompt::CultistConvert => Some("AskConvert"),
-        Prompt::MayorReveal => Some("AskMayor"),
-        Prompt::PacifistPeace => Some("AskPacifist"),
-        Prompt::SandmanSleep => Some("AskSandman"),
-        Prompt::ThiefSteal => Some("AskThief"),
-        Prompt::ChemistBrew => Some("AskChemist"),
-        Prompt::ArsonistDouse | Prompt::ArsonistSpark => Some("AskArsonist"),
-        Prompt::TroublemakerTrouble => Some("AskTroublemaker"),
-        // WitchHeal/WitchPoison belong to a role that isn't in the legacy
-        // game at all, so there's no locale key to find. BlacksmithSilver
-        // and SpumpkinDetonate are menu-driven in Werewolf.cs but have no
-        // corresponding key in English.xml (checked directly - not an
-        // oversight in this mapping).
-        Prompt::WitchHeal | Prompt::WitchPoison | Prompt::BlacksmithSilver | Prompt::SpumpkinDetonate => None,
-    }
-}
-
 /// Human-readable fallback for a prompt with no locale key (see
-/// `prompt_locale_key`), so the transcript still says *something*
-/// meaningful rather than an empty string.
+/// `orchestrator::prompt_locale_key`), so the transcript still says
+/// *something* meaningful rather than an empty string. This is the one
+/// mapping that legitimately belongs to a specific presenter rather than
+/// the engine: *whether* a legacy key exists is a fact, but *how to phrase
+/// its absence* is a presentation choice a Telegram presenter might make
+/// differently (e.g. silently skip the line instead).
 fn prompt_fallback_text(prompt: Prompt) -> &'static str {
     match prompt {
         Prompt::WitchHeal => "(new role, not in the legacy game) Who do you want to heal?",
@@ -77,6 +38,14 @@ fn prompt_fallback_text(prompt: Prompt) -> &'static str {
         Prompt::SpumpkinDetonate => "(no locale key in English.xml) Who do you want to detonate on?",
         _ => "Who do you choose?",
     }
+}
+
+/// Same idea as `prompt_fallback_text`, for deaths with no exact legacy
+/// flavor key (see `orchestrator::death_locale_key` — today that's every
+/// `KillMethod` except `Lynch`, since the legacy per-role `*Killed` keys
+/// are all Serial-Killer-specific and not yet modeled here).
+fn death_fallback_template() -> &'static str {
+    "{0} did not survive."
 }
 
 /// Whether a prompt is asked during the night or day phase — purely for
@@ -96,9 +65,9 @@ fn phase_label(prompt: Prompt) -> &'static str {
 }
 
 /// Wraps another `Presenter`, logging one transcript line per question
-/// asked (and its answer) using real locale flavor text where one exists.
-/// Delegates every actual decision to `inner` unchanged — this never
-/// influences the game, only narrates it.
+/// asked (and its answer) and per event narrated, using real locale
+/// flavor text where one exists. Delegates every actual decision to
+/// `inner` unchanged — this never influences the game, only narrates it.
 pub struct TranscriptPresenter<'a> {
     inner: &'a mut dyn Presenter,
     pack: &'a LanguagePack,
@@ -139,6 +108,10 @@ impl<'a> TranscriptPresenter<'a> {
             None => prompt_fallback_text(prompt).to_string(),
         };
         strip_unfilled_placeholders(&raw)
+    }
+
+    pub fn push_line(&mut self, line: impl Into<String>) {
+        self.lines.push(line.into());
     }
 }
 
@@ -224,37 +197,28 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
         self.day += 1;
         self.lines.push(format!("=== Day {} ===", self.day));
     }
-}
 
-impl<'a> TranscriptPresenter<'a> {
-    /// Appends one death announcement, using the real `LynchKill` flavor
-    /// text for lynch deaths and the generic `GenericDeathNoReveal` text
-    /// (no role reveal) for everything else. This is a simplification —
-    /// the legacy game has a distinct flavor key per role for Serial
-    /// Killer deaths specifically (`GunnerKilled`, `SeerKilled`, etc.),
-    /// which this proof-of-concept doesn't attempt to reproduce.
-    pub fn push_death(&mut self, victim: PlayerId, method: KillMethod) {
-        let name = self.name(victim);
-        let line = match method {
-            KillMethod::Lynch => {
-                let template = self
-                    .pack
-                    .get("LynchKill")
-                    .unwrap_or("The villagers have cast their votes. {0} is dead. {1}");
-                template.replacen("{0}", &name, 1).replacen("{1}", "", 1)
+    async fn narrate(&mut self, event: NarrationEvent) {
+        match event {
+            NarrationEvent::Death { victim, role, method } => {
+                let name = self.name(victim);
+                let template = match death_locale_key(role, method) {
+                    Some(key) => self.pack.get(key).unwrap_or_else(|| death_fallback_template()),
+                    None => self
+                        .pack
+                        .get("GenericDeathNoReveal")
+                        .unwrap_or_else(|| death_fallback_template()),
+                };
+                // `.replace`, not `.replacen(..., 1)`: `GenericDeathNoReveal`
+                // repeats `{0}` twice in the same sentence (the victim's
+                // name appears once as "notices that {0} is not around"
+                // and again as "the remains of {0}") - replacing only the
+                // first occurrence left the second one to `strip_unfilled_
+                // placeholders`, rendering as a bogus "[?]" instead of the
+                // name.
+                let line = template.replace("{0}", &name).replacen("{1}", "", 1);
+                self.lines.push(format!("{} ({method:?})", strip_unfilled_placeholders(&line)));
             }
-            _ => {
-                let template = self
-                    .pack
-                    .get("GenericDeathNoReveal")
-                    .unwrap_or("{0} did not survive the night.");
-                template.replace("{0}", &name)
-            }
-        };
-        self.lines.push(format!("{line} ({method:?})"));
-    }
-
-    pub fn push_line(&mut self, line: impl Into<String>) {
-        self.lines.push(line.into());
+        }
     }
 }

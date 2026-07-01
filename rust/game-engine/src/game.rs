@@ -7,7 +7,8 @@
 //! isolation.
 
 use crate::orchestrator::{
-    apply_day_results, apply_night_results, resolve_day, resolve_night, AlivePlayer, Presenter,
+    apply_day_results, apply_night_results, resolve_day, resolve_night, AlivePlayer,
+    NarrationEvent, Presenter,
 };
 use crate::roles::{PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
@@ -54,6 +55,7 @@ pub async fn run_game(
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
         let night_deaths = apply_night_results(&night_actions, wolf_target);
         let night_died_with_roles = record_deaths(&alive, &night_deaths, &mut kills, &mut deaths);
+        narrate_deaths(&night_deaths, &night_died_with_roles, presenter).await;
         alive.retain(|p| !night_deaths.iter().any(|&(v, _)| v == p.id));
         apply_transforms(&mut alive, &states, &night_died_with_roles);
 
@@ -69,6 +71,7 @@ pub async fn run_game(
         let lynch_target_role = lynch_target.and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
         let day_died_with_roles = record_deaths(&alive, &day_deaths, &mut kills, &mut deaths);
+        narrate_deaths(&day_deaths, &day_died_with_roles, presenter).await;
         alive.retain(|p| !day_deaths.iter().any(|&(v, _)| v == p.id));
         apply_transforms(&mut alive, &states, &day_died_with_roles);
 
@@ -122,6 +125,26 @@ fn record_deaths(
     }
     deaths.extend(new_deaths.iter().copied());
     died_with_roles
+}
+
+/// Tells the presenter about every death from this phase, in order, right
+/// after they're resolved — not saved up and replayed from `GameOutcome`
+/// once the whole game is over. `new_deaths` and `died_with_roles` come
+/// from the same `record_deaths` call in the same order, so zipping them
+/// is safe; kept as a separate pass (rather than folded into
+/// `record_deaths` itself) since "build the win-check bookkeeping" and
+/// "tell the presenter" are different concerns that happen to run over
+/// the same data.
+async fn narrate_deaths(
+    new_deaths: &[(PlayerId, KillMethod)],
+    died_with_roles: &[(PlayerId, Role)],
+    presenter: &mut dyn Presenter,
+) {
+    for (&(victim, method), &(_, role)) in new_deaths.iter().zip(died_with_roles) {
+        presenter
+            .narrate(NarrationEvent::Death { victim, role, method })
+            .await;
+    }
 }
 
 /// Applies role transforms. Most are triggered by the current alive

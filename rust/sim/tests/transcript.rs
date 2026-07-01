@@ -38,11 +38,11 @@ async fn narrates_a_full_fixture_replay_as_a_readable_transcript() {
     let mut fixture_presenter = FixturePresenter::new(fixture, 1);
     let mut transcript = TranscriptPresenter::new(&mut fixture_presenter, &pack, &names);
 
+    // Death announcements now arrive via `Presenter::narrate`, called by
+    // `run_game` itself the moment each death resolves - so by the time
+    // `run_game` returns, every one should already be in `transcript.lines`
+    // in the order it happened, not appended afterward from `outcome`.
     let outcome = run_game(&alive, &mut transcript, 50).await;
-    let lines_before_deaths = transcript.lines.len();
-    for &(victim, method) in &outcome.deaths {
-        transcript.push_death(victim, method);
-    }
 
     assert!(
         transcript.lines.iter().any(|l| l.starts_with("=== Day 1 ===")),
@@ -53,10 +53,15 @@ async fn narrates_a_full_fixture_replay_as_a_readable_transcript() {
         "transcript should narrate at least one question, got: {:?}",
         transcript.lines
     );
+    let death_lines = transcript
+        .lines
+        .iter()
+        .filter(|l| outcome.deaths.iter().any(|&(_, method)| l.ends_with(&format!("({method:?})"))))
+        .count();
     assert_eq!(
-        transcript.lines.len() - lines_before_deaths,
+        death_lines,
         outcome.deaths.len(),
-        "every resolved death should get exactly one transcript line"
+        "every resolved death should get exactly one transcript line, narrated live by run_game"
     );
 
     // Real player names, not raw telegram ids, should appear in the script.

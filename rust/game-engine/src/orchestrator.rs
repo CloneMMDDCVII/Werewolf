@@ -77,6 +77,146 @@ pub enum Prompt {
     SpumpkinDetonate,
 }
 
+/// Maps a `Prompt` to the real `Languages/English.xml` key the legacy game
+/// used for that exact menu, where one exists. Colocated with `Prompt`
+/// itself (not left to whichever `Presenter` happens to need it first)
+/// because "what does this identifier mean, in the legacy game's own
+/// words" is a fact about the identifier, not a presentation choice — a
+/// real Telegram presenter and a text-transcript presenter should both
+/// read it from here rather than each maintaining their own copy that can
+/// silently drift out of sync with each other. `None` means there's no
+/// exact legacy key (a new role not in the original game, or a menu this
+/// proof-of-concept's `Prompt` doesn't line up 1:1 with) — callers decide
+/// their own fallback wording, that part **is** a presentation choice.
+///
+/// Verified directly against `Languages/English.xml` and Werewolf.cs's
+/// `SendNightActions`/`SendDayActions` switches, not guessed — an earlier
+/// version of this table (before it lived here) wrongly assumed
+/// Fool/Sorcerer/Oracle had no matching key, when they actually reuse
+/// Seer's `AskSee` verbatim (Werewolf.cs:5174-5178).
+pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
+    match prompt {
+        Prompt::WolfEat => Some("AskEat"),
+        Prompt::SeerCheck
+        | Prompt::FoolInvestigate
+        | Prompt::SorcererInvestigate
+        | Prompt::OracleInvestigate => Some("AskSee"),
+        Prompt::HarlotVisit => Some("AskVisit"),
+        Prompt::GuardianAngelProtect => Some("AskGuard"),
+        Prompt::DetectiveInvestigate => Some("AskDetect"),
+        Prompt::CultistHunterInvestigate => Some("AskHunt"),
+        Prompt::WildChildRoleModel => Some("AskRoleModel"),
+        Prompt::CupidLink => Some("AskCupid1"),
+        Prompt::LynchVote => Some("AskLynch"),
+        Prompt::GunnerShoot => Some("AskShoot"),
+        Prompt::CultistConvert => Some("AskConvert"),
+        Prompt::MayorReveal => Some("AskMayor"),
+        Prompt::PacifistPeace => Some("AskPacifist"),
+        Prompt::SandmanSleep => Some("AskSandman"),
+        Prompt::ThiefSteal => Some("AskThief"),
+        Prompt::ChemistBrew => Some("AskChemist"),
+        Prompt::ArsonistDouse | Prompt::ArsonistSpark => Some("AskArsonist"),
+        Prompt::TroublemakerTrouble => Some("AskTroublemaker"),
+        // WitchHeal/WitchPoison belong to a role that isn't in the legacy
+        // game at all. BlacksmithSilver and SpumpkinDetonate are
+        // menu-driven in Werewolf.cs but have no corresponding key in
+        // English.xml (checked directly, not an oversight).
+        Prompt::WitchHeal | Prompt::WitchPoison | Prompt::BlacksmithSilver | Prompt::SpumpkinDetonate => None,
+    }
+}
+
+/// Every `Prompt` variant, in one place, so both the completeness test
+/// (`sim/tests/locale_coverage.rs`) and anything else that needs "all of
+/// them" (a future exhaustive UI, say) can iterate without re-deriving the
+/// list by hand and risking it drifting from the enum above.
+pub const ALL_PROMPTS: &[Prompt] = &[
+    Prompt::WolfEat,
+    Prompt::SeerCheck,
+    Prompt::HarlotVisit,
+    Prompt::GuardianAngelProtect,
+    Prompt::DetectiveInvestigate,
+    Prompt::FoolInvestigate,
+    Prompt::WildChildRoleModel,
+    Prompt::CupidLink,
+    Prompt::WitchHeal,
+    Prompt::WitchPoison,
+    Prompt::LynchVote,
+    Prompt::GunnerShoot,
+    Prompt::BlacksmithSilver,
+    Prompt::CultistHunterInvestigate,
+    Prompt::SorcererInvestigate,
+    Prompt::OracleInvestigate,
+    Prompt::CultistConvert,
+    Prompt::MayorReveal,
+    Prompt::PacifistPeace,
+    Prompt::SandmanSleep,
+    Prompt::ThiefSteal,
+    Prompt::ChemistBrew,
+    Prompt::ArsonistDouse,
+    Prompt::ArsonistSpark,
+    Prompt::TroublemakerTrouble,
+    Prompt::SpumpkinDetonate,
+];
+
+/// Something that happened, worth narrating, that *isn't* a question —
+/// the counterpart to `Prompt` for events instead of decisions. Only
+/// covers deaths so far (the one thing `run_game` already produces
+/// structured data for); transforms and the game-over announcement are
+/// the natural next variants to add, same shape, same place. Carries
+/// whatever a presenter needs to pick the right legacy flavor text
+/// itself (the victim's role *at the moment they died*, not just their
+/// id) — a presenter should never need to reach back into game state to
+/// answer "what do I say," the event handed to it should already be
+/// self-contained, the same way `NightContext`/`DayContext` hand a role
+/// everything it needs instead of letting it query other players' state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NarrationEvent {
+    Death {
+        victim: PlayerId,
+        role: Role,
+        method: KillMethod,
+    },
+}
+
+/// Maps a death to the real legacy flavor key, where this proof-of-concept
+/// has one. Deliberately narrow today: the legacy `*Killed` keys
+/// (`GunnerKilled`, `SeerKilled`, `PrinceKilled`, ...) are all
+/// Serial-Killer-specific flavor text, not general per-role death
+/// messages (confirmed by reading their actual English.xml values — every
+/// one mentions "the serial killer has struck again"), so wiring those up
+/// honestly requires modeling *which* role died *and* that the method was
+/// `SerialKilled` specifically, which is future work, not this slice.
+/// For now: the real `LynchKill` text for lynches, and `None` (caller
+/// falls back to a generic line) for everything else — matching exactly
+/// what `sim::TranscriptPresenter` was already doing, just relocated here
+/// so it's the one place this mapping is declared instead of living
+/// inside one specific `Presenter` implementation.
+pub fn death_locale_key(_role: Role, method: KillMethod) -> Option<&'static str> {
+    match method {
+        KillMethod::Lynch => Some("LynchKill"),
+        _ => None,
+    }
+}
+
+/// Every distinct locale key `prompt_locale_key`/`death_locale_key` can
+/// currently produce, in one place — the input to the locale-coverage
+/// completeness check (`sim/tests/locale_coverage.rs`), which measures
+/// "how much of English.xml does this port actually reach" as a real
+/// number instead of a vibe. Grows every time a mapping table grows;
+/// nothing computes this automatically today (there's no exhaustive
+/// `Role`/`KillMethod` iterator to drive `death_locale_key` with yet, the
+/// same "two hardcoded levels are enough until a second case shows up"
+/// tradeoff as `resolve_night`'s dependency resolution), so this is
+/// hand-kept in sync rather than derived — small enough today that a
+/// missed update would be obvious in the coverage number itself.
+pub fn all_mapped_locale_keys() -> Vec<&'static str> {
+    let mut keys: Vec<&'static str> = ALL_PROMPTS.iter().filter_map(|&p| prompt_locale_key(p)).collect();
+    keys.push("LynchKill"); // death_locale_key(_, KillMethod::Lynch)
+    keys.sort_unstable();
+    keys.dedup();
+    keys
+}
+
 /// The seam: real I/O (or a test double) lives entirely behind this trait.
 /// Async because a real Telegram presenter is fundamentally waiting on
 /// network events (a callback query arriving), not something that can be
@@ -121,6 +261,18 @@ pub trait Presenter {
     /// implementer that overrides this, to advance which historical day
     /// it answers questions from.
     fn advance_round(&mut self) {}
+
+    /// Tells the presenter something happened, worth narrating, that
+    /// isn't a question — see `NarrationEvent`. Called by `run_game`
+    /// *at the moment* each event happens (right after a death is
+    /// resolved, before moving on), not reconstructed afterward from
+    /// `GameOutcome` — that's what keeps a transcript's death
+    /// announcements interleaved with the questions that led to them,
+    /// in the actual order they happened, instead of one batch at the
+    /// end. Default no-op: most presenters (and every existing one
+    /// before this hook existed) have no use for it, same reasoning as
+    /// `ask_toggle`'s default.
+    async fn narrate(&mut self, _event: NarrationEvent) {}
 }
 
 /// The one place that validates a presenter's answer actually matches what

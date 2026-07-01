@@ -60,11 +60,11 @@ async fn main() {
         fixture.winner
     ));
 
+    // Death announcements arrive via `TranscriptPresenter::narrate`, called
+    // by `run_game` itself the moment each death resolves - no separate
+    // pass over `outcome.deaths` needed here anymore.
     let outcome = run_game(&alive, &mut transcript, 50).await;
 
-    for &(victim, method) in &outcome.deaths {
-        transcript.push_death(victim, method);
-    }
     transcript.push_line(format!(
         "=== Game over after {} round(s): {:?} (historical: {:?}) ===",
         outcome.rounds_played, outcome.winner, fixture.winner

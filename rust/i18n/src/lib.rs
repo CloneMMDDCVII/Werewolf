@@ -72,6 +72,13 @@ impl LanguagePack {
     pub fn variants_iter(&self) -> impl Iterator<Item = &str> {
         self.strings.values().flatten().map(|s| s.as_str())
     }
+
+    /// Every active (non-deprecated) key in this pack — the input to a
+    /// completeness check ("does every legacy key have somewhere to go in
+    /// the port"), not something gameplay code needs day to day.
+    pub fn keys(&self) -> impl Iterator<Item = &str> {
+        self.strings.keys().map(|s| s.as_str())
+    }
 }
 
 fn attr_value(tag: &BytesStart, name: &str) -> Option<String> {
