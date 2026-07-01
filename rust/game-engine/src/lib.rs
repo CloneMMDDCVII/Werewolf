@@ -1,7 +1,11 @@
-//! Core game engine. Currently covers only the deterministic majority-path
-//! win-condition logic ported from `Werewolf.cs::CheckForWin`/`DoGameEnd`
-//! (Werewolf Node/Werewolf.cs:4479-4636). Full role abilities, night/day
-//! phase simulation, and RNG-dependent branches are not yet implemented.
+//! Core game engine. Covers the deterministic majority-path win-condition
+//! logic ported from `Werewolf.cs::CheckForWin`/`DoGameEnd` (Werewolf
+//! Node/Werewolf.cs:4479-4636), plus a proof-of-concept role-behavior
+//! structure (see `roles` module) for five roles: Villager, Wolf, Seer,
+//! Witch, Cupid. Most role abilities and the night/day phase loop itself
+//! are not yet ported into that structure.
+
+pub mod roles;
 
 use shared::{KillMethod, Role, Team};
 

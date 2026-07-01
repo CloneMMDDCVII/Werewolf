@@ -50,6 +50,11 @@ pub enum Role {
     Spumpkin,
     Chef,
     Barkeep,
+    /// Not present in the legacy `Shared/Roles.cs` — added here as a new
+    /// role (heal potion + poison potion, one use each) to prove out the
+    /// new role-behavior structure against something that isn't just a
+    /// ported 1:1 legacy role.
+    Witch,
 }
 
 impl Role {
@@ -62,7 +67,7 @@ impl Role {
             | Mayor | ClumsyGuy | Prince | WolfMan | Pacifist | WiseElder | Blacksmith
             | Troublemaker | Fool | Harlot | CultistHunter | Seer | GuardianAngel | WildChild
             | Cupid | Sandman | Oracle | Chemist | Detective | Gunner | Spumpkin | Augur
-            | GraveDigger | Chef | Barkeep => Team::Village,
+            | GraveDigger | Chef | Barkeep | Witch => Team::Village,
             Doppelganger | Thief => Team::Thief,
             Sorcerer | AlphaWolf | WolfCub | Wolf | Lycan | SnowWolf => Team::Wolf,
             Tanner => Team::Tanner,
