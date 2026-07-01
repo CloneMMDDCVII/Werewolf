@@ -5,3 +5,7 @@ edition.workspace = true
 
 [dependencies]
 shared = { path = "../shared" }
+async-trait.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

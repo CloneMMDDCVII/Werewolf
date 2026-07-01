@@ -1,10 +1,12 @@
 //! Core game engine. Covers the deterministic majority-path win-condition
 //! logic ported from `Werewolf.cs::CheckForWin`/`DoGameEnd` (Werewolf
-//! Node/Werewolf.cs:4479-4636), plus a proof-of-concept role-behavior
-//! structure (see `roles` module) for five roles: Villager, Wolf, Seer,
-//! Witch, Cupid. Most role abilities and the night/day phase loop itself
-//! are not yet ported into that structure.
+//! Node/Werewolf.cs:4479-4636), a proof-of-concept role-behavior structure
+//! (see `roles` module) for fifteen roles, and a dependency-ordered night
+//! orchestrator (see `orchestrator` module) that ties them together behind
+//! an abstract `Presenter` trait — this crate never depends on Telegram
+//! (or on `sim`), only on the idea that *something* can answer a question.
 
+pub mod orchestrator;
 pub mod roles;
 
 use shared::{KillMethod, Role, Team};
