@@ -87,6 +87,33 @@ pub struct NightContext<'a> {
     pub love_targets: Option<(PlayerId, PlayerId)>,
 }
 
+/// What a day action resolves to. Separate from `NightAction` because it's
+/// a genuinely different point in the game loop (resolved during the day
+/// phase, alongside lynch voting, not during night resolution) — conflating
+/// the two just because they're both "an action a role takes" would hide
+/// that distinction from a reader, not clarify it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DayAction {
+    /// Gunner spending a bullet to shoot a suspected player
+    /// (Werewolf.cs:2871-2896). What the shot actually does — kill
+    /// outright, special-cased outcomes like the Wise Elder revert
+    /// (Werewolf.cs:2887-2889) — is resolution logic for a future
+    /// orchestrator; this only covers "is this a valid target to shoot."
+    Shoot { target: PlayerId },
+}
+
+/// Same shape as `NightContext`, for the day phase. Kept as its own type
+/// rather than reusing `NightContext` even though today it would only need
+/// one extra field — day-phase context (e.g. who's currently nominated for
+/// lynch) will likely diverge further as more day-phase roles get ported,
+/// and conflating the two contexts would make a reader wonder which fields
+/// are actually meaningful for which phase.
+pub struct DayContext<'a> {
+    pub alive: &'a [PlayerId],
+    pub self_id: PlayerId,
+    pub chosen_target: Option<PlayerId>,
+}
+
 /// Per-player state that must persist across nights (e.g. "has the Witch
 /// used her heal potion yet"). Kept generic — `primary_used`/
 /// `secondary_used` rather than `heal_used`/`poison_used` — so a new
@@ -98,7 +125,7 @@ pub struct RoleState {
     pub secondary_used: bool,
 }
 
-/// The seam every role implements. Two hooks for now (this is a proof of
+/// The seam every role implements. Three hooks for now (this is a proof of
 /// concept, not the full engine) — more will be added as more of the
 /// legacy game loop gets ported, each one another exhaustive match to keep
 /// honest.
@@ -109,6 +136,13 @@ pub trait RoleBehavior {
     /// `villager::Villager` — the template for a no-op role); returns
     /// zero, one, or (for multi-resource roles like Witch) two actions.
     fn night_action(&self, _ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
+        vec![]
+    }
+
+    /// Called once per day for this role (e.g. Gunner's shot). Most roles
+    /// have no day action at all — that's the default here, not an
+    /// omission, the same way most roles don't override `night_action`.
+    fn day_action(&self, _ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         vec![]
     }
 }
