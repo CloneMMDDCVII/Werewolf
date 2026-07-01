@@ -8,12 +8,15 @@
 //! data comes from has no vote/action table (established when we designed
 //! the export) — only final roles, kills (killer/victim/method/day), and
 //! the winner. So only decisions that *produced a recorded kill* can be
-//! answered from history. Concretely, today that's just the wolves'
-//! night-1 eat target (`KillMethod::Eat`, `day == 1`). Every other
-//! question (Seer checks, Detective investigates, GuardianAngel protects,
-//! Cupid links, Witch's potions) has no historical trace and always
-//! answers `None` — a real decline, not a bug, and not silently pretended
-//! to be resolved.
+//! answered from history. Concretely, today that's the wolves' eat target
+//! (`KillMethod::Eat`) and the day's lynch outcome (`KillMethod::Lynch`).
+//! Both answer the same recorded consensus regardless of which specific
+//! player is asked — we know *what* the group decided, not how any one
+//! player voted, so every wolf gets told the same eat target and every
+//! voter gets told the same lynch victim. Every other question (Seer
+//! checks, Detective investigates, GuardianAngel protects, Cupid links,
+//! Witch's potions) has no historical trace and always answers `None` — a
+//! real decline, not a bug, and not silently pretended to be resolved.
 
 use crate::fixture::GameFixture;
 use async_trait::async_trait;
@@ -42,6 +45,18 @@ impl<'a> FixturePresenter<'a> {
             .find(|k| k.method == KillMethod::Eat && k.day == self.day)
             .map(|k| PlayerId(k.victim_telegram_id as u64))
     }
+
+    /// The actual lynch victim this day, if history recorded one. Multiple
+    /// `GameKill` rows can share the same day/method (one per contributing
+    /// voter's "credit"), but they all name the same victim, so the first
+    /// match is enough.
+    fn historical_lynch_target(&self) -> Option<PlayerId> {
+        self.fixture
+            .kills
+            .iter()
+            .find(|k| k.method == KillMethod::Lynch && k.day == self.day)
+            .map(|k| PlayerId(k.victim_telegram_id as u64))
+    }
 }
 
 #[async_trait]
@@ -61,11 +76,15 @@ impl<'a> Presenter for FixturePresenter<'a> {
 
         match prompt {
             Prompt::WolfEat => self.historical_wolf_eat_target().map(|t| vec![t]),
+            Prompt::LynchVote => self.historical_lynch_target().map(|t| vec![t]),
             // SeerCheck, HarlotVisit, GuardianAngelProtect,
             // DetectiveInvestigate, FoolInvestigate, WildChildRoleModel,
-            // WitchHeal, WitchPoison: none of these produce a GameKill row
-            // on their own, so there's nothing in the export to answer
-            // from. Declining is the honest answer, not a stand-in "yes."
+            // WitchHeal, WitchPoison, GunnerShoot: none of these produce a
+            // GameKill row on their own (Gunner's shot does produce one,
+            // KillMethod::Shoot, but reconstructing it needs a day number
+            // per Gunner action this fixture format doesn't disambiguate
+            // from the lynch itself — future work). Declining is the
+            // honest answer, not a stand-in "yes."
             _ => None,
         }
     }

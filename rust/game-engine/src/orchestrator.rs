@@ -28,10 +28,11 @@
 //! up and two hardcoded levels stop being enough.
 
 use crate::roles::{
-    behavior_for, NightAction, NightContext, NightFact, PlayerId, RoleState,
+    behavior_for, DayAction, DayContext, NightAction, NightContext, NightFact, PlayerId,
+    RoleState,
 };
 use async_trait::async_trait;
-use shared::Role;
+use shared::{KillMethod, Role};
 use std::collections::HashMap;
 
 /// Identifies *why* a player is being asked something, so a presenter can
@@ -49,6 +50,10 @@ pub enum Prompt {
     CupidLink,
     WitchHeal,
     WitchPoison,
+    /// Universal — every alive player is asked this, not just one role.
+    /// See `resolve_day`.
+    LynchVote,
+    GunnerShoot,
 }
 
 /// The seam: real I/O (or a test double) lives entirely behind this trait.
@@ -110,10 +115,12 @@ async fn ask_one(
         .and_then(|v| v.into_iter().next())
 }
 
-/// What every alive player brings into a night: who they are and what
-/// role they're currently playing.
+/// What every alive player brings into either phase: who they are and
+/// what role they're currently playing. Shared by `resolve_night` and
+/// `resolve_day` — a player's identity and role don't change between the
+/// two, only which questions get asked.
 #[derive(Debug, Clone, Copy)]
-pub struct NightPlayer {
+pub struct AlivePlayer {
     pub id: PlayerId,
     pub role: Role,
 }
@@ -143,7 +150,7 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
 /// with (that application step — actually killing someone — is future
 /// work; this function only resolves *decisions*).
 pub async fn resolve_night(
-    players: &[NightPlayer],
+    players: &[AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
     presenter: &mut dyn Presenter,
 ) -> (Vec<NightAction>, Option<PlayerId>) {
@@ -234,12 +241,16 @@ pub async fn resolve_night(
     (actions, wolf_target)
 }
 
-fn majority_eat_target(actions: &[NightAction]) -> Option<PlayerId> {
+/// The one place "tally votes, find the majority, ties resolve to no
+/// winner" is defined. Both the wolves' eat vote and the day's lynch vote
+/// need exactly this; it very nearly got copy-pasted a second time when
+/// `resolve_day` was added, which is the same duplication mistake as
+/// `ask_target`/`ask_two_targets` in miniature — caught before it existed
+/// this time instead of after.
+fn majority_target(votes: impl Iterator<Item = PlayerId>) -> Option<PlayerId> {
     let mut counts: HashMap<PlayerId, usize> = HashMap::new();
-    for action in actions {
-        if let NightAction::EatVote { target } = action {
-            *counts.entry(*target).or_insert(0) += 1;
-        }
+    for v in votes {
+        *counts.entry(v).or_insert(0) += 1;
     }
     let max_count = *counts.values().max()?;
     let mut leaders = counts.iter().filter(|&(_, &c)| c == max_count);
@@ -249,6 +260,89 @@ fn majority_eat_target(actions: &[NightAction]) -> Option<PlayerId> {
     } else {
         Some(*first.0)
     }
+}
+
+fn majority_eat_target(actions: &[NightAction]) -> Option<PlayerId> {
+    majority_target(actions.iter().filter_map(|a| match a {
+        NightAction::EatVote { target } => Some(*target),
+        _ => None,
+    }))
+}
+
+/// Maps a role to its day-phase question, if it has one. Only Gunner today
+/// (see `gunner` module) — everyone else has no day action, which is the
+/// default `RoleBehavior::day_action` already returns.
+fn one_target_day_prompt(role: Role) -> Option<Prompt> {
+    match role {
+        Role::Gunner => Some(Prompt::GunnerShoot),
+        _ => None,
+    }
+}
+
+/// Resolves one full day: every alive player casts a lynch vote (universal
+/// — unlike night actions, this isn't gated by role at all), tallied the
+/// same way the wolves' eat vote is, plus whatever role-specific day
+/// actions apply (currently just Gunner's shot). Like `resolve_night`,
+/// this only resolves *decisions* — see `apply_day_results` for turning
+/// them into deaths.
+pub async fn resolve_day(
+    players: &[AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+) -> (Vec<DayAction>, Option<PlayerId>) {
+    let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
+    let mut day_actions = vec![];
+    let mut lynch_votes = vec![];
+
+    for player in players {
+        if let Some(target) = ask_one(presenter, player.id, Prompt::LynchVote, &alive).await {
+            lynch_votes.push(target);
+        }
+
+        let behavior = behavior_for(player.role);
+        let state = states.entry(player.id).or_default();
+
+        let chosen_target = match one_target_day_prompt(player.role) {
+            Some(prompt) => ask_one(presenter, player.id, prompt, &alive).await,
+            None => None,
+        };
+
+        let ctx = DayContext {
+            alive: &alive,
+            self_id: player.id,
+            chosen_target,
+        };
+        day_actions.extend(behavior.day_action(&ctx, state));
+    }
+
+    let lynch_target = majority_target(lynch_votes.into_iter());
+    (day_actions, lynch_target)
+}
+
+/// Turns resolved day decisions into actual deaths — the day-phase twin of
+/// `apply_night_results`. The lynch target dies of `KillMethod::Lynch`
+/// unconditionally: nothing in this codebase's role logic models a way to
+/// survive a completed lynch (unlike the wolf kill, which Witch's heal can
+/// cancel). Gunner's `Shoot` target dies of `KillMethod::Shoot`,
+/// independently — same "each cause listed separately, no dedup" contract
+/// as `apply_night_results` if the same player is targeted twice.
+pub fn apply_day_results(
+    day_actions: &[DayAction],
+    lynch_target: Option<PlayerId>,
+) -> Vec<(PlayerId, KillMethod)> {
+    let mut deaths = vec![];
+
+    if let Some(target) = lynch_target {
+        deaths.push((target, KillMethod::Lynch));
+    }
+
+    for action in day_actions {
+        match action {
+            DayAction::Shoot { target } => deaths.push((*target, KillMethod::Shoot)),
+        }
+    }
+
+    deaths
 }
 
 /// Turns resolved night decisions into actual deaths — the step
@@ -346,5 +440,156 @@ mod apply_night_results_tests {
     #[test]
     fn no_wolf_target_means_no_eat_death() {
         assert_eq!(apply_night_results(&[], None), vec![]);
+    }
+}
+
+#[cfg(test)]
+mod day_tests {
+    use super::*;
+    use crate::roles::DayAction;
+    use async_trait::async_trait;
+    use shared::KillMethod;
+
+    struct ScriptedDayPresenter {
+        lynch_votes: HashMap<PlayerId, PlayerId>,
+        gunner_shot: Option<PlayerId>,
+    }
+
+    #[async_trait]
+    impl Presenter for ScriptedDayPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 {
+                return None;
+            }
+            match prompt {
+                Prompt::LynchVote => self.lynch_votes.get(&player).copied().map(|t| vec![t]),
+                Prompt::GunnerShoot => self.gunner_shot.map(|t| vec![t]),
+                _ => None,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn majority_lynch_vote_resolves_and_kills() {
+        let voter_a = PlayerId(1);
+        let voter_b = PlayerId(2);
+        let target = PlayerId(3);
+        let players = vec![
+            AlivePlayer {
+                id: voter_a,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: voter_b,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: target,
+                role: Role::Villager,
+            },
+        ];
+
+        let mut votes = HashMap::new();
+        votes.insert(voter_a, target);
+        votes.insert(voter_b, target);
+        let mut presenter = ScriptedDayPresenter {
+            lynch_votes: votes,
+            gunner_shot: None,
+        };
+        let mut states = HashMap::new();
+
+        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        assert_eq!(lynch_target, Some(target));
+
+        let deaths = apply_day_results(&day_actions, lynch_target);
+        assert_eq!(deaths, vec![(target, KillMethod::Lynch)]);
+    }
+
+    #[tokio::test]
+    async fn tied_lynch_vote_kills_nobody() {
+        let voter_a = PlayerId(1);
+        let voter_b = PlayerId(2);
+        let candidate_1 = PlayerId(3);
+        let candidate_2 = PlayerId(4);
+        let players = vec![
+            AlivePlayer {
+                id: voter_a,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: voter_b,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: candidate_1,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: candidate_2,
+                role: Role::Villager,
+            },
+        ];
+
+        let mut votes = HashMap::new();
+        votes.insert(voter_a, candidate_1);
+        votes.insert(voter_b, candidate_2);
+        let mut presenter = ScriptedDayPresenter {
+            lynch_votes: votes,
+            gunner_shot: None,
+        };
+        let mut states = HashMap::new();
+
+        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        assert_eq!(lynch_target, None);
+        assert_eq!(apply_day_results(&day_actions, lynch_target), vec![]);
+    }
+
+    #[tokio::test]
+    async fn gunner_shot_and_lynch_both_produce_deaths_independently() {
+        let gunner = PlayerId(1);
+        let lynch_target = PlayerId(2);
+        let shot_target = PlayerId(3);
+        let players = vec![
+            AlivePlayer {
+                id: gunner,
+                role: Role::Gunner,
+            },
+            AlivePlayer {
+                id: lynch_target,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: shot_target,
+                role: Role::Villager,
+            },
+        ];
+
+        let mut votes = HashMap::new();
+        votes.insert(gunner, lynch_target);
+        let mut presenter = ScriptedDayPresenter {
+            lynch_votes: votes,
+            gunner_shot: Some(shot_target),
+        };
+        let mut states = HashMap::new();
+
+        let (day_actions, lynch) = resolve_day(&players, &mut states, &mut presenter).await;
+        assert_eq!(lynch, Some(lynch_target));
+        assert!(day_actions.contains(&DayAction::Shoot { target: shot_target }));
+
+        let mut deaths = apply_day_results(&day_actions, lynch);
+        deaths.sort_by_key(|(id, _)| id.0);
+        assert_eq!(
+            deaths,
+            vec![
+                (lynch_target, KillMethod::Lynch),
+                (shot_target, KillMethod::Shoot),
+            ]
+        );
     }
 }

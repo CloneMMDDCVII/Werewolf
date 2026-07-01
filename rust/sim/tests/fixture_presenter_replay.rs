@@ -10,7 +10,7 @@
 //! covered by orchestrator's own unit tests, which don't need real fixture
 //! data to check a rule that never happened historically).
 
-use game_engine::orchestrator::{apply_night_results, resolve_night, NightPlayer};
+use game_engine::orchestrator::{apply_night_results, resolve_night, AlivePlayer};
 use game_engine::roles::{PlayerId, RoleState};
 use shared::{KillMethod, Role};
 use sim::{load_fixtures, FixturePresenter, GameFixture};
@@ -47,10 +47,10 @@ async fn resolve_night_reproduces_the_historical_night1_wolf_kill() {
             continue; // no night-1 plain-Wolf kill in this game, nothing to check
         };
 
-        let players: Vec<NightPlayer> = game
+        let players: Vec<AlivePlayer> = game
             .players
             .iter()
-            .map(|p| NightPlayer {
+            .map(|p| AlivePlayer {
                 id: PlayerId(p.telegram_id as u64),
                 role: p.role,
             })
