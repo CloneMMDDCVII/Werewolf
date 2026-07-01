@@ -13,9 +13,19 @@
 //! depends on you understanding any other role first.
 
 pub mod cupid;
+pub mod cursed;
+pub mod detective;
+pub mod drunk;
+pub mod fool;
+pub mod gunner;
+pub mod guardian_angel;
+pub mod harlot;
 pub mod lovers;
 pub mod seer;
+pub mod tanner;
+pub mod traitor;
 pub mod villager;
+pub mod wild_child;
 pub mod witch;
 pub mod wolf;
 
@@ -42,6 +52,26 @@ pub enum NightAction {
     Heal { target: PlayerId },
     Poison { target: PlayerId },
     LinkLovers { a: PlayerId, b: PlayerId },
+    /// Harlot visiting a target overnight (Werewolf.cs:2358-2360,
+    /// 2424-2428). What happens if the visited player turns out to be a
+    /// wolf, or is otherwise unavailable, is resolution logic this
+    /// proof-of-concept doesn't model yet — see `harlot` module doc.
+    Visit { target: PlayerId },
+    /// Guardian Angel protecting a target overnight (Werewolf.cs:2361-2372,
+    /// 3091 onward). Same caveat as `Visit`: the actual protection
+    /// resolution (does it save them, does the GA risk dying) isn't
+    /// modeled here yet.
+    Protect { target: PlayerId },
+    /// Detective/Fool investigating a target (Werewolf.cs:2933-2953 for
+    /// Detective, 3985-4000 for Fool). What information comes back —
+    /// and, for Detective, the chance of tipping off the wolves
+    /// (Werewolf.cs:2937) — is resolution logic, not modeled here.
+    Investigate { target: PlayerId },
+    /// Wild Child's one-time pick of a "role model" player
+    /// (Werewolf.cs:1757, 1909) — if that player dies, Wild Child turns
+    /// Wolf. The turn-on-death trigger itself needs an `on_death` hook
+    /// this trait doesn't have yet; see `wild_child` module doc.
+    ChooseRoleModel { target: PlayerId },
 }
 
 /// Everything a role's `night_action` needs to decide what to do.
@@ -110,11 +140,20 @@ pub fn behavior_for(role: Role) -> Box<dyn RoleBehavior> {
         Seer => Box::new(seer::Seer),
         Witch => Box::new(witch::Witch),
         Cupid => Box::new(cupid::Cupid),
+        Drunk => Box::new(drunk::Drunk),
+        Harlot => Box::new(harlot::Harlot),
+        Traitor => Box::new(traitor::Traitor),
+        GuardianAngel => Box::new(guardian_angel::GuardianAngel),
+        Detective => Box::new(detective::Detective),
+        Cursed => Box::new(cursed::Cursed),
+        Gunner => Box::new(gunner::Gunner),
+        Tanner => Box::new(tanner::Tanner),
+        Fool => Box::new(fool::Fool),
+        WildChild => Box::new(wild_child::WildChild),
 
         // Not yet ported to the new structure. Listed explicitly (not
         // behind `_`) so the exhaustiveness guarantee above actually holds.
-        Drunk | Harlot | Traitor | GuardianAngel | Detective | Cursed | Gunner | Tanner
-        | Fool | WildChild | Beholder | ApprenticeSeer | Cultist | CultistHunter | Mason
+        Beholder | ApprenticeSeer | Cultist | CultistHunter | Mason
         | Doppelganger | Hunter | SerialKiller | Sorcerer | AlphaWolf | WolfCub | Blacksmith
         | ClumsyGuy | Mayor | Prince | Lycan | Pacifist | WiseElder | Oracle | Sandman
         | WolfMan | Thief | Troublemaker | Chemist | SnowWolf | GraveDigger | Augur
