@@ -44,6 +44,7 @@ mod tests {
             heal_target: None,
             poison_target: None,
             love_targets: Some((PlayerId(2), PlayerId(3))),
+            wolf_target: None,
         };
         let mut state = RoleState::default();
         assert_eq!(
@@ -67,6 +68,7 @@ mod tests {
             heal_target: None,
             poison_target: None,
             love_targets: Some((PlayerId(2), PlayerId(2))),
+            wolf_target: None,
         };
         let mut state = RoleState::default();
         assert_eq!(cupid.night_action(&ctx, &mut state), vec![]);

@@ -74,6 +74,17 @@ pub enum NightAction {
     ChooseRoleModel { target: PlayerId },
 }
 
+/// A piece of information about tonight that some role's decision depends
+/// on *before it can even be asked* — not a game rule, a scheduling fact.
+/// The canonical example is Witch: she can't sensibly be asked "heal or
+/// not?" until the wolves' target is known, so her night action has to
+/// resolve in a later step than the wolves' vote, not the same one. See
+/// `RoleBehavior::requires`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NightFact {
+    WolfTarget,
+}
+
 /// Everything a role's `night_action` needs to decide what to do.
 /// `chosen_*` fields represent a player's already-collected input (from
 /// Telegram, in the real bot) — a role's job is to validate and shape that
@@ -85,6 +96,12 @@ pub struct NightContext<'a> {
     pub heal_target: Option<PlayerId>,
     pub poison_target: Option<PlayerId>,
     pub love_targets: Option<(PlayerId, PlayerId)>,
+    /// The wolves' resolved target for tonight, if it's already known by
+    /// the time this role is being asked. `None` either means "no wolf
+    /// vote happened yet" or "the wolves had no valid target" — this
+    /// proof-of-concept doesn't yet distinguish the two, since there's no
+    /// orchestrator to produce either case for real.
+    pub wolf_target: Option<PlayerId>,
 }
 
 /// What a day action resolves to. Separate from `NightAction` because it's
@@ -144,6 +161,28 @@ pub trait RoleBehavior {
     /// omission, the same way most roles don't override `night_action`.
     fn day_action(&self, _ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         vec![]
+    }
+
+    /// Declares what this role's `night_action` needs resolved *before* it
+    /// can be meaningfully asked. Empty for almost every role — Wolf, Seer,
+    /// Harlot etc. can all be asked simultaneously with no ordering
+    /// constraint between them. A future orchestrator would use this to
+    /// compute night resolution order (a topological sort, not a hardcoded
+    /// phase list), so adding a new dependent role is a one-line addition
+    /// here rather than a manual re-sequencing exercise somewhere else.
+    fn requires(&self) -> &'static [NightFact] {
+        &[]
+    }
+
+    /// Whether this role can currently be dealt into a real game. Not the
+    /// same question as "is it implemented" — `Witch` has real, tested
+    /// logic (see `witch` module) but stays gated off (`false`) because
+    /// nothing resolves the `WolfTarget` dependency `requires()` declares
+    /// yet, and shipping her without that would just mean asking the heal
+    /// question with stale/wrong information. Default `true`: most roles
+    /// have no such prerequisite.
+    fn is_available(&self) -> bool {
+        true
     }
 }
 

@@ -42,6 +42,7 @@ mod tests {
             heal_target: None,
             poison_target: None,
             love_targets: None,
+            wolf_target: None,
         };
         let mut state = RoleState::default();
         assert_eq!(

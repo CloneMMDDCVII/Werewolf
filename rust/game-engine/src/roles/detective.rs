@@ -40,6 +40,7 @@ mod tests {
             heal_target: None,
             poison_target: None,
             love_targets: None,
+            wolf_target: None,
         };
         let mut state = RoleState::default();
         assert_eq!(
@@ -60,6 +61,7 @@ mod tests {
             heal_target: None,
             poison_target: None,
             love_targets: None,
+            wolf_target: None,
         };
         let mut state = RoleState::default();
         assert_eq!(detective.night_action(&ctx, &mut state), vec![]);
