@@ -7,12 +7,12 @@
 //! isolation.
 
 use crate::orchestrator::{
-    apply_day_results, apply_night_results, resolve_day, resolve_hunter_shots, resolve_night,
-    AlivePlayer, NarrationEvent, Presenter,
+    apply_day_results, apply_night_results, resolve_day, resolve_hunter_shots,
+    resolve_lover_deaths, resolve_night, AlivePlayer, NarrationEvent, Presenter,
 };
-use crate::roles::{PlayerId, RoleState};
+use crate::roles::{LoversState, NightAction, PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
-use shared::{KillMethod, Role};
+use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,16 +50,22 @@ pub async fn run_game(
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
     let mut kills: Vec<KillEvent> = vec![];
     let mut deaths: Vec<(PlayerId, KillMethod)> = vec![];
+    let mut lovers = LoversState::default();
 
     for round in 1..=max_rounds {
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
+        for action in &night_actions {
+            if let NightAction::LinkLovers { a, b } = action {
+                lovers.link(*a, *b);
+            }
+        }
         let night_deaths = apply_night_results(&night_actions, wolf_target);
-        let night_died_with_roles =
-            process_deaths(&night_deaths, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
+        let (night_deaths, night_died_with_roles) =
+            process_deaths(&night_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         let night_shots = resolve_hunter_shots(&night_deaths, &night_died_with_roles, &alive, presenter).await;
-        process_deaths(&night_shots, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
+        process_deaths(&night_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
 
-        if let Some(outcome) = resolved_winner(&alive, &kills) {
+        if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
             return GameOutcome {
                 winner: outcome,
@@ -71,12 +77,12 @@ pub async fn run_game(
         let (day_actions, lynch_target) = resolve_day(&alive, &mut states, presenter).await;
         let lynch_target_role = lynch_target.and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
-        let day_died_with_roles =
-            process_deaths(&day_deaths, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
+        let (day_deaths, day_died_with_roles) =
+            process_deaths(&day_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         let day_shots = resolve_hunter_shots(&day_deaths, &day_died_with_roles, &alive, presenter).await;
-        process_deaths(&day_shots, &mut alive, &states, &mut kills, &mut deaths, presenter).await;
+        process_deaths(&day_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
 
-        if let Some(outcome) = resolved_winner(&alive, &kills) {
+        if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
             return GameOutcome {
                 winner: outcome,
@@ -154,25 +160,40 @@ async fn narrate_deaths(
 /// Records, narrates, removes from `alive`, and resolves any transform
 /// triggered by one batch of deaths - the full sequence every source of
 /// deaths needs (night, day, and now Hunter's revenge shot), pulled into
-/// one place instead of copy-pasted a third time. Returns the
-/// (victim, role-at-death) pairs so a caller that needs them for
-/// something *else* deaths trigger (`resolve_hunter_shots`, checking
-/// whether any of this batch was a Hunter) doesn't have to re-derive
-/// them.
+/// one place instead of copy-pasted a third time.
+///
+/// Also folds in `resolve_lover_deaths` right at the start, rather than
+/// leaving each call site to remember it - Werewolf.cs's lover check
+/// lives inside the one, universal `KillPlayer` function
+/// (Werewolf.cs:5609-5616), so it applies to *every* death regardless of
+/// source, the same way it needs to apply here whether the batch came
+/// from a night, a lynch, or a Hunter's revenge shot.
+///
+/// Returns the full death batch actually processed (original deaths plus
+/// any chained lover death) alongside the (victim, role-at-death) pairs,
+/// so a caller that needs either for something *else* deaths trigger
+/// (`resolve_hunter_shots`, which needs both the method - for which
+/// prompt to ask - and the role - to find a Hunter) doesn't have to
+/// re-derive them.
 async fn process_deaths(
     new_deaths: &[(PlayerId, KillMethod)],
     alive: &mut Vec<AlivePlayer>,
     states: &HashMap<PlayerId, RoleState>,
+    lovers: &LoversState,
     kills: &mut Vec<KillEvent>,
     deaths: &mut Vec<(PlayerId, KillMethod)>,
     presenter: &mut dyn Presenter,
-) -> Vec<(PlayerId, Role)> {
-    let died_with_roles = record_deaths(alive, new_deaths, kills, deaths);
-    narrate_deaths(new_deaths, &died_with_roles, presenter).await;
-    alive.retain(|p| !new_deaths.iter().any(|&(v, _)| v == p.id));
+) -> (Vec<(PlayerId, KillMethod)>, Vec<(PlayerId, Role)>) {
+    let lover_chain = resolve_lover_deaths(new_deaths, lovers, alive);
+    let mut all_deaths = new_deaths.to_vec();
+    all_deaths.extend(lover_chain);
+
+    let died_with_roles = record_deaths(alive, &all_deaths, kills, deaths);
+    narrate_deaths(&all_deaths, &died_with_roles, presenter).await;
+    alive.retain(|p| !all_deaths.iter().any(|&(v, _)| v == p.id));
     let transforms = apply_transforms(alive, states, &died_with_roles);
     narrate_all(transforms, presenter).await;
-    died_with_roles
+    (all_deaths, died_with_roles)
 }
 
 /// Tells the presenter about a batch of already-built events, in order.
@@ -280,7 +301,22 @@ fn apply_transforms(
 /// Only needs the *current* alive roster: `evaluate_winner` filters to
 /// `alive` players internally, so dead players' entries would never be
 /// looked at anyway.
-fn resolved_winner(alive: &[AlivePlayer], kills: &[KillEvent]) -> Option<WinOutcome> {
+///
+/// Checks a Lovers win *before* the normal team logic below, matching the
+/// real precedence (Werewolf.cs:4525-4527: the lovers check is the very
+/// first thing `CheckForWin`'s two-player case looks at). Getting this
+/// order backwards is a real bug this test setup caught: two mutually
+/// in-love Villager survivors would otherwise hit `evaluate_common`'s "no
+/// wolves alive" branch and resolve to a plain Village win before the
+/// Lovers check ever ran. `evaluate_winner_with_kills` itself has no idea
+/// lover pairings exist at all (that's why `sim`'s fixture replay can
+/// never verify a Lovers outcome — the historical export has no `InLove`
+/// data to give it), so `run_game` is the one place with enough live
+/// state to check it. The Tanner-lynch short-circuit inside
+/// `evaluate_winner_with_kills` still can't conflict with this ordering:
+/// it only ever names someone who just died, never one of the two
+/// players a Lovers win would be checking.
+fn resolved_winner(alive: &[AlivePlayer], kills: &[KillEvent], lovers: &LoversState) -> Option<WinOutcome> {
     let player_states: Vec<PlayerState> = alive
         .iter()
         .map(|p| PlayerState {
@@ -290,10 +326,23 @@ fn resolved_winner(alive: &[AlivePlayer], kills: &[KillEvent]) -> Option<WinOutc
         })
         .collect();
 
-    match evaluate_winner_with_kills(&player_states, kills) {
-        outcome @ WinOutcome::Team(_) => Some(outcome),
-        _ => None,
+    // Checked *before* the general team logic below, matching
+    // Werewolf.cs:4525-4527 - the lovers check is the very first thing
+    // `CheckForWin`'s two-player case looks at, ahead of even the
+    // Sorcerer/Tanner/Thief/Doppelgänger tie-check right after it.
+    // `evaluate_common`'s "no wolves alive" branch would otherwise call
+    // two mutually-in-love Villager survivors a plain Village win, which
+    // is the bug this ordering exists to avoid.
+    let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
+    if lovers.is_lovers_win(&alive_ids) {
+        return Some(WinOutcome::Team(Team::Lovers));
     }
+
+    if let outcome @ WinOutcome::Team(_) = evaluate_winner_with_kills(&player_states, kills) {
+        return Some(outcome);
+    }
+
+    None
 }
 
 #[cfg(test)]

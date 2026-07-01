@@ -5,10 +5,18 @@
 //! (per the legacy win-check, even a Wolf and a Villager can be lovers —
 //! Werewolf.cs:4654 explicitly handles that "forbidden love" case).
 //!
-//! This also closes a gap flagged earlier in `sim`'s fixture-replay report:
-//! Lovers outcomes couldn't be verified there because the SQL export never
-//! captured `InLove` pairing data. This is the model that data would need
-//! to flow into once the export is extended.
+//! Wired into `run_game` (not just unit-tested in isolation): `LinkLovers`
+//! actions build a `LoversState` that persists across the whole game,
+//! `orchestrator::resolve_lover_deaths` uses it to chain-kill a partner
+//! whenever the other one dies (Werewolf.cs:5609-5616), and
+//! `game::resolved_winner` checks `is_lovers_win` ahead of the normal team
+//! logic, matching the real precedence.
+//!
+//! `sim`'s fixture replay still can't verify a *historical* Lovers
+//! outcome — the SQL export never captured `InLove` pairing data, so
+//! there's nothing to feed this model when replaying real games — but
+//! that's now the only remaining gap; a live simulated game exercises the
+//! whole mechanic end to end (see `full_game.rs`'s Cupid tests).
 
 use crate::roles::PlayerId;
 use shared::Team;

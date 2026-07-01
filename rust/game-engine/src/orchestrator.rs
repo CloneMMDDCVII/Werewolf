@@ -28,8 +28,8 @@
 //! up and two hardcoded levels stop being enough.
 
 use crate::roles::{
-    behavior_for, DayAction, DayContext, NightAction, NightContext, NightFact, PlayerId,
-    RoleState,
+    behavior_for, DayAction, DayContext, LoversState, NightAction, NightContext, NightFact,
+    PlayerId, RoleState,
 };
 use async_trait::async_trait;
 use shared::{KillMethod, Role, Team};
@@ -219,7 +219,12 @@ pub enum NarrationEvent {
 /// falls back to a generic line) for everything else — matching exactly
 /// what `sim::TranscriptPresenter` was already doing, just relocated here
 /// so it's the one place this mapping is declared instead of living
-/// inside one specific `Presenter` implementation.
+/// inside one specific `Presenter` implementation. `KillMethod::LoverDied`
+/// is one of the "everything else" cases for the same reason as
+/// `HunterShot`: the real `LoverDied` text needs *two* names (the lover
+/// who died first, and the one dying of grief) plus a role reveal, and
+/// `NarrationEvent::Death` only carries one victim - giving it real
+/// flavor text needs that event to grow a second identity field first.
 pub fn death_locale_key(_role: Role, method: KillMethod) -> Option<&'static str> {
     match method {
         KillMethod::Lynch => Some("LynchKill"),
@@ -852,8 +857,12 @@ mod apply_day_results_tests {
 /// resolve to a death.
 ///
 /// - The wolves' `wolf_target` dies of `KillMethod::Eat`, **unless**
-///   Witch's `Heal` action names that exact same player (that's the whole
-///   point of the heal potion — see `witch` module).
+///   Witch's `Heal` action or Guardian Angel's `Protect` action names that
+///   exact same player (Werewolf.cs:3280-3286: `if (ga?.Choice ==
+///   target.Id) { ... target.WasSavedLastNight = true; }` — the wolf kill
+///   simply never happens, the same shape as the heal potion, which is
+///   why they share one cancellation check below rather than each role
+///   getting its own).
 /// - Witch's `Poison` target dies of `KillMethod::Poison`, unconditionally
 ///   and independently of the wolf kill.
 /// - The Serial Killer's `SerialKillVote` target dies of
@@ -861,10 +870,10 @@ mod apply_day_results_tests {
 ///   needed" reasoning as the role file itself.
 ///
 /// Everything else this proof-of-concept resolves as a *decision*
-/// (`Visit`, `Protect`, `Investigate`, `CheckTeam`, `ChooseRoleModel`,
-/// `ConvertVote`) has no death consequence modeled yet — Harlot dying
-/// from visiting a wolf, Guardian Angel's protection actually working or
-/// the GA dying instead, cult conversion's RNG resolution, are real
+/// (`Visit`, `Investigate`, `CheckTeam`, `ChooseRoleModel`, `ConvertVote`)
+/// has no death consequence modeled yet — Harlot dying from visiting a
+/// wolf, the Guardian Angel herself risking death instead of the target
+/// (Werewolf.cs:2361-2372), cult conversion's RNG resolution, are real
 /// legacy mechanics (see `harlot`/`guardian_angel`/`cultist` module docs)
 /// that need cross-player resolution logic this function doesn't attempt.
 /// If several causes target the same player, they appear once per cause —
@@ -880,9 +889,13 @@ pub fn apply_night_results(
         NightAction::Heal { target } => Some(*target),
         _ => None,
     });
+    let protected_target = actions.iter().find_map(|a| match a {
+        NightAction::Protect { target } => Some(*target),
+        _ => None,
+    });
 
     if let Some(target) = wolf_target {
-        if healed_target != Some(target) {
+        if healed_target != Some(target) && protected_target != Some(target) {
             deaths.push((target, shared::KillMethod::Eat));
         }
     }
@@ -957,6 +970,41 @@ pub async fn resolve_hunter_shots(
     shots
 }
 
+/// Werewolf.cs's generic per-kill lover check, embedded in `KillPlayer`
+/// itself (Werewolf.cs:5609-5616, `KillLover` at 5706-5715): whenever an
+/// in-love player dies, their partner dies too (`KillMethod::LoverDied`),
+/// unless the partner is already dying in this same batch — a mass-death
+/// event (an Arsonist's burn catching both lovers at once, say) needs no
+/// extra chained death, matching the legacy `!(dyingSimultaneously?
+/// .Contains(x) ?? false)` guard.
+///
+/// Needs no question asked, unlike `resolve_hunter_shots` — this is
+/// unconditional. And unlike a Hunter's shot (which could in principle
+/// keep triggering more Hunters), this can't chain past one extra death:
+/// Cupid links exactly one pair, so a lover's own death has no lover of
+/// their own to chain into.
+pub fn resolve_lover_deaths(
+    new_deaths: &[(PlayerId, KillMethod)],
+    lovers: &LoversState,
+    alive: &[AlivePlayer],
+) -> Vec<(PlayerId, KillMethod)> {
+    let mut chain: Vec<(PlayerId, KillMethod)> = vec![];
+
+    for &(victim, _) in new_deaths {
+        let Some(partner) = lovers.partner_of(victim) else {
+            continue;
+        };
+        let partner_alive = alive.iter().any(|p| p.id == partner);
+        let already_dying = new_deaths.iter().any(|&(v, _)| v == partner)
+            || chain.iter().any(|&(v, _)| v == partner);
+        if partner_alive && !already_dying {
+            chain.push((partner, KillMethod::LoverDied));
+        }
+    }
+
+    chain
+}
+
 #[cfg(test)]
 mod apply_night_results_tests {
     use super::*;
@@ -975,6 +1023,28 @@ mod apply_night_results_tests {
         let actions = [NightAction::Heal { target }];
         let deaths = apply_night_results(&actions, Some(target));
         assert_eq!(deaths, vec![], "healing the wolf's own target should cancel it");
+    }
+
+    #[test]
+    fn protecting_the_wolf_target_also_cancels_the_kill() {
+        let target = PlayerId(1);
+        let actions = [NightAction::Protect { target }];
+        let deaths = apply_night_results(&actions, Some(target));
+        assert_eq!(
+            deaths,
+            vec![],
+            "Guardian Angel protecting the wolves' actual target should cancel it, same as Witch's heal"
+        );
+    }
+
+    #[test]
+    fn protecting_someone_else_does_not_cancel_the_wolf_kill() {
+        let target = PlayerId(1);
+        let actions = [NightAction::Protect {
+            target: PlayerId(2),
+        }];
+        let deaths = apply_night_results(&actions, Some(target));
+        assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
     }
 
     #[test]
@@ -1123,6 +1193,68 @@ mod hunter_shot_tests {
 
         assert_eq!(shots, vec![]);
         assert!(presenter.asked.is_empty(), "a non-Hunter death should never trigger a final-shot question");
+    }
+}
+
+#[cfg(test)]
+mod lover_death_tests {
+    use super::*;
+
+    fn alive_pair() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(2), role: Role::Villager },
+            AlivePlayer { id: PlayerId(3), role: Role::Seer },
+        ]
+    }
+
+    #[test]
+    fn a_dead_lover_takes_their_living_partner_with_them() {
+        let victim = PlayerId(1);
+        let partner = PlayerId(2);
+        let mut lovers = LoversState::default();
+        lovers.link(victim, partner);
+
+        let chain = resolve_lover_deaths(&[(victim, KillMethod::Eat)], &lovers, &alive_pair());
+
+        assert_eq!(chain, vec![(partner, KillMethod::LoverDied)]);
+    }
+
+    #[test]
+    fn no_link_means_no_chained_death() {
+        let victim = PlayerId(1);
+        let lovers = LoversState::default();
+        let chain = resolve_lover_deaths(&[(victim, KillMethod::Eat)], &lovers, &alive_pair());
+        assert_eq!(chain, vec![]);
+    }
+
+    #[test]
+    fn a_partner_already_dead_does_not_die_again() {
+        let victim = PlayerId(1);
+        let partner = PlayerId(99); // not in alive_pair()
+        let mut lovers = LoversState::default();
+        lovers.link(victim, partner);
+
+        let chain = resolve_lover_deaths(&[(victim, KillMethod::Eat)], &lovers, &alive_pair());
+
+        assert_eq!(chain, vec![], "a partner who's already dead can't die again");
+    }
+
+    #[test]
+    fn lovers_dying_simultaneously_do_not_double_chain() {
+        let victim = PlayerId(1);
+        let partner = PlayerId(2);
+        let mut lovers = LoversState::default();
+        lovers.link(victim, partner);
+
+        // Both already in the same batch (e.g. an Arsonist's mass burn) -
+        // no extra death should be added for either.
+        let chain = resolve_lover_deaths(
+            &[(victim, KillMethod::Burn), (partner, KillMethod::Burn)],
+            &lovers,
+            &alive_pair(),
+        );
+
+        assert_eq!(chain, vec![]);
     }
 }
 

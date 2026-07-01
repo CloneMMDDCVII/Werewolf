@@ -1,9 +1,14 @@
 //! Guardian Angel protects one player overnight (Werewolf.cs:3091,
-//! `AskGuard`). Self-protection is allowed. As with `harlot::Harlot`, the
-//! actual protection resolution (does the target survive a wolf attack,
-//! does the GA risk dying visiting a wolf — Werewolf.cs:2361-2372) is
-//! cross-player resolution logic for a future orchestrator; this file only
-//! covers "is this a valid target to declare protection on."
+//! `AskGuard`). Self-protection is allowed.
+//!
+//! The core payoff — protecting the wolves' actual target cancels their
+//! kill entirely (Werewolf.cs:3280-3286) — **is** modeled, in
+//! `orchestrator::apply_night_results`, the same cancellation check
+//! Witch's heal potion uses. What's still not modeled: the GA herself
+//! risking death instead of the target when they're the same player
+//! (Werewolf.cs:2361-2372), and blocking SnowWolf's freeze
+//! (Werewolf.cs:3107-3111) — both real, but cross-player resolution logic
+//! beyond this one cancellation.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

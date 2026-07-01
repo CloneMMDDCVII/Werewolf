@@ -216,6 +216,109 @@ async fn a_lynched_hunter_takes_someone_down_with_them() {
     );
 }
 
+/// Scripted presenter for the two Cupid/lover tests below: links two
+/// players night 1, then follows a fixed wolf-eat/lynch script.
+struct CupidScriptPresenter {
+    link: (PlayerId, PlayerId),
+    wolf_eats: Vec<PlayerId>, // one entry consumed per night, in order
+    lynches: Vec<PlayerId>,   // one entry consumed per day, in order
+    night: usize,
+    day: usize,
+}
+
+#[async_trait(?Send)]
+impl Presenter for CupidScriptPresenter {
+    async fn ask_targets(
+        &mut self,
+        _player: PlayerId,
+        prompt: Prompt,
+        _options: &[PlayerId],
+        count: usize,
+    ) -> Option<Vec<PlayerId>> {
+        match prompt {
+            Prompt::CupidLink if count == 2 => Some(vec![self.link.0, self.link.1]),
+            Prompt::WolfEat if count == 1 => {
+                let target = self.wolf_eats.get(self.night).copied();
+                self.night += 1;
+                target.map(|t| vec![t])
+            }
+            Prompt::LynchVote if count == 1 => {
+                let target = self.lynches.get(self.day).copied();
+                self.day += 1;
+                target.map(|t| vec![t])
+            }
+            _ => None,
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_wolf_eating_one_lover_kills_the_other_too() {
+    // Cupid links LoverX/LoverY night 1; the wolf eats LoverX that same
+    // night. LoverY should die too, via KillMethod::LoverDied, with no
+    // question asked - resolve_lover_deaths's chain, exercised end to end.
+    let wolf = PlayerId(1);
+    let cupid = PlayerId(2);
+    let lover_x = PlayerId(3);
+    let lover_y = PlayerId(4);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: cupid, role: Role::Cupid },
+        AlivePlayer { id: lover_x, role: Role::Villager },
+        AlivePlayer { id: lover_y, role: Role::Villager },
+    ];
+
+    let mut presenter = CupidScriptPresenter {
+        link: (lover_x, lover_y),
+        wolf_eats: vec![lover_x],
+        lynches: vec![],
+        night: 0,
+        day: 0,
+    };
+    let outcome = run_game(&players, &mut presenter, 1).await;
+
+    let mut deaths = outcome.deaths.clone();
+    deaths.sort_by_key(|(id, _)| id.0);
+    assert_eq!(
+        deaths,
+        vec![(lover_x, KillMethod::Eat), (lover_y, KillMethod::LoverDied)],
+        "eating one lover should chain-kill the other, unconditionally"
+    );
+}
+
+#[tokio::test]
+async fn the_last_two_survivors_win_as_lovers() {
+    // Cupid links LoverX/LoverY, then dies to the wolf; the village
+    // lynches the wolf the next day. LoverX and LoverY are the sole
+    // survivors, mutually in love - a Lovers win, which
+    // evaluate_winner_with_kills alone could never produce (it has no
+    // idea lover pairings exist at all).
+    let wolf = PlayerId(1);
+    let cupid = PlayerId(2);
+    let lover_x = PlayerId(3);
+    let lover_y = PlayerId(4);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: cupid, role: Role::Cupid },
+        AlivePlayer { id: lover_x, role: Role::Villager },
+        AlivePlayer { id: lover_y, role: Role::Villager },
+    ];
+
+    let mut presenter = CupidScriptPresenter {
+        link: (lover_x, lover_y),
+        wolf_eats: vec![cupid],
+        lynches: vec![wolf],
+        night: 0,
+        day: 0,
+    };
+    let outcome = run_game(&players, &mut presenter, 10).await;
+
+    assert_eq!(outcome.winner, WinOutcome::Team(Team::Lovers));
+    assert_eq!(outcome.rounds_played, 1);
+}
+
 #[tokio::test]
 async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
     // Nobody ever answers anything -> no deaths, ever -> the win
