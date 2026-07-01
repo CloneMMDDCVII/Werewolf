@@ -215,39 +215,59 @@ pub enum NarrationEvent {
 }
 
 /// Maps a death to the real legacy flavor key, where this proof-of-concept
-/// has one. Deliberately narrow today: the legacy `*Killed` keys
-/// (`GunnerKilled`, `SeerKilled`, `PrinceKilled`, ...) are all
-/// Serial-Killer-specific flavor text, not general per-role death
-/// messages (confirmed by reading their actual English.xml values — every
-/// one mentions "the serial killer has struck again"), so wiring those up
-/// honestly requires modeling *which* role died *and* that the method was
-/// `SerialKilled` specifically, which is future work, not this slice.
-/// For now: the real `LynchKill` text for lynches, and `None` (caller
-/// falls back to a generic line) for everything else — matching exactly
-/// what `sim::TranscriptPresenter` was already doing, just relocated here
-/// so it's the one place this mapping is declared instead of living
-/// inside one specific `Presenter` implementation. `KillMethod::LoverDied`
-/// is one of the "everything else" cases for the same reason as
-/// `HunterShot`: the real `LoverDied` text needs *two* names (the lover
-/// who died first, and the one dying of grief) plus a role reveal, and
-/// `NarrationEvent::Death` only carries one victim - giving it real
-/// flavor text needs that event to grow a second identity field first.
-pub fn death_locale_key(_role: Role, method: KillMethod) -> Option<&'static str> {
+/// has one.
+///
+/// The legacy `*Killed` keys (`GunnerKilled`, `SeerKilled`, `PrinceKilled`,
+/// ...) are all Serial-Killer-specific flavor text, not general per-role
+/// death messages (confirmed by reading their actual English.xml values —
+/// every one mentions "the serial killer has struck again"), so they're
+/// only used for `KillMethod::SerialKilled` specifically, never for a
+/// lynch/eat/etc. death of the same role — `DefaultKilled` covers every
+/// role without its own dedicated key. `KillMethod::VisitWolf` (a Harlot
+/// visiting the wolves' actual target, see `resolve_harlot_visit_deaths`)
+/// gets the real public death text too (`HarlotFuckKillerPublic` — yes,
+/// that's the actual legacy key name).
+///
+/// `KillMethod::LoverDied`/`HunterShot` are still `None`: their real text
+/// needs *two* names (the lover who died first and the one dying of
+/// grief; the shooter and the target) plus a role reveal, and
+/// `NarrationEvent::Death` only carries one victim — giving them real
+/// flavor text needs that event to grow a second identity field first,
+/// which is more than this batch of "easy, unambiguous" mappings signed
+/// up for.
+pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> {
     match method {
         KillMethod::Lynch => Some("LynchKill"),
+        KillMethod::VisitWolf => Some("HarlotFuckKillerPublic"),
+        KillMethod::SerialKilled => Some(match role {
+            Role::Gunner => "GunnerKilled",
+            Role::Seer => "SeerKilled",
+            Role::Drunk => "DrunkKilled",
+            Role::Mayor => "MayorKilled",
+            Role::Prince => "PrinceKilled",
+            Role::Cultist => "CultistKilled",
+            Role::GuardianAngel => "GuardianAngelKilled",
+            Role::Blacksmith => "BlacksmithKilled",
+            _ => "DefaultKilled",
+        }),
         _ => None,
     }
 }
 
-/// Maps a resolved transform to its real legacy flavor key. Only the
-/// transforms `game::apply_transforms` actually models have one:
-/// Traitor→Wolf (`TraitorTurnWolf`), ApprenticeSeer→Seer
-/// (`ApprenticeNowSeer`), WildChild→Wolf (`WildChildTransform`), and
+/// Maps a resolved transform to its real legacy flavor key. Covers the
+/// transforms `game::apply_transforms`/`demote_gunner_if_shot_a_wise_elder`
+/// actually model: Traitor→Wolf (`TraitorTurnWolf`), ApprenticeSeer→Seer
+/// (`ApprenticeNowSeer`), WildChild→Wolf (`WildChildTransform`),
 /// Doppelganger copying a dead role model into one of the four roles the
 /// legacy game has dedicated flavor text for (`DGToWolf`/`DGToCult`/
-/// `DGToMason`/`DGToSnowWolf`) — a Doppelganger copying any other role
-/// has no dedicated key in English.xml (checked directly), so falls
-/// through to `None` same as everything else uncovered.
+/// `DGToMason`/`DGToSnowWolf` — a Doppelganger copying any other role has
+/// no dedicated key, checked directly), and a Gunner demoted for shooting
+/// the Wise Elder (`GunnerShotWiseElder`). That last one is matched on
+/// `(Gunner, Villager)` alone, not some more specific "reason" tag — safe
+/// today because nothing else in this proof-of-concept produces that
+/// exact transform, but a second cause of a Gunner becoming a Villager
+/// would need `NarrationEvent::Transform` to carry a cause, not just
+/// `from`/`to`, to disambiguate correctly.
 pub fn transform_locale_key(from: Role, to: Role) -> Option<&'static str> {
     match (from, to) {
         (Role::Traitor, Role::Wolf) => Some("TraitorTurnWolf"),
@@ -257,6 +277,7 @@ pub fn transform_locale_key(from: Role, to: Role) -> Option<&'static str> {
         (Role::Doppelganger, Role::Cultist) => Some("DGToCult"),
         (Role::Doppelganger, Role::Mason) => Some("DGToMason"),
         (Role::Doppelganger, Role::SnowWolf) => Some("DGToSnowWolf"),
+        (Role::Gunner, Role::Villager) => Some("GunnerShotWiseElder"),
         _ => None,
     }
 }
@@ -305,8 +326,19 @@ pub fn game_over_locale_key(outcome: &crate::WinOutcome) -> Option<&'static str>
 /// missed update would be obvious in the coverage number itself.
 pub fn all_mapped_locale_keys() -> Vec<&'static str> {
     let mut keys: Vec<&'static str> = ALL_PROMPTS.iter().filter_map(|&p| prompt_locale_key(p)).collect();
-    keys.push("LynchKill"); // death_locale_key(_, KillMethod::Lynch)
     keys.extend([
+        // death_locale_key's non-`None` outputs.
+        "LynchKill",
+        "HarlotFuckKillerPublic",
+        "GunnerKilled",
+        "SeerKilled",
+        "DrunkKilled",
+        "MayorKilled",
+        "PrinceKilled",
+        "CultistKilled",
+        "GuardianAngelKilled",
+        "BlacksmithKilled",
+        "DefaultKilled",
         // transform_locale_key's non-`None` outputs.
         "TraitorTurnWolf",
         "ApprenticeNowSeer",
@@ -315,6 +347,7 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "DGToCult",
         "DGToMason",
         "DGToSnowWolf",
+        "GunnerShotWiseElder",
         // game_over_locale_key's non-`None` outputs.
         "VillageWins",
         "WolfWins",
@@ -358,6 +391,34 @@ mod locale_mapping_tests {
     #[test]
     fn a_doppelganger_copying_an_uncelebrated_role_has_no_key() {
         assert_eq!(transform_locale_key(Role::Doppelganger, Role::Villager), None);
+    }
+
+    #[test]
+    fn a_gunner_demoted_for_shooting_the_wise_elder_has_a_key() {
+        assert_eq!(transform_locale_key(Role::Gunner, Role::Villager), Some("GunnerShotWiseElder"));
+    }
+
+    #[test]
+    fn serial_killed_maps_to_the_dying_roles_own_flavor_key() {
+        assert_eq!(death_locale_key(Role::Gunner, KillMethod::SerialKilled), Some("GunnerKilled"));
+        assert_eq!(death_locale_key(Role::Seer, KillMethod::SerialKilled), Some("SeerKilled"));
+        assert_eq!(death_locale_key(Role::Blacksmith, KillMethod::SerialKilled), Some("BlacksmithKilled"));
+    }
+
+    #[test]
+    fn serial_killed_falls_back_to_default_for_an_uncelebrated_role() {
+        assert_eq!(death_locale_key(Role::Villager, KillMethod::SerialKilled), Some("DefaultKilled"));
+    }
+
+    #[test]
+    fn a_harlot_dying_from_visiting_a_wolf_has_a_key() {
+        assert_eq!(death_locale_key(Role::Harlot, KillMethod::VisitWolf), Some("HarlotFuckKillerPublic"));
+    }
+
+    #[test]
+    fn lover_died_and_hunter_shot_still_have_no_key() {
+        assert_eq!(death_locale_key(Role::Villager, KillMethod::LoverDied), None);
+        assert_eq!(death_locale_key(Role::Villager, KillMethod::HunterShot), None);
     }
 
     #[test]
