@@ -9,15 +9,17 @@ pub enum ReplayResult {
     NotEvaluated(&'static str),
 }
 
-/// Replays a single fixture's final player states through the win-condition
-/// evaluator and compares against the recorded winner.
-pub fn replay(fixture: &GameFixture) -> ReplayResult {
+/// Returns `Some(reason)` if the fixture is known to be unverifiable with
+/// the data/logic we currently have — a data gap (Lovers/gunner/transformed
+/// role) rather than an engine bug. Shared by `replay` and by fixture
+/// curation (`bin/filter_deterministic.rs`) so both use the same gate.
+pub fn verifiability_gate(fixture: &GameFixture) -> Option<&'static str> {
     let expected = fixture.winner.as_team();
 
     // We don't have InLove data in the fixture export, so Lovers outcomes
     // can never be evaluated by this engine yet.
     if expected == Team::Lovers {
-        return ReplayResult::NotEvaluated("Lovers outcome needs InLove data we don't export");
+        return Some("Lovers outcome needs InLove data we don't export");
     }
 
     // The `role` field is the role a player was *assigned*, not necessarily
@@ -35,10 +37,22 @@ pub fn replay(fixture: &GameFixture) -> ReplayResult {
                 | shared::Role::SnowWolf
         )
     }) {
-        return ReplayResult::NotEvaluated(
+        return Some(
             "game includes a transformable role (Thief/Doppelganger/WildChild/Traitor/SnowWolf) \
              whose final role isn't captured by the export",
         );
+    }
+
+    None
+}
+
+/// Replays a single fixture's final player states through the win-condition
+/// evaluator and compares against the recorded winner.
+pub fn replay(fixture: &GameFixture) -> ReplayResult {
+    let expected = fixture.winner.as_team();
+
+    if let Some(reason) = verifiability_gate(fixture) {
+        return ReplayResult::NotEvaluated(reason);
     }
 
     let players: Vec<PlayerState> = fixture
