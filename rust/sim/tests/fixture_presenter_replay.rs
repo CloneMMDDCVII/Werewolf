@@ -67,7 +67,7 @@ async fn resolve_night_reproduces_the_historical_night1_wolf_kill() {
             game.game_id
         );
 
-        let deaths = apply_night_results(&actions, wolf_target);
+        let deaths = apply_night_results(&actions, wolf_target, false);
         assert_eq!(
             deaths,
             vec![(PlayerId(expected_victim as u64), KillMethod::Eat)],

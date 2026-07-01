@@ -6,11 +6,17 @@
 //!
 //! Reuses `RoleState::primary_used`/`secondary_used` for "first bullet
 //! spent"/"second bullet spent", the same trick `witch::Witch` uses for
-//! her two potions. What the shot actually resolves to (kill outright,
-//! the Wise Elder special-case that reverts Gunner to Villager instead —
-//! Werewolf.cs:2887-2889) is resolution logic for a future orchestrator;
-//! this file only covers "is there a bullet left, and is this a valid
-//! target."
+//! her two potions.
+//!
+//! The shot always kills its target outright (`KillMethod::Shoot`, in
+//! `orchestrator::apply_day_results`) — including a Wise Elder, who does
+//! *not* survive it (checked directly: `KillPlayer(check, ...)` runs
+//! unconditionally after the Wise Elder switch case, Werewolf.cs:2895).
+//! The real special case is what happens to the *Gunner* afterward: they
+//! get demoted to Villager (Werewolf.cs:2887-2889), which `game::run_game`
+//! applies using the `shooter` field on `DayAction::Shoot` — this file
+//! only covers "is there a bullet left, and is this a valid target,"
+//! same as before.
 
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
@@ -33,7 +39,10 @@ impl RoleBehavior for Gunner {
                 } else {
                     state.secondary_used = true;
                 }
-                vec![DayAction::Shoot { target }]
+                vec![DayAction::Shoot {
+                    shooter: ctx.self_id,
+                    target,
+                }]
             }
             _ => vec![],
         }
@@ -60,11 +69,23 @@ mod tests {
         let mut state = RoleState::default();
 
         let first = gunner.day_action(&ctx(Some(PlayerId(2))), &mut state);
-        assert_eq!(first, vec![DayAction::Shoot { target: PlayerId(2) }]);
+        assert_eq!(
+            first,
+            vec![DayAction::Shoot {
+                shooter: PlayerId(1),
+                target: PlayerId(2)
+            }]
+        );
         assert!(state.primary_used && !state.secondary_used);
 
         let second = gunner.day_action(&ctx(Some(PlayerId(3))), &mut state);
-        assert_eq!(second, vec![DayAction::Shoot { target: PlayerId(3) }]);
+        assert_eq!(
+            second,
+            vec![DayAction::Shoot {
+                shooter: PlayerId(1),
+                target: PlayerId(3)
+            }]
+        );
         assert!(state.primary_used && state.secondary_used);
     }
 

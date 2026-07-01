@@ -1,8 +1,17 @@
 //! Sandman chooses, once per game, whether to put everyone to sleep
 //! overnight (Werewolf.cs:950-961) — a yes/no toggle, not a target pick,
-//! hence `NightContext::toggle_choice` instead of `chosen_target`. What
-//! "asleep" actually suppresses is resolution logic this file doesn't
-//! attempt.
+//! hence `NightContext::toggle_choice` instead of `chosen_target`.
+//!
+//! What "asleep" suppresses **is** modeled: `orchestrator
+//! ::apply_night_results` cancels every death that night the moment it
+//! sees a `NightAction::SandmanSleep` in the batch (Werewolf.cs:3011-3020:
+//! the whole night function returns early, before any night action
+//! resolves). This proof-of-concept still asks every other role their
+//! question regardless (there's no cheap way to know Sandman's answer
+//! *before* asking everyone else in the same batch), which is a harmless
+//! divergence at this fidelity level — nothing here has the other roles'
+//! answers do anything but get silently discarded on a sleep night
+//! anyway.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

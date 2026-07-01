@@ -197,16 +197,23 @@ pub struct NightContext<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DayAction {
     /// Gunner spending a bullet to shoot a suspected player
-    /// (Werewolf.cs:2871-2896). What the shot actually does — kill
-    /// outright, special-cased outcomes like the Wise Elder revert
-    /// (Werewolf.cs:2887-2889) — is resolution logic for a future
-    /// orchestrator; this only covers "is this a valid target to shoot."
-    Shoot { target: PlayerId },
-    /// Blacksmith spreading protective silver to a target
-    /// (Werewolf.cs:935, 5083). Whether it actually protects them from a
-    /// wolf attack is resolution logic this proof-of-concept doesn't
-    /// attempt, same caveat as `NightAction::Visit`/`Protect`.
-    SpreadSilver { target: PlayerId },
+    /// (Werewolf.cs:2871-2896). Carries `shooter` (not just `target`) so
+    /// `game::run_game` can apply the Wise Elder special case
+    /// (Werewolf.cs:2887-2889: shooting a Wise Elder demotes the *Gunner*
+    /// to Villager, on top of the Wise Elder still dying normally) without
+    /// needing to guess who fired — every other role's day/night action
+    /// already gets its own actor for free via `ctx.self_id`; `Shoot` just
+    /// didn't carry it forward into the action itself until this needed it.
+    Shoot { shooter: PlayerId, target: PlayerId },
+    /// Blacksmith spreading protective silver dust over the whole
+    /// village, once (Werewolf.cs:935, 5083-5092: a yes/no menu, not a
+    /// target pick — an earlier version of this action wrongly modeled
+    /// it as `{ target: PlayerId }`). The effect lands the *following*
+    /// night: every wolf-team role gets no valid targets at all
+    /// (Werewolf.cs:5191: `if (!_silverSpread) { ...assign wolf targets...
+    /// }` — nothing runs in the `else`), which `orchestrator
+    /// ::apply_night_results` applies via its `silver_spread` parameter.
+    SpreadSilver,
     /// Mayor publicly revealing their role, once
     /// (Werewolf.cs:899-908). Purely informational on its own — the real
     /// payoff (their lynch vote counting twice afterward,

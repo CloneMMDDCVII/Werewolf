@@ -647,7 +647,6 @@ fn majority_eat_target(actions: &[NightAction]) -> Option<PlayerId> {
 fn one_target_day_prompt(role: Role) -> Option<Prompt> {
     match role {
         Role::Gunner => Some(Prompt::GunnerShoot),
-        Role::Blacksmith => Some(Prompt::BlacksmithSilver),
         Role::Spumpkin => Some(Prompt::SpumpkinDetonate),
         _ => None,
     }
@@ -659,6 +658,11 @@ fn toggle_day_prompt(role: Role) -> Option<Prompt> {
         Role::Mayor => Some(Prompt::MayorReveal),
         Role::Pacifist => Some(Prompt::PacifistPeace),
         Role::Troublemaker => Some(Prompt::TroublemakerTrouble),
+        // Blacksmith's "spread silver" is a village-wide yes/no
+        // (Werewolf.cs:5083-5092), not a target pick - see
+        // `roles::blacksmith`'s doc for the earlier wrong assumption this
+        // corrects.
+        Role::Blacksmith => Some(Prompt::BlacksmithSilver),
         _ => None,
     }
 }
@@ -765,8 +769,8 @@ pub fn apply_day_results(
 
     for action in day_actions {
         match action {
-            DayAction::Shoot { target } => deaths.push((*target, KillMethod::Shoot)),
-            DayAction::SpreadSilver { .. }
+            DayAction::Shoot { target, .. } => deaths.push((*target, KillMethod::Shoot)),
+            DayAction::SpreadSilver
             | DayAction::Reveal
             | DayAction::Pacify
             | DayAction::Trouble
@@ -827,7 +831,7 @@ mod apply_day_results_tests {
         let shot_target = PlayerId(2);
         let mut states = HashMap::new();
         let deaths = apply_day_results(
-            &[DayAction::Pacify, DayAction::Shoot { target: shot_target }],
+            &[DayAction::Pacify, DayAction::Shoot { shooter: PlayerId(99), target: shot_target }],
             Some(lynch_target),
             Some(Role::Villager),
             &mut states,
@@ -879,11 +883,30 @@ mod apply_day_results_tests {
 /// If several causes target the same player, they appear once per cause —
 /// deduplicating "someone already dead" is future work for whoever
 /// applies this to real running game state.
+///
+/// Two things can suppress the wolf kill entirely, on top of the heal/
+/// protect cancellation above:
+/// - `actions` containing `NightAction::SandmanSleep` (Werewolf.cs:3011-
+///   3020: the whole night is skipped, `return;` before any night action
+///   resolves) — checked first, and short-circuits everything else this
+///   function does, not just the wolf kill.
+/// - `silver_spread` being `true` (Werewolf.cs:5191: `if (!_silverSpread)
+///   { ...assign wolf targets... }` — nothing runs in the `else`, so the
+///   wolves simply have no target the night after a Blacksmith uses their
+///   ability). Passed in rather than derived from `actions` because it's
+///   cross-round state (the Blacksmith's decision was a *day* action the
+///   round before) that `run_game` is responsible for carrying forward,
+///   not something this single night's actions could know on their own.
 pub fn apply_night_results(
     actions: &[NightAction],
     wolf_target: Option<PlayerId>,
+    silver_spread: bool,
 ) -> Vec<(PlayerId, shared::KillMethod)> {
     let mut deaths = vec![];
+
+    if actions.iter().any(|a| matches!(a, NightAction::SandmanSleep)) {
+        return deaths;
+    }
 
     let healed_target = actions.iter().find_map(|a| match a {
         NightAction::Heal { target } => Some(*target),
@@ -894,9 +917,11 @@ pub fn apply_night_results(
         _ => None,
     });
 
-    if let Some(target) = wolf_target {
-        if healed_target != Some(target) && protected_target != Some(target) {
-            deaths.push((target, shared::KillMethod::Eat));
+    if !silver_spread {
+        if let Some(target) = wolf_target {
+            if healed_target != Some(target) && protected_target != Some(target) {
+                deaths.push((target, shared::KillMethod::Eat));
+            }
         }
     }
 
@@ -1013,7 +1038,7 @@ mod apply_night_results_tests {
     #[test]
     fn wolf_target_dies_when_nobody_heals() {
         let target = PlayerId(1);
-        let deaths = apply_night_results(&[], Some(target));
+        let deaths = apply_night_results(&[], Some(target), false);
         assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
     }
 
@@ -1021,7 +1046,7 @@ mod apply_night_results_tests {
     fn heal_on_the_wolf_target_cancels_the_kill() {
         let target = PlayerId(1);
         let actions = [NightAction::Heal { target }];
-        let deaths = apply_night_results(&actions, Some(target));
+        let deaths = apply_night_results(&actions, Some(target), false);
         assert_eq!(deaths, vec![], "healing the wolf's own target should cancel it");
     }
 
@@ -1029,7 +1054,7 @@ mod apply_night_results_tests {
     fn protecting_the_wolf_target_also_cancels_the_kill() {
         let target = PlayerId(1);
         let actions = [NightAction::Protect { target }];
-        let deaths = apply_night_results(&actions, Some(target));
+        let deaths = apply_night_results(&actions, Some(target), false);
         assert_eq!(
             deaths,
             vec![],
@@ -1043,7 +1068,7 @@ mod apply_night_results_tests {
         let actions = [NightAction::Protect {
             target: PlayerId(2),
         }];
-        let deaths = apply_night_results(&actions, Some(target));
+        let deaths = apply_night_results(&actions, Some(target), false);
         assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
     }
 
@@ -1053,7 +1078,7 @@ mod apply_night_results_tests {
         let actions = [NightAction::Heal {
             target: PlayerId(2),
         }];
-        let deaths = apply_night_results(&actions, Some(target));
+        let deaths = apply_night_results(&actions, Some(target), false);
         assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
     }
 
@@ -1062,7 +1087,7 @@ mod apply_night_results_tests {
         let wolf_target = PlayerId(1);
         let poisoned = PlayerId(2);
         let actions = [NightAction::Poison { target: poisoned }];
-        let mut deaths = apply_night_results(&actions, Some(wolf_target));
+        let mut deaths = apply_night_results(&actions, Some(wolf_target), false);
         deaths.sort_by_key(|(id, _)| id.0);
         assert_eq!(
             deaths,
@@ -1075,7 +1100,7 @@ mod apply_night_results_tests {
 
     #[test]
     fn no_wolf_target_means_no_eat_death() {
-        assert_eq!(apply_night_results(&[], None), vec![]);
+        assert_eq!(apply_night_results(&[], None, false), vec![]);
     }
 
     #[test]
@@ -1083,8 +1108,45 @@ mod apply_night_results_tests {
         let target = PlayerId(5);
         let actions = [NightAction::SerialKillVote { target }];
         assert_eq!(
-            apply_night_results(&actions, None),
+            apply_night_results(&actions, None, false),
             vec![(target, KillMethod::SerialKilled)]
+        );
+    }
+
+    #[test]
+    fn sandman_sleep_cancels_every_death_this_night() {
+        let wolf_target = PlayerId(1);
+        let poisoned = PlayerId(2);
+        let actions = [
+            NightAction::SandmanSleep,
+            NightAction::Poison { target: poisoned },
+        ];
+        assert_eq!(
+            apply_night_results(&actions, Some(wolf_target), false),
+            vec![],
+            "a Sandman sleep should cancel the wolf kill AND anything else that night"
+        );
+    }
+
+    #[test]
+    fn silver_spread_cancels_only_the_wolf_kill() {
+        let wolf_target = PlayerId(1);
+        let poisoned = PlayerId(2);
+        let actions = [NightAction::Poison { target: poisoned }];
+        let deaths = apply_night_results(&actions, Some(wolf_target), true);
+        assert_eq!(
+            deaths,
+            vec![(poisoned, KillMethod::Poison)],
+            "silver should block the wolf kill but not an unrelated Poison"
+        );
+    }
+
+    #[test]
+    fn without_silver_spread_the_wolf_kill_proceeds_normally() {
+        let target = PlayerId(1);
+        assert_eq!(
+            apply_night_results(&[], Some(target), false),
+            vec![(target, KillMethod::Eat)]
         );
     }
 }
@@ -1409,7 +1471,7 @@ mod day_tests {
 
         let (day_actions, lynch) = resolve_day(&players, &mut states, &mut presenter).await;
         assert_eq!(lynch, Some(lynch_target));
-        assert!(day_actions.contains(&DayAction::Shoot { target: shot_target }));
+        assert!(day_actions.iter().any(|a| matches!(a, DayAction::Shoot { target, .. } if *target == shot_target)));
 
         let mut states2 = HashMap::new();
         let mut deaths =

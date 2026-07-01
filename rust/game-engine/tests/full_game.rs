@@ -320,6 +320,200 @@ async fn the_last_two_survivors_win_as_lovers() {
 }
 
 #[tokio::test]
+async fn shooting_the_wise_elder_still_kills_them_but_demotes_the_gunner() {
+    // The Wise Elder does NOT survive a Gunner's shot (confirmed directly
+    // against Werewolf.cs - KillPlayer runs unconditionally right after
+    // the switch case), but the Gunner is punished for it: demoted to
+    // Villager. Both halves, end to end through run_game.
+    //
+    // Needs a Wolf in the roster - with none at all, "no wolves alive"
+    // already resolves a Village win right after night 1, before the day
+    // phase (and the Gunner's shot) ever gets a chance to run.
+    let wolf = PlayerId(4);
+    let gunner = PlayerId(1);
+    let wise_elder = PlayerId(2);
+    let bystander = PlayerId(3);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: gunner, role: Role::Gunner },
+        AlivePlayer { id: wise_elder, role: Role::WiseElder },
+        AlivePlayer { id: bystander, role: Role::Villager },
+    ];
+
+    struct ShootWiseElderPresenter {
+        gunner: PlayerId,
+        wise_elder: PlayerId,
+        transforms: Vec<game_engine::orchestrator::NarrationEvent>,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for ShootWiseElderPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 {
+                return None;
+            }
+            match prompt {
+                Prompt::GunnerShoot if player == self.gunner => Some(vec![self.wise_elder]),
+                _ => None,
+            }
+        }
+
+        async fn narrate(&mut self, event: game_engine::orchestrator::NarrationEvent) {
+            self.transforms.push(event);
+        }
+    }
+
+    let mut presenter = ShootWiseElderPresenter {
+        gunner,
+        wise_elder,
+        transforms: vec![],
+    };
+    let outcome = run_game(&players, &mut presenter, 1).await;
+
+    assert_eq!(
+        outcome.deaths,
+        vec![(wise_elder, KillMethod::Shoot)],
+        "the Wise Elder should still die from the shot"
+    );
+    assert!(
+        presenter.transforms.iter().any(|e| matches!(
+            e,
+            game_engine::orchestrator::NarrationEvent::Transform {
+                player,
+                from: Role::Gunner,
+                to: Role::Villager,
+            } if *player == gunner
+        )),
+        "the Gunner should be demoted to Villager for shooting the Wise Elder, got: {:?}",
+        presenter.transforms
+    );
+}
+
+#[tokio::test]
+async fn silver_spread_blocks_the_wolf_kill_the_following_night_only() {
+    // Blacksmith spreads silver on day 1 (a village-wide yes/no, not a
+    // target pick - Werewolf.cs:5083-5092); the wolf's night-2 kill
+    // attempt should fail as a result, having succeeded normally on
+    // night 1 before the silver was ever spread.
+    let wolf = PlayerId(1);
+    let blacksmith = PlayerId(2);
+    let victim1 = PlayerId(3);
+    let victim2 = PlayerId(4);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: blacksmith, role: Role::Blacksmith },
+        AlivePlayer { id: victim1, role: Role::Villager },
+        AlivePlayer { id: victim2, role: Role::Villager },
+    ];
+
+    struct SilverPresenter {
+        wolf: PlayerId,
+        blacksmith: PlayerId,
+        victim1: PlayerId,
+        victim2: PlayerId,
+        night: u32,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for SilverPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 || prompt != Prompt::WolfEat || player != self.wolf {
+                return None;
+            }
+            // Eats victim1 night 1 (before any silver is spread), then
+            // tries for victim2 every night after.
+            Some(vec![if self.night <= 1 { self.victim1 } else { self.victim2 }])
+        }
+
+        async fn ask_toggle(&mut self, player: PlayerId, prompt: Prompt) -> bool {
+            prompt == Prompt::BlacksmithSilver && player == self.blacksmith
+        }
+
+        fn advance_round(&mut self) {
+            self.night += 1;
+        }
+    }
+
+    let mut presenter = SilverPresenter {
+        wolf,
+        blacksmith,
+        victim1,
+        victim2,
+        night: 1,
+    };
+    let outcome = run_game(&players, &mut presenter, 2).await;
+
+    assert_eq!(
+        outcome.deaths,
+        vec![(victim1, KillMethod::Eat)],
+        "victim1 should die night 1 (before the silver is spread), and victim2 should survive night 2"
+    );
+}
+
+#[tokio::test]
+async fn sandman_sleep_cancels_the_whole_nights_deaths() {
+    // Sandman puts everyone to sleep the same night the wolf tries to
+    // eat someone - the kill should never happen.
+    let wolf = PlayerId(1);
+    let sandman = PlayerId(2);
+    let victim = PlayerId(3);
+    let bystander = PlayerId(4);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: sandman, role: Role::Sandman },
+        AlivePlayer { id: victim, role: Role::Villager },
+        AlivePlayer { id: bystander, role: Role::Villager },
+    ];
+
+    struct SandmanPresenter {
+        wolf: PlayerId,
+        sandman: PlayerId,
+        victim: PlayerId,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for SandmanPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 || prompt != Prompt::WolfEat || player != self.wolf {
+                return None;
+            }
+            Some(vec![self.victim])
+        }
+
+        async fn ask_toggle(&mut self, player: PlayerId, prompt: Prompt) -> bool {
+            prompt == Prompt::SandmanSleep && player == self.sandman
+        }
+    }
+
+    let mut presenter = SandmanPresenter { wolf, sandman, victim };
+    let outcome = run_game(&players, &mut presenter, 1).await;
+
+    assert_eq!(
+        outcome.deaths,
+        vec![],
+        "a Sandman sleep should cancel the wolf's kill entirely, end to end"
+    );
+}
+
+#[tokio::test]
 async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
     // Nobody ever answers anything -> no deaths, ever -> the win
     // condition never resolves. run_game must still terminate.

@@ -10,7 +10,7 @@ use crate::orchestrator::{
     apply_day_results, apply_night_results, resolve_day, resolve_hunter_shots,
     resolve_lover_deaths, resolve_night, AlivePlayer, NarrationEvent, Presenter,
 };
-use crate::roles::{LoversState, NightAction, PlayerId, RoleState};
+use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
 use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
@@ -51,6 +51,11 @@ pub async fn run_game(
     let mut kills: Vec<KillEvent> = vec![];
     let mut deaths: Vec<(PlayerId, KillMethod)> = vec![];
     let mut lovers = LoversState::default();
+    // Set by a Blacksmith's SpreadSilver the day before, consumed by the
+    // *next* night's apply_night_results call, then reset - cross-round
+    // state the same way LoversState is, just a plain bool instead of a
+    // whole struct since there's only ever one thing to remember.
+    let mut silver_spread_tonight = false;
 
     for round in 1..=max_rounds {
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
@@ -59,7 +64,7 @@ pub async fn run_game(
                 lovers.link(*a, *b);
             }
         }
-        let night_deaths = apply_night_results(&night_actions, wolf_target);
+        let night_deaths = apply_night_results(&night_actions, wolf_target, silver_spread_tonight);
         let (night_deaths, night_died_with_roles) =
             process_deaths(&night_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         let night_shots = resolve_hunter_shots(&night_deaths, &night_died_with_roles, &alive, presenter).await;
@@ -76,6 +81,8 @@ pub async fn run_game(
 
         let (day_actions, lynch_target) = resolve_day(&alive, &mut states, presenter).await;
         let lynch_target_role = lynch_target.and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
+        demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
+        silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
         let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
         let (day_deaths, day_died_with_roles) =
             process_deaths(&day_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
@@ -204,6 +211,42 @@ async fn process_deaths(
 async fn narrate_all(events: Vec<NarrationEvent>, presenter: &mut dyn Presenter) {
     for event in events {
         presenter.narrate(event).await;
+    }
+}
+
+/// The Wise Elder's real defensive quirk (Werewolf.cs:2887-2889): shooting
+/// one doesn't save them — they still die from the shot like anyone else
+/// (confirmed directly: `KillPlayer` runs unconditionally right after the
+/// Wise Elder switch case) — but it demotes the *Gunner* to Villager as a
+/// consequence. Checked and applied before `apply_day_results` turns
+/// `day_actions` into deaths, using the still-intact `alive` roster to
+/// look up the target's role; `DayAction::Shoot`'s `shooter` field is
+/// what makes finding the right player to demote a lookup instead of a
+/// guess (at most one Gunner exists in practice, but there's no reason to
+/// assume that when the action already names who fired).
+async fn demote_gunner_if_shot_a_wise_elder(
+    day_actions: &[DayAction],
+    alive: &mut [AlivePlayer],
+    presenter: &mut dyn Presenter,
+) {
+    let shooter = day_actions.iter().find_map(|a| match a {
+        DayAction::Shoot { shooter, target } => {
+            let target_role = alive.iter().find(|p| p.id == *target).map(|p| p.role);
+            (target_role == Some(Role::WiseElder)).then_some(*shooter)
+        }
+        _ => None,
+    });
+    let Some(shooter) = shooter else { return };
+    if let Some(gunner) = alive.iter_mut().find(|p| p.id == shooter) {
+        let from = gunner.role;
+        presenter
+            .narrate(NarrationEvent::Transform {
+                player: gunner.id,
+                from,
+                to: Role::Villager,
+            })
+            .await;
+        gunner.role = Role::Villager;
     }
 }
 
