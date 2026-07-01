@@ -26,9 +26,10 @@ use shared::KillMethod;
 
 pub struct FixturePresenter<'a> {
     fixture: &'a GameFixture,
-    /// Which in-game night this presenter is answering for — the
-    /// orchestrator resolves one night at a time, so a fixture covering a
-    /// multi-day game needs one `FixturePresenter` per night replayed.
+    /// Which in-game day this presenter is currently answering for.
+    /// Advances automatically via `advance_round` when driven through
+    /// `run_game`, so a single `FixturePresenter` can answer across a
+    /// whole multi-day replay, not just one isolated night or day.
     day: u32,
 }
 
@@ -87,5 +88,9 @@ impl<'a> Presenter for FixturePresenter<'a> {
             // honest answer, not a stand-in "yes."
             _ => None,
         }
+    }
+
+    fn advance_round(&mut self) {
+        self.day += 1;
     }
 }

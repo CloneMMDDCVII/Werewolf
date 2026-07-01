@@ -75,6 +75,14 @@ pub trait Presenter {
         options: &[PlayerId],
         count: usize,
     ) -> Option<Vec<PlayerId>>;
+
+    /// Called by `run_game` between rounds (after both night and day have
+    /// resolved with no winner yet). Default no-op — a real Telegram
+    /// presenter naturally knows what round it's in from its own state,
+    /// it doesn't need telling. `sim::FixturePresenter` is the one
+    /// implementer that overrides this, to advance which historical day
+    /// it answers questions from.
+    fn advance_round(&mut self) {}
 }
 
 /// The one place that validates a presenter's answer actually matches what

@@ -11,12 +11,18 @@ use crate::orchestrator::{
 };
 use crate::roles::{PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, KillEvent, PlayerState, WinOutcome};
+use shared::KillMethod;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameOutcome {
     pub winner: WinOutcome,
     pub rounds_played: u32,
+    /// Every death, in the order it happened, with the victim's identity —
+    /// `KillEvent` (used internally for win-checking) only carries the
+    /// victim's role, which isn't enough to compare a simulated game
+    /// against a specific historical one death-for-death.
+    pub deaths: Vec<(PlayerId, KillMethod)>,
 }
 
 /// Runs the game to completion: night, day, check win, repeat. `max_rounds`
@@ -42,6 +48,7 @@ pub async fn run_game(
     let mut alive: Vec<AlivePlayer> = players.to_vec();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
     let mut kills: Vec<KillEvent> = vec![];
+    let mut deaths: Vec<(PlayerId, KillMethod)> = vec![];
 
     let role_of = |id: PlayerId| -> shared::Role {
         players
@@ -60,12 +67,14 @@ pub async fn run_game(
                 method,
             });
         }
+        deaths.extend(night_deaths.iter().copied());
         alive.retain(|p| !night_deaths.iter().any(|&(v, _)| v == p.id));
 
         if let Some(outcome) = resolved_winner(players, &alive, &kills) {
             return GameOutcome {
                 winner: outcome,
                 rounds_played: round,
+                deaths,
             };
         }
 
@@ -77,14 +86,18 @@ pub async fn run_game(
                 method,
             });
         }
+        deaths.extend(day_deaths.iter().copied());
         alive.retain(|p| !day_deaths.iter().any(|&(v, _)| v == p.id));
 
         if let Some(outcome) = resolved_winner(players, &alive, &kills) {
             return GameOutcome {
                 winner: outcome,
                 rounds_played: round,
+                deaths,
             };
         }
+
+        presenter.advance_round();
     }
 
     GameOutcome {
@@ -92,6 +105,7 @@ pub async fn run_game(
             "max_rounds reached without a resolved winner (likely repeated tied votes)",
         ),
         rounds_played: max_rounds,
+        deaths,
     }
 }
 
