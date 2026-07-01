@@ -135,11 +135,14 @@ pub struct DayContext<'a> {
 /// used her heal potion yet"). Kept generic — `primary_used`/
 /// `secondary_used` rather than `heal_used`/`poison_used` — so a new
 /// one-shot-ability role doesn't need a struct change, just a doc comment
-/// explaining what its flag means.
+/// explaining what its flag means. Same idea for `remembered_player`: e.g.
+/// Wild Child's chosen role model, checked each round by
+/// `game::apply_transforms` to see if that player has died.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RoleState {
     pub primary_used: bool,
     pub secondary_used: bool,
+    pub remembered_player: Option<PlayerId>,
 }
 
 /// The seam every role implements. Three hooks for now (this is a proof of

@@ -73,6 +73,7 @@ mod tests {
         let mut state = RoleState {
             primary_used: true,
             secondary_used: true,
+            ..Default::default()
         };
         assert_eq!(gunner.day_action(&ctx(Some(PlayerId(2))), &mut state), vec![]);
     }

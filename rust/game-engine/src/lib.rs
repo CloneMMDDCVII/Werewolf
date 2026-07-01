@@ -45,7 +45,7 @@ pub fn evaluate_winner_with_kills(players: &[PlayerState], kills: &[KillEvent]) 
 /// Mirrors `WolfRoles` array (Werewolf.cs:48) plus the `SnowWolf` special-case
 /// that appears alongside it at every call site. Notably excludes `Sorcerer`,
 /// which has `Team::Wolf` but is not counted here in the original code.
-fn is_wolf_muscle(role: Role) -> bool {
+pub(crate) fn is_wolf_muscle(role: Role) -> bool {
     matches!(
         role,
         Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan | Role::SnowWolf

@@ -101,6 +101,7 @@ mod tests {
         let mut state = RoleState {
             primary_used: true,
             secondary_used: false,
+            ..Default::default()
         };
         assert_eq!(witch.night_action(&ctx, &mut state), vec![]);
     }
