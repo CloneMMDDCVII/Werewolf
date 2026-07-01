@@ -32,7 +32,7 @@ use crate::roles::{
     RoleState,
 };
 use async_trait::async_trait;
-use shared::{KillMethod, Role};
+use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
 
 /// Identifies *why* a player is being asked something, so a presenter can
@@ -159,23 +159,37 @@ pub const ALL_PROMPTS: &[Prompt] = &[
 ];
 
 /// Something that happened, worth narrating, that *isn't* a question —
-/// the counterpart to `Prompt` for events instead of decisions. Only
-/// covers deaths so far (the one thing `run_game` already produces
-/// structured data for); transforms and the game-over announcement are
-/// the natural next variants to add, same shape, same place. Carries
+/// the counterpart to `Prompt` for events instead of decisions. Carries
 /// whatever a presenter needs to pick the right legacy flavor text
 /// itself (the victim's role *at the moment they died*, not just their
 /// id) — a presenter should never need to reach back into game state to
 /// answer "what do I say," the event handed to it should already be
 /// self-contained, the same way `NightContext`/`DayContext` hand a role
 /// everything it needs instead of letting it query other players' state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NarrationEvent {
     Death {
         victim: PlayerId,
         role: Role,
         method: KillMethod,
     },
+    /// A role transform resolved (Werewolf.cs's `Transform(...)` calls) —
+    /// Traitor becoming a Wolf, Doppelganger copying a dead role model,
+    /// etc. `from`/`to` rather than just `to` because several legacy
+    /// messages (`DGToWolf`, `DGToCult`, ...) are phrased around what the
+    /// player *was*, not just what they became.
+    Transform {
+        player: PlayerId,
+        from: Role,
+        to: Role,
+    },
+    /// The game has ended. Carries the whole `WinOutcome`, not just a
+    /// `Team`, so a presenter can tell a genuine "no winner yet" (never
+    /// produced — `run_game` only emits this once it actually returns)
+    /// apart from the honest non-`Team` cases (`RngDependent`,
+    /// `InsufficientData`, `Unimplemented`) this proof-of-concept
+    /// sometimes has to report instead of a clean win.
+    GameOver { winner: crate::WinOutcome },
 }
 
 /// Maps a death to the real legacy flavor key, where this proof-of-concept
@@ -198,6 +212,59 @@ pub fn death_locale_key(_role: Role, method: KillMethod) -> Option<&'static str>
     }
 }
 
+/// Maps a resolved transform to its real legacy flavor key. Only the
+/// transforms `game::apply_transforms` actually models have one:
+/// Traitor→Wolf (`TraitorTurnWolf`), ApprenticeSeer→Seer
+/// (`ApprenticeNowSeer`), WildChild→Wolf (`WildChildTransform`), and
+/// Doppelganger copying a dead role model into one of the four roles the
+/// legacy game has dedicated flavor text for (`DGToWolf`/`DGToCult`/
+/// `DGToMason`/`DGToSnowWolf`) — a Doppelganger copying any other role
+/// has no dedicated key in English.xml (checked directly), so falls
+/// through to `None` same as everything else uncovered.
+pub fn transform_locale_key(from: Role, to: Role) -> Option<&'static str> {
+    match (from, to) {
+        (Role::Traitor, Role::Wolf) => Some("TraitorTurnWolf"),
+        (Role::ApprenticeSeer, Role::Seer) => Some("ApprenticeNowSeer"),
+        (Role::WildChild, Role::Wolf) => Some("WildChildTransform"),
+        (Role::Doppelganger, Role::Wolf) => Some("DGToWolf"),
+        (Role::Doppelganger, Role::Cultist) => Some("DGToCult"),
+        (Role::Doppelganger, Role::Mason) => Some("DGToMason"),
+        (Role::Doppelganger, Role::SnowWolf) => Some("DGToSnowWolf"),
+        _ => None,
+    }
+}
+
+/// Maps a game-ending `WinOutcome` to its real legacy per-team victory
+/// key. Only defined for an actual `Team` win — the RNG/data-gap
+/// `WinOutcome` variants (`RngDependent`, `InsufficientData`,
+/// `Unimplemented`) have no legacy equivalent to look up, since the real
+/// game always resolved to a concrete winner one way or another; that gap
+/// is exactly what those variants exist to flag (see `WinOutcome`'s own
+/// doc). `Team::NoOne`/`Team::Thief` also have no key — `Team::Thief` is
+/// the Thief's transient pre-steal team, never itself a winning faction
+/// in `evaluate_winner_with_kills` (checked: nothing produces
+/// `WinOutcome::Team(Team::Thief)` today), and no "nobody wins" win
+/// screen exists in English.xml either. Both are still named explicitly
+/// rather than folded behind the RNG/data-gap arm below, so a reader
+/// isn't left wondering whether their absence is an oversight.
+pub fn game_over_locale_key(outcome: &crate::WinOutcome) -> Option<&'static str> {
+    use crate::WinOutcome;
+    match outcome {
+        WinOutcome::Team(Team::Village) => Some("VillageWins"),
+        WinOutcome::Team(Team::Wolf) => Some("WolfWins"),
+        WinOutcome::Team(Team::Tanner) => Some("TannerWins"),
+        WinOutcome::Team(Team::Cult) => Some("CultWins"),
+        WinOutcome::Team(Team::SerialKiller) => Some("SerialKillerWins"),
+        WinOutcome::Team(Team::Arsonist) => Some("ArsonistWins"),
+        WinOutcome::Team(Team::Lovers) => Some("LoversWin"),
+        WinOutcome::Team(Team::NoOne)
+        | WinOutcome::Team(Team::Thief)
+        | WinOutcome::RngDependent(_)
+        | WinOutcome::InsufficientData(_)
+        | WinOutcome::Unimplemented(_) => None,
+    }
+}
+
 /// Every distinct locale key `prompt_locale_key`/`death_locale_key` can
 /// currently produce, in one place — the input to the locale-coverage
 /// completeness check (`sim/tests/locale_coverage.rs`), which measures
@@ -212,9 +279,72 @@ pub fn death_locale_key(_role: Role, method: KillMethod) -> Option<&'static str>
 pub fn all_mapped_locale_keys() -> Vec<&'static str> {
     let mut keys: Vec<&'static str> = ALL_PROMPTS.iter().filter_map(|&p| prompt_locale_key(p)).collect();
     keys.push("LynchKill"); // death_locale_key(_, KillMethod::Lynch)
+    keys.extend([
+        // transform_locale_key's non-`None` outputs.
+        "TraitorTurnWolf",
+        "ApprenticeNowSeer",
+        "WildChildTransform",
+        "DGToWolf",
+        "DGToCult",
+        "DGToMason",
+        "DGToSnowWolf",
+        // game_over_locale_key's non-`None` outputs.
+        "VillageWins",
+        "WolfWins",
+        "TannerWins",
+        "CultWins",
+        "SerialKillerWins",
+        "ArsonistWins",
+        "LoversWin",
+    ]);
     keys.sort_unstable();
     keys.dedup();
     keys
+}
+
+#[cfg(test)]
+mod locale_mapping_tests {
+    use super::*;
+    use crate::WinOutcome;
+
+    #[test]
+    fn fool_sorcerer_oracle_all_reuse_seers_exact_prompt() {
+        assert_eq!(prompt_locale_key(Prompt::SeerCheck), Some("AskSee"));
+        assert_eq!(prompt_locale_key(Prompt::FoolInvestigate), Some("AskSee"));
+        assert_eq!(prompt_locale_key(Prompt::SorcererInvestigate), Some("AskSee"));
+        assert_eq!(prompt_locale_key(Prompt::OracleInvestigate), Some("AskSee"));
+    }
+
+    #[test]
+    fn a_new_role_has_no_legacy_prompt_key() {
+        assert_eq!(prompt_locale_key(Prompt::WitchHeal), None);
+    }
+
+    #[test]
+    fn known_transforms_map_to_their_real_keys() {
+        assert_eq!(transform_locale_key(Role::Traitor, Role::Wolf), Some("TraitorTurnWolf"));
+        assert_eq!(transform_locale_key(Role::ApprenticeSeer, Role::Seer), Some("ApprenticeNowSeer"));
+        assert_eq!(transform_locale_key(Role::WildChild, Role::Wolf), Some("WildChildTransform"));
+        assert_eq!(transform_locale_key(Role::Doppelganger, Role::SnowWolf), Some("DGToSnowWolf"));
+    }
+
+    #[test]
+    fn a_doppelganger_copying_an_uncelebrated_role_has_no_key() {
+        assert_eq!(transform_locale_key(Role::Doppelganger, Role::Villager), None);
+    }
+
+    #[test]
+    fn known_win_outcomes_map_to_their_real_keys() {
+        assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::Village)), Some("VillageWins"));
+        assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::Wolf)), Some("WolfWins"));
+        assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::Lovers)), Some("LoversWin"));
+    }
+
+    #[test]
+    fn rng_dependent_and_no_one_outcomes_have_no_key() {
+        assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::NoOne)), None);
+        assert_eq!(game_over_locale_key(&WinOutcome::RngDependent("test")), None);
+    }
 }
 
 /// The seam: real I/O (or a test double) lives entirely behind this trait.

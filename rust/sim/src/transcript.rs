@@ -18,7 +18,10 @@
 //! from `GameOutcome` after the whole game ends.
 
 use async_trait::async_trait;
-use game_engine::orchestrator::{death_locale_key, prompt_locale_key, NarrationEvent, Presenter, Prompt};
+use game_engine::orchestrator::{
+    death_locale_key, game_over_locale_key, prompt_locale_key, transform_locale_key, NarrationEvent,
+    Presenter, Prompt,
+};
 use game_engine::roles::PlayerId;
 use i18n::LanguagePack;
 use std::collections::HashMap;
@@ -46,6 +49,13 @@ fn prompt_fallback_text(prompt: Prompt) -> &'static str {
 /// are all Serial-Killer-specific and not yet modeled here).
 fn death_fallback_template() -> &'static str {
     "{0} did not survive."
+}
+
+/// Same idea, for a transform with no legacy key (see
+/// `orchestrator::transform_locale_key` — e.g. a Doppelganger copying a
+/// role other than the four with dedicated flavor text).
+fn transform_fallback_template() -> &'static str {
+    "{0} has transformed."
 }
 
 /// Whether a prompt is asked during the night or day phase — purely for
@@ -218,6 +228,33 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
                 // name.
                 let line = template.replace("{0}", &name).replacen("{1}", "", 1);
                 self.lines.push(format!("{} ({method:?})", strip_unfilled_placeholders(&line)));
+            }
+            NarrationEvent::Transform { player, from, to } => {
+                let name = self.name(player);
+                let template = match transform_locale_key(from, to) {
+                    Some(key) => self.pack.get(key).unwrap_or_else(|| transform_fallback_template()),
+                    None => transform_fallback_template(),
+                };
+                // `{0}` means different things across these legacy keys -
+                // the transforming player's own name in `DGToWolf`, but
+                // the *dead role model's* name in `WildChildTransform`/
+                // `ApprenticeNowSeer`. `NarrationEvent::Transform` doesn't
+                // carry "who died to cause this," only who transformed
+                // and between which roles, so this always fills `{0}`
+                // with the transforming player's own name - correct for
+                // the Doppelganger keys, an honest approximation for the
+                // other two rather than plumbing more context through
+                // for this slice.
+                let line = template.replace("{0}", &name);
+                self.lines
+                    .push(format!("{} ({from:?} -> {to:?})", strip_unfilled_placeholders(&line)));
+            }
+            NarrationEvent::GameOver { winner } => {
+                let template = match game_over_locale_key(&winner) {
+                    Some(key) => self.pack.get(key).unwrap_or("The game is over."),
+                    None => "The game is over.",
+                };
+                self.lines.push(format!("{template} ({winner:?})"));
             }
         }
     }

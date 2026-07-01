@@ -57,9 +57,11 @@ pub async fn run_game(
         let night_died_with_roles = record_deaths(&alive, &night_deaths, &mut kills, &mut deaths);
         narrate_deaths(&night_deaths, &night_died_with_roles, presenter).await;
         alive.retain(|p| !night_deaths.iter().any(|&(v, _)| v == p.id));
-        apply_transforms(&mut alive, &states, &night_died_with_roles);
+        let night_transforms = apply_transforms(&mut alive, &states, &night_died_with_roles);
+        narrate_all(night_transforms, presenter).await;
 
         if let Some(outcome) = resolved_winner(&alive, &kills) {
+            presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
             return GameOutcome {
                 winner: outcome,
                 rounds_played: round,
@@ -73,9 +75,11 @@ pub async fn run_game(
         let day_died_with_roles = record_deaths(&alive, &day_deaths, &mut kills, &mut deaths);
         narrate_deaths(&day_deaths, &day_died_with_roles, presenter).await;
         alive.retain(|p| !day_deaths.iter().any(|&(v, _)| v == p.id));
-        apply_transforms(&mut alive, &states, &day_died_with_roles);
+        let day_transforms = apply_transforms(&mut alive, &states, &day_died_with_roles);
+        narrate_all(day_transforms, presenter).await;
 
         if let Some(outcome) = resolved_winner(&alive, &kills) {
+            presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
             return GameOutcome {
                 winner: outcome,
                 rounds_played: round,
@@ -86,10 +90,12 @@ pub async fn run_game(
         presenter.advance_round();
     }
 
+    let winner = WinOutcome::Unimplemented(
+        "max_rounds reached without a resolved winner (likely repeated tied votes)",
+    );
+    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone() }).await;
     GameOutcome {
-        winner: WinOutcome::Unimplemented(
-            "max_rounds reached without a resolved winner (likely repeated tied votes)",
-        ),
+        winner,
         rounds_played: max_rounds,
         deaths,
     }
@@ -147,6 +153,17 @@ async fn narrate_deaths(
     }
 }
 
+/// Tells the presenter about a batch of already-built events, in order.
+/// Shared by anything that (unlike `narrate_deaths`) can build its
+/// `NarrationEvent`s directly rather than zipping two parallel arrays —
+/// `apply_transforms` today, the natural landing spot for anything else
+/// that ends up producing a batch of events at once.
+async fn narrate_all(events: Vec<NarrationEvent>, presenter: &mut dyn Presenter) {
+    for event in events {
+        presenter.narrate(event).await;
+    }
+}
+
 /// Applies role transforms. Most are triggered by the current alive
 /// roster's composition rather than by reacting to one specific death
 /// event — "no wolf muscle currently alive," "no Seer currently alive,"
@@ -168,26 +185,50 @@ async fn narrate_deaths(
 ///
 /// Idempotent: once a player's role has been transformed away from the
 /// one a given branch matches on, that branch doesn't match them again.
+///
+/// Returns every transform that happened, as `NarrationEvent`s, for the
+/// caller to narrate — same shape as `record_deaths` returning
+/// `(PlayerId, Role)` pairs rather than narrating inline: building the
+/// event and mutating `player.role` are one step here (the `from` has to
+/// be captured before it's overwritten), but *telling* a presenter is a
+/// separate concern the caller (`run_game`) owns, same as it does for
+/// deaths.
 fn apply_transforms(
     alive: &mut [AlivePlayer],
     states: &HashMap<PlayerId, RoleState>,
     just_died: &[(PlayerId, Role)],
-) {
+) -> Vec<NarrationEvent> {
     let any_wolf_muscle = alive.iter().any(|p| is_wolf_muscle(p.role));
     let any_seer = alive.iter().any(|p| p.role == Role::Seer);
     let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
+    let mut events = vec![];
 
     for player in alive.iter_mut() {
         match player.role {
             Role::Traitor if !any_wolf_muscle => {
+                events.push(NarrationEvent::Transform {
+                    player: player.id,
+                    from: player.role,
+                    to: Role::Wolf,
+                });
                 player.role = Role::Wolf;
             }
             Role::ApprenticeSeer if !any_seer => {
+                events.push(NarrationEvent::Transform {
+                    player: player.id,
+                    from: player.role,
+                    to: Role::Seer,
+                });
                 player.role = Role::Seer;
             }
             Role::WildChild => {
                 if let Some(model) = states.get(&player.id).and_then(|s| s.remembered_player) {
                     if !alive_ids.contains(&model) {
+                        events.push(NarrationEvent::Transform {
+                            player: player.id,
+                            from: player.role,
+                            to: Role::Wolf,
+                        });
                         player.role = Role::Wolf;
                     }
                 }
@@ -196,6 +237,11 @@ fn apply_transforms(
                 if let Some(model) = states.get(&player.id).and_then(|s| s.remembered_player) {
                     if let Some(&(_, model_role)) = just_died.iter().find(|&&(id, _)| id == model)
                     {
+                        events.push(NarrationEvent::Transform {
+                            player: player.id,
+                            from: player.role,
+                            to: model_role,
+                        });
                         player.role = model_role;
                     }
                 }
@@ -203,6 +249,7 @@ fn apply_transforms(
             _ => {}
         }
     }
+    events
 }
 
 /// `Some(outcome)` only for an actual `Team` win — every other `WinOutcome`
@@ -243,8 +290,16 @@ mod transform_tests {
                 role: Role::Villager,
             },
         ];
-        apply_transforms(&mut alive, &HashMap::new(), &[]);
+        let events = apply_transforms(&mut alive, &HashMap::new(), &[]);
         assert_eq!(alive[0].role, Role::Wolf);
+        assert_eq!(
+            events,
+            vec![NarrationEvent::Transform {
+                player: PlayerId(1),
+                from: Role::Traitor,
+                to: Role::Wolf,
+            }]
+        );
     }
 
     #[test]
@@ -357,8 +412,16 @@ mod transform_tests {
             },
         );
         let just_died = [(role_model, Role::SerialKiller)];
-        apply_transforms(&mut alive, &states, &just_died);
+        let events = apply_transforms(&mut alive, &states, &just_died);
         assert_eq!(alive[0].role, Role::SerialKiller);
+        assert_eq!(
+            events,
+            vec![NarrationEvent::Transform {
+                player: doppelganger,
+                from: Role::Doppelganger,
+                to: Role::SerialKiller,
+            }]
+        );
     }
 
     #[test]

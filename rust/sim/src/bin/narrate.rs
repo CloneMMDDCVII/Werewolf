@@ -60,13 +60,18 @@ async fn main() {
         fixture.winner
     ));
 
-    // Death announcements arrive via `TranscriptPresenter::narrate`, called
-    // by `run_game` itself the moment each death resolves - no separate
-    // pass over `outcome.deaths` needed here anymore.
+    // Death/transform/game-over announcements all arrive via
+    // `TranscriptPresenter::narrate`, called by `run_game` itself the
+    // moment each one resolves - no separate pass over `outcome` needed
+    // to reconstruct them here anymore.
     let outcome = run_game(&alive, &mut transcript, 50).await;
 
+    // This last line is a harness summary, not in-game narration (the
+    // game already narrated its own ending via `NarrationEvent::GameOver`
+    // above) - it exists to compare the simulated result against the
+    // historical record, which nothing a real bot would say.
     transcript.push_line(format!(
-        "=== Game over after {} round(s): {:?} (historical: {:?}) ===",
+        "=== [harness] {} round(s) played, simulated {:?}, historical {:?} ===",
         outcome.rounds_played, outcome.winner, fixture.winner
     ));
 
