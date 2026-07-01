@@ -54,6 +54,7 @@ pub enum Role {
 
 impl Role {
     /// Mirrors `Werewolf.cs::SetTeam` (Werewolf Node/Werewolf.cs:1546-1610).
+    /// Chef/Barkeep (beta-only roles) verified against GreyWolfDev/Werewolf@beta.
     pub fn team(self) -> Team {
         use Role::*;
         match self {
