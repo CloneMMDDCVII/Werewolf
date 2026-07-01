@@ -57,6 +57,61 @@ pub enum Role {
     Witch,
 }
 
+/// Every `Role` variant, in declaration order — for anything that needs
+/// "all of them" (fuzzing a random roster, a future exhaustive coverage
+/// report) without re-deriving the list by hand and risking it drifting
+/// from the enum above. Hand-kept in sync deliberately rather than via a
+/// derive macro: one more dependency isn't worth it for a list this small
+/// and this rarely changed.
+pub const ALL_ROLES: &[Role] = &[
+    Role::Villager,
+    Role::Drunk,
+    Role::Harlot,
+    Role::Seer,
+    Role::Traitor,
+    Role::GuardianAngel,
+    Role::Detective,
+    Role::Wolf,
+    Role::Cursed,
+    Role::Gunner,
+    Role::Tanner,
+    Role::Fool,
+    Role::WildChild,
+    Role::Beholder,
+    Role::ApprenticeSeer,
+    Role::Cultist,
+    Role::CultistHunter,
+    Role::Mason,
+    Role::Doppelganger,
+    Role::Cupid,
+    Role::Hunter,
+    Role::SerialKiller,
+    Role::Sorcerer,
+    Role::AlphaWolf,
+    Role::WolfCub,
+    Role::Blacksmith,
+    Role::ClumsyGuy,
+    Role::Mayor,
+    Role::Prince,
+    Role::Lycan,
+    Role::Pacifist,
+    Role::WiseElder,
+    Role::Oracle,
+    Role::Sandman,
+    Role::WolfMan,
+    Role::Thief,
+    Role::Troublemaker,
+    Role::Chemist,
+    Role::SnowWolf,
+    Role::GraveDigger,
+    Role::Augur,
+    Role::Arsonist,
+    Role::Spumpkin,
+    Role::Chef,
+    Role::Barkeep,
+    Role::Witch,
+];
+
 impl Role {
     /// Mirrors `Werewolf.cs::SetTeam` (Werewolf Node/Werewolf.cs:1546-1610).
     /// Chef/Barkeep (beta-only roles) verified against GreyWolfDev/Werewolf@beta.
@@ -160,6 +215,74 @@ impl Winner {
             Winner::Arsonist => Team::Arsonist,
             Winner::Lovers => Team::Lovers,
             Winner::NoOne => Team::NoOne,
+        }
+    }
+}
+
+#[cfg(test)]
+mod all_roles_tests {
+    use super::*;
+
+    /// Exhaustive on purpose, no `_` arm: if a `Role` variant is ever added
+    /// without a matching entry in `ALL_ROLES`, this fails to *compile*,
+    /// not just to pass a runtime check — same guarantee as
+    /// `roles::behavior_for`'s exhaustive match, applied to keep the
+    /// fuzz-testing role list honest.
+    fn assert_every_variant_is_handled(role: Role) {
+        match role {
+            Role::Villager
+            | Role::Drunk
+            | Role::Harlot
+            | Role::Seer
+            | Role::Traitor
+            | Role::GuardianAngel
+            | Role::Detective
+            | Role::Wolf
+            | Role::Cursed
+            | Role::Gunner
+            | Role::Tanner
+            | Role::Fool
+            | Role::WildChild
+            | Role::Beholder
+            | Role::ApprenticeSeer
+            | Role::Cultist
+            | Role::CultistHunter
+            | Role::Mason
+            | Role::Doppelganger
+            | Role::Cupid
+            | Role::Hunter
+            | Role::SerialKiller
+            | Role::Sorcerer
+            | Role::AlphaWolf
+            | Role::WolfCub
+            | Role::Blacksmith
+            | Role::ClumsyGuy
+            | Role::Mayor
+            | Role::Prince
+            | Role::Lycan
+            | Role::Pacifist
+            | Role::WiseElder
+            | Role::Oracle
+            | Role::Sandman
+            | Role::WolfMan
+            | Role::Thief
+            | Role::Troublemaker
+            | Role::Chemist
+            | Role::SnowWolf
+            | Role::GraveDigger
+            | Role::Augur
+            | Role::Arsonist
+            | Role::Spumpkin
+            | Role::Chef
+            | Role::Barkeep
+            | Role::Witch => {}
+        }
+    }
+
+    #[test]
+    fn all_roles_covers_every_variant() {
+        for &role in ALL_ROLES {
+            assert_every_variant_is_handled(role);
         }
     }
 }
