@@ -323,10 +323,12 @@ dependencies = [
 name = "sim"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "game-engine",
  "serde",
  "serde_json",
  "shared",
+ "tokio",
 ]
 
 [[package]]
