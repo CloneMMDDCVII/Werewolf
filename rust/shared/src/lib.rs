@@ -141,4 +141,17 @@ impl Winner {
             _ => None,
         }
     }
+
+    pub fn as_team(self) -> Team {
+        match self {
+            Winner::Village => Team::Village,
+            Winner::Wolf => Team::Wolf,
+            Winner::Tanner => Team::Tanner,
+            Winner::Cult => Team::Cult,
+            Winner::SerialKiller => Team::SerialKiller,
+            Winner::Arsonist => Team::Arsonist,
+            Winner::Lovers => Team::Lovers,
+            Winner::NoOne => Team::NoOne,
+        }
+    }
 }
