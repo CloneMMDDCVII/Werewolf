@@ -6,14 +6,16 @@
 //! `Languages/English.xml` locale pack alongside the question and answer.
 //!
 //! This is deliberately *not* a faithful re-implementation of Werewolf.cs's
-//! messaging: many prompts (Cupid's second target, Blacksmith, the
-//! automatic Augur/Oracle/Sorcerer reveals, anything about the Witch,
-//! a new role) have no exact matching locale key, either because the
-//! legacy game never sends a literal question for them (the reveal is
-//! automatic) or because this proof-of-concept's Prompt doesn't line up
-//! 1:1 with a legacy `QuestionType`. Those get an honestly-labeled
-//! generic line instead of a fabricated locale-perfect one — see
-//! `prompt_text`.
+//! messaging: a few prompts (Cupid's second target, Blacksmith, Spumpkin,
+//! anything about the Witch) have no exact matching locale key, either
+//! because there's no locale entry for that menu at all or because the
+//! role isn't in the legacy game. Those get an honestly-labeled generic
+//! line instead of a fabricated locale-perfect one — see
+//! `prompt_fallback_text`. Augur has no `Prompt` at all (see
+//! `roles::augur`'s doc: it has no player-facing choice to narrate).
+//! Everything else — including Fool/Sorcerer/Oracle, which this file
+//! initially mismapped as having no locale key before checking
+//! Werewolf.cs:5174-5178 directly — uses the exact real menu text.
 
 use async_trait::async_trait;
 use game_engine::orchestrator::{Presenter, Prompt};
@@ -30,10 +32,19 @@ use std::collections::HashMap;
 fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
     match prompt {
         Prompt::WolfEat => Some("AskEat"),
-        Prompt::SeerCheck => Some("AskSee"),
+        // Seer, Fool, Sorcerer, and Oracle are all asked the exact same
+        // "Who do you want to see?" menu in the legacy game
+        // (Werewolf.cs:5174-5178: one `case` block covers all four) - an
+        // earlier version of this map wrongly treated Fool/Sorcerer/Oracle
+        // as having no matching prompt at all.
+        Prompt::SeerCheck | Prompt::FoolInvestigate | Prompt::SorcererInvestigate | Prompt::OracleInvestigate => {
+            Some("AskSee")
+        }
         Prompt::HarlotVisit => Some("AskVisit"),
         Prompt::GuardianAngelProtect => Some("AskGuard"),
         Prompt::DetectiveInvestigate => Some("AskDetect"),
+        // Werewolf.cs:5216-5219.
+        Prompt::CultistHunterInvestigate => Some("AskHunt"),
         Prompt::WildChildRoleModel => Some("AskRoleModel"),
         Prompt::CupidLink => Some("AskCupid1"),
         Prompt::LynchVote => Some("AskLynch"),
@@ -46,21 +57,12 @@ fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
         Prompt::ChemistBrew => Some("AskChemist"),
         Prompt::ArsonistDouse | Prompt::ArsonistSpark => Some("AskArsonist"),
         Prompt::TroublemakerTrouble => Some("AskTroublemaker"),
-        // No exact legacy question exists for these: FoolInvestigate and
-        // OracleInvestigate/SorcererInvestigate/CultistHunterInvestigate
-        // resolve automatically in Werewolf.cs rather than via a menu
-        // (Augur/Oracle-style passive reveals), WitchHeal/WitchPoison
-        // belong to a role that isn't in the legacy game at all, and
-        // BlacksmithSilver/SpumpkinDetonate have no locale key in
-        // English.xml despite being menu-driven in code.
-        Prompt::FoolInvestigate
-        | Prompt::WitchHeal
-        | Prompt::WitchPoison
-        | Prompt::BlacksmithSilver
-        | Prompt::CultistHunterInvestigate
-        | Prompt::SorcererInvestigate
-        | Prompt::OracleInvestigate
-        | Prompt::SpumpkinDetonate => None,
+        // WitchHeal/WitchPoison belong to a role that isn't in the legacy
+        // game at all, so there's no locale key to find. BlacksmithSilver
+        // and SpumpkinDetonate are menu-driven in Werewolf.cs but have no
+        // corresponding key in English.xml (checked directly - not an
+        // oversight in this mapping).
+        Prompt::WitchHeal | Prompt::WitchPoison | Prompt::BlacksmithSilver | Prompt::SpumpkinDetonate => None,
     }
 }
 
@@ -69,13 +71,9 @@ fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
 /// meaningful rather than an empty string.
 fn prompt_fallback_text(prompt: Prompt) -> &'static str {
     match prompt {
-        Prompt::FoolInvestigate => "(no exact legacy prompt) Who do you want to investigate?",
         Prompt::WitchHeal => "(new role, not in the legacy game) Who do you want to heal?",
         Prompt::WitchPoison => "(new role, not in the legacy game) Who do you want to poison?",
         Prompt::BlacksmithSilver => "(no locale key in English.xml) Who do you want to protect with silver?",
-        Prompt::CultistHunterInvestigate => "(no exact legacy prompt) Who do you want to investigate?",
-        Prompt::SorcererInvestigate => "(resolves automatically in the legacy game) Who do you want to check?",
-        Prompt::OracleInvestigate => "(no exact legacy prompt) Who do you want to investigate?",
         Prompt::SpumpkinDetonate => "(no locale key in English.xml) Who do you want to detonate on?",
         _ => "Who do you choose?",
     }
@@ -132,15 +130,26 @@ impl<'a> TranscriptPresenter<'a> {
     }
 
     fn question_text(&self, prompt: Prompt) -> String {
-        match prompt_locale_key(prompt) {
+        let raw = match prompt_locale_key(prompt) {
             Some(key) => self
                 .pack
                 .get(key)
                 .map(str::to_string)
                 .unwrap_or_else(|| prompt_fallback_text(prompt).to_string()),
             None => prompt_fallback_text(prompt).to_string(),
-        }
+        };
+        strip_unfilled_placeholders(&raw)
     }
+}
+
+/// Some locale templates carry a `{0}`/`{1}` for data this proof-of-concept
+/// doesn't track (e.g. `AskShoot`'s "{0} bullet(s) remain." needs a
+/// Gunner's remaining-bullet count, which `RoleState` doesn't expose to a
+/// presenter). Leaving the raw brace in the transcript would read as a
+/// broken template rather than an honest omission, so it's replaced with
+/// `[?]` instead — visibly a gap, not a fabricated number.
+fn strip_unfilled_placeholders(s: &str) -> String {
+    s.replace("{0}", "[?]").replace("{1}", "[?]")
 }
 
 #[async_trait(?Send)]
