@@ -84,10 +84,13 @@ pub enum NightAction {
     Poison { target: PlayerId },
     LinkLovers { a: PlayerId, b: PlayerId },
     /// Harlot visiting a target overnight (Werewolf.cs:2358-2360,
-    /// 2424-2428). What happens if the visited player turns out to be a
-    /// wolf, or is otherwise unavailable, is resolution logic this
-    /// proof-of-concept doesn't model yet — see `harlot` module doc.
-    Visit { target: PlayerId },
+    /// 2424-2428). Carries `visitor` (not just `target`) so
+    /// `orchestrator::resolve_harlot_visit_deaths` can kill the right
+    /// player: visiting whoever the wolves' actually ate that same night
+    /// kills the Harlot (Werewolf.cs:2352-2360, `KillMthd.VisitWolf`,
+    /// unconditional — no RNG involved). Being unable to visit someone
+    /// already occupied (Werewolf.cs:2424-2428) is still not modeled.
+    Visit { visitor: PlayerId, target: PlayerId },
     /// Guardian Angel protecting a target overnight (Werewolf.cs:2361-2372,
     /// 3091 onward). Same caveat as `Visit`: the actual protection
     /// resolution (does it save them, does the GA risk dying) isn't
@@ -126,10 +129,12 @@ pub enum NightAction {
     /// (which waits for the role model to die), the steal is immediate —
     /// modeled as its own variant so a reader isn't left wondering why an
     /// "immediate" and a "wait for death" mechanic share one action shape.
-    /// The actual role swap, and the RNG success chance the legacy code
-    /// rolls in `ThiefFull` mode (Werewolf.cs:4173), is resolution logic
-    /// this proof-of-concept doesn't attempt.
-    StealRole { target: PlayerId },
+    /// Carries `thief` (its own actor) so `game::run_game` can apply the
+    /// swap: the Thief becomes the target's role, and the target becomes
+    /// a Villager (Werewolf.cs:2483-2486, the non-`ThiefFull` case this
+    /// proof-of-concept models). The RNG success chance `ThiefFull` mode
+    /// rolls (Werewolf.cs:4173) is still not attempted.
+    StealRole { thief: PlayerId, target: PlayerId },
     /// Chemist's nightly gambit (Werewolf.cs:3792-3821): visit a target,
     /// with an RNG chance of killing them (`KillMthd.Chemistry`) or,
     /// on failure, killing the Chemist instead. Only the target-picking

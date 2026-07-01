@@ -86,6 +86,11 @@ pub enum Prompt {
     /// Hunter's revenge shot, asked when they die any other way
     /// (Werewolf.cs:5420-5441: `HunterShotChoice`).
     HunterFinalShotKilled,
+    /// The wolves' bonus kill after a Wolf Cub dies (Werewolf.cs:1047-1053)
+    /// — reuses the exact same `AskEat` text as the main wolf vote, since
+    /// that's what the legacy code itself does (`GetLocaleString("AskEat")`
+    /// again, not a distinct key).
+    WolfCubBonusKill,
 }
 
 /// Maps a `Prompt` to the real `Languages/English.xml` key the legacy game
@@ -130,6 +135,7 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
         Prompt::TroublemakerTrouble => Some("AskTroublemaker"),
         Prompt::HunterFinalShotLynched => Some("HunterLynchedChoice"),
         Prompt::HunterFinalShotKilled => Some("HunterShotChoice"),
+        Prompt::WolfCubBonusKill => Some("AskEat"),
         // WitchHeal/WitchPoison belong to a role that isn't in the legacy
         // game at all. BlacksmithSilver and SpumpkinDetonate are
         // menu-driven in Werewolf.cs but have no corresponding key in
@@ -171,6 +177,7 @@ pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::SpumpkinDetonate,
     Prompt::HunterFinalShotLynched,
     Prompt::HunterFinalShotKilled,
+    Prompt::WolfCubBonusKill,
 ];
 
 /// Something that happened, worth narrating, that *isn't* a question —
@@ -1030,6 +1037,59 @@ pub fn resolve_lover_deaths(
     chain
 }
 
+/// Harlot visiting whoever the wolves actually ate that same night kills
+/// her too (Werewolf.cs:2352-2360: `KillMthd.VisitWolf`) — unconditional,
+/// no RNG involved, unlike most of `VisitPlayer`'s other branches. Takes
+/// `night_actions` rather than just the wolf target because it needs to
+/// find *which* Harlot visited, if any — `NightAction::Visit` carries her
+/// own id for exactly this.
+pub fn resolve_harlot_visit_deaths(
+    night_actions: &[NightAction],
+    wolf_target: Option<PlayerId>,
+) -> Vec<(PlayerId, KillMethod)> {
+    let Some(wolf_target) = wolf_target else {
+        return vec![];
+    };
+    night_actions
+        .iter()
+        .filter_map(|a| match a {
+            NightAction::Visit { visitor, target } if *target == wolf_target => {
+                Some((*visitor, KillMethod::VisitWolf))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The wolves' bonus kill after a Wolf Cub dies (Werewolf.cs:1047-1053,
+/// `WolfCubKilled`): every surviving wolf-team member gets asked a second
+/// "who do you want to eat?" question (`Prompt::WolfCubBonusKill`, which
+/// reuses the real `AskEat` text — the legacy code's own comment does
+/// exactly the same reuse, `GetLocaleString("AskEat")`), majority-tallied
+/// the same way the main wolf vote is, excluding wolf-team targets same
+/// as the original. Called by `run_game` immediately after any batch of
+/// deaths includes a Wolf Cub — see that call site's doc for the
+/// same-night-vs-next-night timing simplification this makes.
+pub async fn resolve_wolf_cub_bonus_kill(
+    alive: &[AlivePlayer],
+    presenter: &mut dyn Presenter,
+) -> Option<PlayerId> {
+    let non_wolf_ids: Vec<PlayerId> = alive
+        .iter()
+        .filter(|p| !crate::is_wolf_muscle(p.role))
+        .map(|p| p.id)
+        .collect();
+
+    let mut votes = vec![];
+    for player in alive.iter().filter(|p| crate::is_wolf_muscle(p.role)) {
+        if let Some(target) = ask_one(presenter, player.id, Prompt::WolfCubBonusKill, &non_wolf_ids).await {
+            votes.push(target);
+        }
+    }
+
+    majority_target(votes.into_iter())
+}
+
 #[cfg(test)]
 mod apply_night_results_tests {
     use super::*;
@@ -1317,6 +1377,118 @@ mod lover_death_tests {
         );
 
         assert_eq!(chain, vec![]);
+    }
+}
+
+#[cfg(test)]
+mod harlot_visit_tests {
+    use super::*;
+
+    #[test]
+    fn visiting_the_wolves_actual_target_kills_the_harlot() {
+        let harlot = PlayerId(1);
+        let victim = PlayerId(2);
+        let actions = [NightAction::Visit {
+            visitor: harlot,
+            target: victim,
+        }];
+        assert_eq!(
+            resolve_harlot_visit_deaths(&actions, Some(victim)),
+            vec![(harlot, KillMethod::VisitWolf)]
+        );
+    }
+
+    #[test]
+    fn visiting_someone_else_is_safe() {
+        let harlot = PlayerId(1);
+        let elsewhere = PlayerId(3);
+        let wolf_target = PlayerId(2);
+        let actions = [NightAction::Visit {
+            visitor: harlot,
+            target: elsewhere,
+        }];
+        assert_eq!(resolve_harlot_visit_deaths(&actions, Some(wolf_target)), vec![]);
+    }
+
+    #[test]
+    fn no_wolf_target_means_no_visit_death() {
+        let harlot = PlayerId(1);
+        let target = PlayerId(2);
+        let actions = [NightAction::Visit {
+            visitor: harlot,
+            target,
+        }];
+        assert_eq!(resolve_harlot_visit_deaths(&actions, None), vec![]);
+    }
+
+    #[test]
+    fn no_harlot_in_play_means_no_visit_death() {
+        assert_eq!(resolve_harlot_visit_deaths(&[], Some(PlayerId(2))), vec![]);
+    }
+}
+
+#[cfg(test)]
+mod wolf_cub_bonus_kill_tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    struct ScriptedWolfPresenter {
+        answer: Option<PlayerId>,
+        asked: Vec<(PlayerId, Vec<PlayerId>)>,
+    }
+
+    #[async_trait(?Send)]
+    impl Presenter for ScriptedWolfPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if prompt != Prompt::WolfCubBonusKill || count != 1 {
+                return None;
+            }
+            self.asked.push((player, options.to_vec()));
+            self.answer.map(|t| vec![t])
+        }
+    }
+
+    #[tokio::test]
+    async fn every_surviving_wolf_is_asked_for_a_bonus_target() {
+        let wolf = PlayerId(1);
+        let villager = PlayerId(2);
+        let alive = vec![
+            AlivePlayer { id: wolf, role: Role::Wolf },
+            AlivePlayer { id: villager, role: Role::Villager },
+        ];
+        let mut presenter = ScriptedWolfPresenter {
+            answer: Some(villager),
+            asked: vec![],
+        };
+
+        let target = resolve_wolf_cub_bonus_kill(&alive, &mut presenter).await;
+
+        assert_eq!(target, Some(villager));
+        assert_eq!(presenter.asked.len(), 1);
+        assert_eq!(presenter.asked[0].0, wolf);
+        assert!(
+            !presenter.asked[0].1.contains(&wolf),
+            "the bonus kill's options should never include a wolf-team player"
+        );
+    }
+
+    #[tokio::test]
+    async fn declining_the_bonus_kill_kills_nobody() {
+        let alive = vec![
+            AlivePlayer { id: PlayerId(1), role: Role::Wolf },
+            AlivePlayer { id: PlayerId(2), role: Role::Villager },
+        ];
+        let mut presenter = ScriptedWolfPresenter {
+            answer: None,
+            asked: vec![],
+        };
+        assert_eq!(resolve_wolf_cub_bonus_kill(&alive, &mut presenter).await, None);
     }
 }
 

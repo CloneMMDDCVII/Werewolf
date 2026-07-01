@@ -2,12 +2,15 @@
 //! same night eat vote as `wolf::Wolf`/`alpha_wolf::AlphaWolf` — identical
 //! validation logic, same `EatVote` action.
 //!
-//! The real distinguishing ability (if WolfCub dies, the wolves get a
-//! bonus kill the following night, Werewolf.cs:2115-2153) is **not
-//! modeled here** — it's a delayed, cross-round effect distinct from
-//! anything else built so far. Team is already correct
-//! (`shared::Role::WolfCub` maps to `Team::Wolf`, and `is_wolf_muscle`
-//! already counts WolfCub as wolf muscle).
+//! The real distinguishing ability — if WolfCub dies, the wolves get a
+//! bonus kill (Werewolf.cs:1047-1053) — **is** modeled, in
+//! `game::maybe_wolf_cub_bonus_kill`, not here: it's triggered by a
+//! death, not by anything this passive-otherwise role does while alive,
+//! same reasoning as Hunter's revenge shot living in the orchestrator
+//! rather than in `roles::hunter`. See that function's doc for the
+//! same-night-vs-next-night timing simplification it makes. Team is
+//! already correct (`shared::Role::WolfCub` maps to `Team::Wolf`, and
+//! `is_wolf_muscle` already counts WolfCub as wolf muscle).
 
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
 use shared::{Role, Team};

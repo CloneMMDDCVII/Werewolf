@@ -8,6 +8,8 @@
 //! `ThiefFull` mode (a per-group setting that lets the Thief keep stealing
 //! every night rather than just once — Werewolf.cs:4164-4189) isn't
 //! modeled here; this file only covers the night-1 steal every game has.
+//! The actual role swap (`game::apply_thief_steal`) is applied by
+//! `run_game`, the same split as every other role-triggered transform.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
@@ -26,7 +28,10 @@ impl RoleBehavior for Thief {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {
                 state.primary_used = true;
-                vec![NightAction::StealRole { target }]
+                vec![NightAction::StealRole {
+                    thief: ctx.self_id,
+                    target,
+                }]
             }
             _ => vec![],
         }
@@ -58,6 +63,7 @@ mod tests {
         assert_eq!(
             thief.night_action(&ctx(Some(PlayerId(2))), &mut state),
             vec![NightAction::StealRole {
+                thief: PlayerId(1),
                 target: PlayerId(2)
             }]
         );

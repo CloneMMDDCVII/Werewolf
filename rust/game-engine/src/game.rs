@@ -7,8 +7,9 @@
 //! isolation.
 
 use crate::orchestrator::{
-    apply_day_results, apply_night_results, resolve_day, resolve_hunter_shots,
-    resolve_lover_deaths, resolve_night, AlivePlayer, NarrationEvent, Presenter,
+    apply_day_results, apply_night_results, resolve_day, resolve_harlot_visit_deaths,
+    resolve_hunter_shots, resolve_lover_deaths, resolve_night, resolve_wolf_cub_bonus_kill,
+    AlivePlayer, NarrationEvent, Presenter,
 };
 use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
@@ -64,9 +65,12 @@ pub async fn run_game(
                 lovers.link(*a, *b);
             }
         }
-        let night_deaths = apply_night_results(&night_actions, wolf_target, silver_spread_tonight);
+        apply_thief_steals(&night_actions, &mut alive, presenter).await;
+        let mut night_deaths = apply_night_results(&night_actions, wolf_target, silver_spread_tonight);
+        night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target));
         let (night_deaths, night_died_with_roles) =
             process_deaths(&night_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        maybe_wolf_cub_bonus_kill(&night_died_with_roles, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         let night_shots = resolve_hunter_shots(&night_deaths, &night_died_with_roles, &alive, presenter).await;
         process_deaths(&night_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
 
@@ -86,6 +90,7 @@ pub async fn run_game(
         let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
         let (day_deaths, day_died_with_roles) =
             process_deaths(&day_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        maybe_wolf_cub_bonus_kill(&day_died_with_roles, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         let day_shots = resolve_hunter_shots(&day_deaths, &day_died_with_roles, &alive, presenter).await;
         process_deaths(&day_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
 
@@ -247,6 +252,83 @@ async fn demote_gunner_if_shot_a_wise_elder(
             })
             .await;
         gunner.role = Role::Villager;
+    }
+}
+
+/// Applies the Thief's steal, immediately, the moment `resolve_night`
+/// produces it — unlike Doppelganger's `ChooseRoleModel` (which waits on
+/// a death), the swap is unconditional and instant (Werewolf.cs:2483-
+/// 2486): the Thief becomes the target's role, and the target becomes a
+/// Villager. Applied before `apply_night_results` computes deaths, same
+/// timing as extracting Cupid's `LinkLovers` right above this call site -
+/// neither depends on who dies tonight.
+async fn apply_thief_steals(
+    night_actions: &[NightAction],
+    alive: &mut [AlivePlayer],
+    presenter: &mut dyn Presenter,
+) {
+    for action in night_actions {
+        let NightAction::StealRole { thief, target } = action else {
+            continue;
+        };
+        let target_role = alive.iter().find(|p| p.id == *target).map(|p| p.role);
+        let Some(target_role) = target_role else { continue };
+        let thief_role = alive.iter().find(|p| p.id == *thief).map(|p| p.role);
+        let Some(thief_role) = thief_role else { continue };
+
+        presenter
+            .narrate(NarrationEvent::Transform {
+                player: *target,
+                from: target_role,
+                to: Role::Villager,
+            })
+            .await;
+        presenter
+            .narrate(NarrationEvent::Transform {
+                player: *thief,
+                from: thief_role,
+                to: target_role,
+            })
+            .await;
+
+        if let Some(p) = alive.iter_mut().find(|p| p.id == *target) {
+            p.role = Role::Villager;
+        }
+        if let Some(p) = alive.iter_mut().find(|p| p.id == *thief) {
+            p.role = target_role;
+        }
+    }
+}
+
+/// If a Wolf Cub is among the roles that just died, the wolves get one
+/// bonus kill (Werewolf.cs:1047-1053, `WolfCubKilled`) - resolved through
+/// the same death pipeline (`process_deaths`) as anything else, so it
+/// gets recorded, narrated, and can trigger its own transforms exactly
+/// like a normal kill.
+///
+/// **Timing simplification**: the legacy code applies this within the
+/// same night's resolution when the Wolf Cub dies at night, but the
+/// *following* night when it dies during the day (the bonus menu is only
+/// ever sent as part of `SendNightActions`). This proof-of-concept
+/// applies it immediately regardless of which phase triggered it, rather
+/// than threading another cross-round flag through for a day-death case -
+/// a Wolf Cub dying to a lynch or a Gunner's shot is the less common
+/// path, and the difference is only *when* the bonus kill lands, not
+/// whether it does.
+async fn maybe_wolf_cub_bonus_kill(
+    died_with_roles: &[(PlayerId, Role)],
+    alive: &mut Vec<AlivePlayer>,
+    states: &HashMap<PlayerId, RoleState>,
+    lovers: &LoversState,
+    kills: &mut Vec<KillEvent>,
+    deaths: &mut Vec<(PlayerId, KillMethod)>,
+    presenter: &mut dyn Presenter,
+) {
+    if !died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub) {
+        return;
+    }
+    if let Some(target) = resolve_wolf_cub_bonus_kill(alive, presenter).await {
+        process_deaths(&[(target, KillMethod::Eat)], alive, states, lovers, kills, deaths, presenter).await;
     }
 }
 

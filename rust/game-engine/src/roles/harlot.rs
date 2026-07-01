@@ -1,11 +1,13 @@
 //! Harlot visits one player overnight (Werewolf.cs:3172-3175, `AskVisit`).
 //! Visiting is allowed on herself (staying home) as well as any other
-//! living player. What happens as a *result* of the visit — dying if the
-//! target turns out to be a wolf (Werewolf.cs:2358-2360), being unable to
-//! visit someone already occupied (Werewolf.cs:2424-2428) — is resolution
-//! logic across multiple players' actions, which belongs to a future
-//! orchestrator, not to Harlot's own file. This file only covers "is this
-//! a valid target to declare a visit on."
+//! living player.
+//!
+//! Dying if the target turns out to be the wolves' actual victim that
+//! same night **is** modeled (Werewolf.cs:2358-2360) — see
+//! `orchestrator::resolve_harlot_visit_deaths`, which needs `self_id` on
+//! the `Visit` action to know who to kill. Being unable to visit someone
+//! already occupied (Werewolf.cs:2424-2428) is resolution logic across
+//! multiple players' actions this proof-of-concept still doesn't attempt.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
@@ -20,7 +22,10 @@ impl RoleBehavior for Harlot {
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if ctx.alive.contains(&target) => {
-                vec![NightAction::Visit { target }]
+                vec![NightAction::Visit {
+                    visitor: ctx.self_id,
+                    target,
+                }]
             }
             _ => vec![],
         }
@@ -49,6 +54,7 @@ mod tests {
         assert_eq!(
             harlot.night_action(&ctx, &mut state),
             vec![NightAction::Visit {
+                visitor: PlayerId(1),
                 target: PlayerId(1)
             }]
         );

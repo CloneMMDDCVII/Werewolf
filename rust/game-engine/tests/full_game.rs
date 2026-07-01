@@ -514,6 +514,179 @@ async fn sandman_sleep_cancels_the_whole_nights_deaths() {
 }
 
 #[tokio::test]
+async fn a_thief_steals_the_targets_role_and_the_target_becomes_a_villager() {
+    let wolf = PlayerId(1);
+    let thief = PlayerId(2);
+    let seer = PlayerId(3);
+    let bystander = PlayerId(4);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: thief, role: Role::Thief },
+        AlivePlayer { id: seer, role: Role::Seer },
+        AlivePlayer { id: bystander, role: Role::Villager },
+    ];
+
+    struct StealPresenter {
+        thief: PlayerId,
+        seer: PlayerId,
+        transforms: Vec<game_engine::orchestrator::NarrationEvent>,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for StealPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 {
+                return None;
+            }
+            match prompt {
+                Prompt::ThiefSteal if player == self.thief => Some(vec![self.seer]),
+                _ => None,
+            }
+        }
+
+        async fn narrate(&mut self, event: game_engine::orchestrator::NarrationEvent) {
+            self.transforms.push(event);
+        }
+    }
+
+    let mut presenter = StealPresenter {
+        thief,
+        seer,
+        transforms: vec![],
+    };
+    run_game(&players, &mut presenter, 1).await;
+
+    assert!(
+        presenter.transforms.iter().any(|e| matches!(
+            e,
+            game_engine::orchestrator::NarrationEvent::Transform { player, from: Role::Thief, to: Role::Seer }
+                if *player == thief
+        )),
+        "the Thief should become the Seer, got: {:?}",
+        presenter.transforms
+    );
+    assert!(
+        presenter.transforms.iter().any(|e| matches!(
+            e,
+            game_engine::orchestrator::NarrationEvent::Transform { player, from: Role::Seer, to: Role::Villager }
+                if *player == seer
+        )),
+        "the stolen-from Seer should become a Villager, got: {:?}",
+        presenter.transforms
+    );
+}
+
+#[tokio::test]
+async fn a_harlot_visiting_the_wolves_target_dies_alongside_them() {
+    let wolf = PlayerId(1);
+    let harlot = PlayerId(2);
+    let victim = PlayerId(3);
+    let bystander = PlayerId(4);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: harlot, role: Role::Harlot },
+        AlivePlayer { id: victim, role: Role::Villager },
+        AlivePlayer { id: bystander, role: Role::Villager },
+    ];
+
+    struct HarlotVisitsVictimPresenter {
+        wolf: PlayerId,
+        harlot: PlayerId,
+        victim: PlayerId,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for HarlotVisitsVictimPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 {
+                return None;
+            }
+            match prompt {
+                Prompt::WolfEat if player == self.wolf => Some(vec![self.victim]),
+                Prompt::HarlotVisit if player == self.harlot => Some(vec![self.victim]),
+                _ => None,
+            }
+        }
+    }
+
+    let mut presenter = HarlotVisitsVictimPresenter { wolf, harlot, victim };
+    let outcome = run_game(&players, &mut presenter, 1).await;
+
+    let mut deaths = outcome.deaths.clone();
+    deaths.sort_by_key(|(id, _)| id.0);
+    assert_eq!(
+        deaths,
+        vec![(harlot, KillMethod::VisitWolf), (victim, KillMethod::Eat)],
+        "visiting the wolves' actual target should kill the Harlot too"
+    );
+}
+
+#[tokio::test]
+async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
+    let wolf = PlayerId(1);
+    let wolf_cub = PlayerId(2);
+    let bonus_victim = PlayerId(3);
+    let bystander = PlayerId(4);
+    let another_bystander = PlayerId(5);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: wolf_cub, role: Role::WolfCub },
+        AlivePlayer { id: bonus_victim, role: Role::Villager },
+        AlivePlayer { id: bystander, role: Role::Villager },
+        AlivePlayer { id: another_bystander, role: Role::Villager },
+    ];
+
+    struct WolfCubBonusPresenter {
+        wolf_cub: PlayerId,
+        wolf: PlayerId,
+        bonus_victim: PlayerId,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for WolfCubBonusPresenter {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _options: &[PlayerId],
+            count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            if count != 1 {
+                return None;
+            }
+            match prompt {
+                Prompt::LynchVote => Some(vec![self.wolf_cub]),
+                Prompt::WolfCubBonusKill if player == self.wolf => Some(vec![self.bonus_victim]),
+                _ => None,
+            }
+        }
+    }
+
+    let mut presenter = WolfCubBonusPresenter { wolf_cub, wolf, bonus_victim };
+    let outcome = run_game(&players, &mut presenter, 1).await;
+
+    let mut deaths = outcome.deaths.clone();
+    deaths.sort_by_key(|(id, _)| id.0);
+    assert_eq!(
+        deaths,
+        vec![(wolf_cub, KillMethod::Lynch), (bonus_victim, KillMethod::Eat)],
+        "lynching the Wolf Cub should grant the wolves a bonus kill"
+    );
+}
+
+#[tokio::test]
 async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
     // Nobody ever answers anything -> no deaths, ever -> the win
     // condition never resolves. run_game must still terminate.
