@@ -19,6 +19,7 @@
 //! test stops comparing there rather than pretending otherwise.
 
 use game_engine::orchestrator::AlivePlayer;
+use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
 use game_engine::run_game;
 use shared::{KillMethod, Role};
@@ -87,7 +88,8 @@ async fn run_game_reproduces_history_for_the_reproducible_day_window() {
             .collect();
 
         let mut presenter = FixturePresenter::new(game, 1);
-        let outcome = run_game(&players, &mut presenter, window).await;
+        let mut rng = SeededRngSource::new(game.game_id as u64);
+        let outcome = run_game(&players, &mut presenter, &mut rng, window).await;
 
         // Compare only up through however many rounds run_game actually
         // played: max_rounds=window caps it, but a win can resolve earlier

@@ -11,6 +11,7 @@ use crate::orchestrator::{
     resolve_harlot_visit_deaths, resolve_hunter_shots, resolve_lover_deaths, resolve_night,
     resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
 };
+use crate::rng::RngSource;
 use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
 use shared::{KillMethod, Role, Team};
@@ -45,6 +46,7 @@ pub struct GameOutcome {
 pub async fn run_game(
     players: &[AlivePlayer],
     presenter: &mut dyn Presenter,
+    rng: &mut dyn RngSource,
     max_rounds: u32,
 ) -> GameOutcome {
     let mut alive: Vec<AlivePlayer> = players.to_vec();
@@ -79,8 +81,17 @@ pub async fn run_game(
     // than in `RoleState`, which only has a single `remembered_player`
     // slot - see `arsonist::Arsonist`'s doc for why that's not enough.
     let mut doused: Vec<PlayerId> = vec![];
+    // Every player bitten by the wolves last night (Werewolf.cs:3289,
+    // `bitten`), waiting to turn Wolf at the start of *this* night, before
+    // any menus go out (Werewolf.cs:2988-2998). See
+    // `apply_pending_alpha_bites` and `resolve_wolf_eat_target`'s doc for
+    // exactly why this can't just be folded into a same-night death.
+    let mut bitten_pending: Vec<PlayerId> = vec![];
 
     for round in 1..=max_rounds {
+        apply_pending_alpha_bites(&bitten_pending, &mut alive, presenter).await;
+        bitten_pending.clear();
+
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
         for action in &night_actions {
             if let NightAction::LinkLovers { a, b } = action {
@@ -94,10 +105,12 @@ pub async fn run_game(
         }
         apply_thief_steals(&night_actions, &mut alive, presenter).await;
 
-        let effective_wolf_target =
-            resolve_wolf_eat_target(wolf_target, &mut alive, &mut states, presenter).await;
+        let wolf_eat = resolve_wolf_eat_target(wolf_target, &mut alive, &mut states, rng, presenter).await;
+        if let Some(bitten) = wolf_eat.bitten {
+            bitten_pending.push(bitten);
+        }
 
-        let mut night_deaths = apply_night_results(&night_actions, effective_wolf_target, silver_spread_tonight);
+        let mut night_deaths = apply_night_results(&night_actions, wolf_eat.effective_target, silver_spread_tonight);
         night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target, &alive));
         if let Some(burn_deaths) = resolve_arsonist_detonation(&night_actions, &doused, &alive) {
             night_deaths.extend(burn_deaths);
@@ -105,9 +118,12 @@ pub async fn run_game(
         }
         if wolf_cub_bonus_pending {
             if let Some(target) = resolve_wolf_cub_bonus_kill(&alive, presenter).await {
-                let effective_target =
-                    resolve_wolf_eat_target(Some(target), &mut alive, &mut states, presenter).await;
-                if let Some(target) = effective_target {
+                let bonus_eat =
+                    resolve_wolf_eat_target(Some(target), &mut alive, &mut states, rng, presenter).await;
+                if let Some(bitten) = bonus_eat.bitten {
+                    bitten_pending.push(bitten);
+                }
+                if let Some(target) = bonus_eat.effective_target {
                     night_deaths.push((target, KillMethod::Eat));
                 }
             }
@@ -304,65 +320,141 @@ async fn demote_gunner_if_shot_a_wise_elder(
     }
 }
 
+/// What happens to a wolf-eat target once `resolve_wolf_eat_target` has
+/// checked it against every non-"just die" case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WolfEatOutcome {
+    /// The target to actually feed into `apply_night_results` (`None` if
+    /// the attempt was fully absorbed by one of the other two fields, or
+    /// there was no target at all).
+    effective_target: Option<PlayerId>,
+    /// Set when the target was bitten rather than killed
+    /// (Werewolf.cs:3289: `bitten`) — survives *this* night, but
+    /// `game::run_game` must turn them into a Wolf at the very start of
+    /// the *next* one, before that night's menus go out
+    /// (Werewolf.cs:2988-2998, `TransformationMethod.AlphaBitten`, run
+    /// during `NightCycle`'s opening per-player reset loop). Named
+    /// separately from `effective_target` because both can theoretically
+    /// be produced by the same call in principle (they can't today - see
+    /// below - but the two are conceptually different outcomes, not the
+    /// same field reused).
+    bitten: Option<PlayerId>,
+}
+
+const NO_EFFECT: WolfEatOutcome = WolfEatOutcome { effective_target: None, bitten: None };
+
+/// Alpha Wolf's conversion chance (Werewolf.cs `Settings.cs:97,123`:
+/// `AlphaWolfConversionChance = 20`) — a per-group setting in the real
+/// game; this proof-of-concept has no group settings model, so it always
+/// uses the real default rather than inventing a knob nothing reads yet.
+const ALPHA_WOLF_CONVERSION_CHANCE_PERCENT: u32 = 20;
+
 /// Intercepts the wolves' primary/bonus eat target before it becomes a
-/// death, for the two roles whose wolf-eat resolution isn't "die"
-/// (Werewolf.cs:3296-3420, the `switch (target.PlayerRole)` inside the
-/// wolf-eat resolution loop — shared by both the primary and Wolf Cub
-/// bonus kill, since both targets are pushed into the same `choices` list
-/// and iterated through this one switch, confirmed by reading
-/// Werewolf.cs:3239-3270 directly):
+/// death, for every case in the wolf-eat resolution switch that isn't
+/// "just die" (Werewolf.cs:3289-3420 — shared by both the primary and
+/// Wolf Cub bonus kill, since both targets are pushed into the same
+/// `choices` list and iterated through this one switch, confirmed by
+/// reading Werewolf.cs:3239-3270 directly):
 ///
 /// - Cursed (Werewolf.cs:3298-3299): `Transform(target, IRole.Wolf, ...)`
-///   unconditionally, no `KillPlayer` call at all — a wolf-eaten Cursed
-///   player joins the wolves instead of dying. The real code also handles
-///   the "bitten" (Alpha Wolf conversion) case identically for Cursed, so
-///   there's no separate "Cursed but bitten" branch to distinguish.
-/// - Wise Elder (Werewolf.cs:3392-3406): the *first* non-bitten wolf-eat
-///   attempt has no `KillPlayer` call either — `target.HasUsedAbility` is
-///   set and the wolves are told they failed. Only a *second* attempt
-///   (`HasUsedAbility` already true) falls through to a normal kill
-///   (`goto default`). Modeled with `RoleState::primary_used`, the same
-///   one-shot flag every other "first time only" role uses.
-///
-/// Returns the effective wolf target to actually feed into
-/// `apply_night_results` (`None` if the attempt was absorbed by one of
-/// these two cases), applying and narrating any resulting transform
-/// (Cursed→Wolf) along the way. Shared by both the primary wolf-eat
-/// target and the Wolf Cub's bonus-kill target, since Werewolf.cs
-/// resolves both through the same switch (see the doc above).
+///   unconditionally, no `KillPlayer` call, no bitten check at all — a
+///   wolf-eaten Cursed player joins the wolves outright. Checked *first*,
+///   before bitten, since the source's own `switch` reaches this `case`
+///   before ever evaluating `bitten` for this target.
+/// - Bitten (Werewolf.cs:3289: `voteWolves.Any(AlphaWolf) &&
+///   R.Next(100) < AlphaWolfConversionChance`): every other role reachable
+///   here (`goto default` included - Harlot, Traitor, SerialKiller, a
+///   failed Hunter standoff, and the plain fallthrough case all check it)
+///   survives the night entirely if bitten, marked for conversion to Wolf
+///   at the start of the *next* one instead of dying now. `has_alpha`
+///   approximates `voteWolves.Any(AlphaWolf)` as "is any surviving
+///   AlphaWolf currently alive" - the real check filters to non-drunk
+///   wolves who actually voted, a distinction this proof-of-concept's
+///   simplified wolf-eat vote doesn't track.
+/// - Wise Elder (Werewolf.cs:3392-3406), only reached when *not* bitten:
+///   the *first* non-bitten wolf-eat attempt has no `KillPlayer` call
+///   either — `target.HasUsedAbility` is set and the wolves are told they
+///   failed. Only a *second* attempt (`HasUsedAbility` already true)
+///   falls through to a normal kill (`goto default`). Modeled with
+///   `RoleState::primary_used`, the same one-shot flag every other "first
+///   time only" role uses.
 async fn resolve_wolf_eat_target(
     wolf_target: Option<PlayerId>,
     alive: &mut [AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
+    rng: &mut dyn RngSource,
     presenter: &mut dyn Presenter,
-) -> Option<PlayerId> {
-    let target = wolf_target?;
-    let target_role = alive.iter().find(|p| p.id == target).map(|p| p.role)?;
+) -> WolfEatOutcome {
+    let Some(target) = wolf_target else { return NO_EFFECT };
+    let Some(target_role) = alive.iter().find(|p| p.id == target).map(|p| p.role) else {
+        return NO_EFFECT;
+    };
+
+    if target_role == Role::Cursed {
+        presenter
+            .narrate(NarrationEvent::Transform {
+                player: target,
+                from: Role::Cursed,
+                to: Role::Wolf,
+            })
+            .await;
+        if let Some(p) = alive.iter_mut().find(|p| p.id == target) {
+            p.role = Role::Wolf;
+        }
+        return NO_EFFECT;
+    }
+
+    let has_alpha = alive.iter().any(|p| p.role == Role::AlphaWolf);
+    if has_alpha && rng.chance(ALPHA_WOLF_CONVERSION_CHANCE_PERCENT) {
+        return WolfEatOutcome { effective_target: None, bitten: Some(target) };
+    }
 
     match target_role {
-        Role::Cursed => {
-            presenter
-                .narrate(NarrationEvent::Transform {
-                    player: target,
-                    from: Role::Cursed,
-                    to: Role::Wolf,
-                })
-                .await;
-            if let Some(p) = alive.iter_mut().find(|p| p.id == target) {
-                p.role = Role::Wolf;
-            }
-            None
-        }
         Role::WiseElder => {
             let state = states.entry(target).or_default();
             if state.primary_used {
-                Some(target)
+                WolfEatOutcome { effective_target: Some(target), bitten: None }
             } else {
                 state.primary_used = true;
-                None
+                NO_EFFECT
             }
         }
-        _ => Some(target),
+        _ => WolfEatOutcome { effective_target: Some(target), bitten: None },
+    }
+}
+
+/// Turns every player bitten last night (Werewolf.cs:2988-2998,
+/// `TransformationMethod.AlphaBitten`) into a Wolf, at the very start of
+/// this night — before `resolve_night` asks anyone anything, matching the
+/// real timing (the transform runs during `NightCycle`'s opening
+/// per-player reset loop, before `SendNightActions`). A bitten player who
+/// died some other way during the day in between (e.g. lynched) is simply
+/// skipped — `Transform` itself no-ops on a dead player for this method
+/// (Werewolf.cs:1963-1973 doesn't list `AlphaBitten` among the "works
+/// even if dead" exceptions), which falling out of `alive.iter_mut().find`
+/// already matches for free. Also skips anyone already wolf-team
+/// (Werewolf.cs:2991: `!WolfRoles.Contains(p.PlayerRole) && p.PlayerRole
+/// != IRole.SnowWolf`) — `is_wolf_muscle`, not a plain `Role::Wolf`
+/// check, since a bitten Wolf Cub/Lycan/SnowWolf shouldn't be "converted"
+/// into the one specific role `IRole.Wolf` either (today's wolf-eat never
+/// targets a wolf-team player in the first place, so this is a belt-and-
+/// suspenders match to the source rather than a reachable case).
+async fn apply_pending_alpha_bites(
+    bitten_pending: &[PlayerId],
+    alive: &mut [AlivePlayer],
+    presenter: &mut dyn Presenter,
+) {
+    for &player in bitten_pending {
+        let Some(from) = alive.iter().find(|p| p.id == player).map(|p| p.role) else {
+            continue;
+        };
+        if is_wolf_muscle(from) {
+            continue;
+        }
+        presenter.narrate(NarrationEvent::Transform { player, from, to: Role::Wolf }).await;
+        if let Some(p) = alive.iter_mut().find(|p| p.id == player) {
+            p.role = Role::Wolf;
+        }
     }
 }
 
@@ -552,6 +644,7 @@ fn resolved_winner(alive: &[AlivePlayer], kills: &[KillEvent], lovers: &LoversSt
 #[cfg(test)]
 mod wolf_eat_special_case_tests {
     use super::*;
+    use crate::rng::ScriptedRngSource;
     use async_trait::async_trait;
 
     struct NoopPresenter;
@@ -569,16 +662,26 @@ mod wolf_eat_special_case_tests {
         }
     }
 
+    /// No `AlphaWolf` in play in most of these fixtures, so `has_alpha` is
+    /// `false` and the bite roll never gets consulted - a `ScriptedRngSource`
+    /// with nothing queued would panic if it *were* consulted, which is
+    /// exactly the guardrail we want for "this scenario has no Alpha Wolf."
+    fn no_alpha_wolf_rng() -> ScriptedRngSource {
+        ScriptedRngSource::new()
+    }
+
     #[tokio::test]
     async fn wolf_eating_the_cursed_converts_them_to_wolf_instead_of_killing() {
         let cursed = PlayerId(1);
         let mut alive = vec![AlivePlayer { id: cursed, role: Role::Cursed }];
         let mut states = HashMap::new();
         let mut presenter = NoopPresenter;
+        let mut rng = no_alpha_wolf_rng();
 
-        let effective = resolve_wolf_eat_target(Some(cursed), &mut alive, &mut states, &mut presenter).await;
+        let outcome =
+            resolve_wolf_eat_target(Some(cursed), &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(effective, None, "no death should result from eating the Cursed");
+        assert_eq!(outcome, NO_EFFECT, "no death, and no bite, should result from eating the Cursed");
         assert_eq!(alive[0].role, Role::Wolf);
     }
 
@@ -588,10 +691,12 @@ mod wolf_eat_special_case_tests {
         let mut alive = vec![AlivePlayer { id: elder, role: Role::WiseElder }];
         let mut states = HashMap::new();
         let mut presenter = NoopPresenter;
+        let mut rng = no_alpha_wolf_rng();
 
-        let effective = resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut presenter).await;
+        let outcome =
+            resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(effective, None, "the first attempt should be absorbed, no death");
+        assert_eq!(outcome, NO_EFFECT, "the first attempt should be absorbed, no death");
         assert!(states.get(&elder).unwrap().primary_used);
     }
 
@@ -602,10 +707,16 @@ mod wolf_eat_special_case_tests {
         let mut states = HashMap::new();
         states.insert(elder, RoleState { primary_used: true, ..Default::default() });
         let mut presenter = NoopPresenter;
+        let mut rng = no_alpha_wolf_rng();
 
-        let effective = resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut presenter).await;
+        let outcome =
+            resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(effective, Some(elder), "a second attempt should go through as a normal kill");
+        assert_eq!(
+            outcome,
+            WolfEatOutcome { effective_target: Some(elder), bitten: None },
+            "a second attempt should go through as a normal kill"
+        );
     }
 
     #[tokio::test]
@@ -614,11 +725,154 @@ mod wolf_eat_special_case_tests {
         let mut alive = vec![AlivePlayer { id: villager, role: Role::Villager }];
         let mut states = HashMap::new();
         let mut presenter = NoopPresenter;
+        let mut rng = no_alpha_wolf_rng();
 
-        let effective = resolve_wolf_eat_target(Some(villager), &mut alive, &mut states, &mut presenter).await;
+        let outcome =
+            resolve_wolf_eat_target(Some(villager), &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(effective, Some(villager));
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(villager), bitten: None });
         assert_eq!(alive[0].role, Role::Villager);
+    }
+
+    #[tokio::test]
+    async fn no_alpha_wolf_alive_means_no_bite_is_even_rolled() {
+        // A ScriptedRngSource with an unused answer would fail differently
+        // (leftover-answers aren't checked), so what this test actually
+        // proves is the *absence* of a panic from an empty queue - if
+        // `has_alpha` were wrongly `true` here, the unscripted `chance()`
+        // call would panic.
+        let target = PlayerId(1);
+        let mut alive = vec![AlivePlayer { id: target, role: Role::Seer }];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let mut rng = no_alpha_wolf_rng();
+
+        let outcome =
+            resolve_wolf_eat_target(Some(target), &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(target), bitten: None });
+    }
+
+    #[tokio::test]
+    async fn a_successful_bite_replaces_the_kill_with_a_pending_transform() {
+        let target = PlayerId(1);
+        let alpha = PlayerId(2);
+        let mut alive = vec![
+            AlivePlayer { id: target, role: Role::Seer },
+            AlivePlayer { id: alpha, role: Role::AlphaWolf },
+        ];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+
+        let outcome =
+            resolve_wolf_eat_target(Some(target), &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(outcome, WolfEatOutcome { effective_target: None, bitten: Some(target) });
+        assert_eq!(alive[0].role, Role::Seer, "no immediate transform - that's next night's job");
+    }
+
+    #[tokio::test]
+    async fn a_failed_bite_roll_falls_through_to_a_normal_kill() {
+        let target = PlayerId(1);
+        let alpha = PlayerId(2);
+        let mut alive = vec![
+            AlivePlayer { id: target, role: Role::Seer },
+            AlivePlayer { id: alpha, role: Role::AlphaWolf },
+        ];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let mut rng = ScriptedRngSource::new().with_chance(false);
+
+        let outcome =
+            resolve_wolf_eat_target(Some(target), &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(target), bitten: None });
+    }
+
+    #[tokio::test]
+    async fn cursed_bypasses_the_bite_roll_entirely() {
+        // Even with an AlphaWolf alive, Cursed's case is checked (and
+        // returns) before the bitten roll - an unscripted ScriptedRngSource
+        // would panic if this were wrong.
+        let cursed = PlayerId(1);
+        let alpha = PlayerId(2);
+        let mut alive = vec![
+            AlivePlayer { id: cursed, role: Role::Cursed },
+            AlivePlayer { id: alpha, role: Role::AlphaWolf },
+        ];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let mut rng = no_alpha_wolf_rng();
+
+        let outcome =
+            resolve_wolf_eat_target(Some(cursed), &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(outcome, NO_EFFECT);
+        assert_eq!(alive[0].role, Role::Wolf);
+    }
+}
+
+#[cfg(test)]
+mod alpha_bite_transform_tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    struct RecordingPresenter {
+        transforms: Vec<NarrationEvent>,
+    }
+
+    #[async_trait(?Send)]
+    impl Presenter for RecordingPresenter {
+        async fn ask_targets(
+            &mut self,
+            _player: PlayerId,
+            _prompt: crate::orchestrator::Prompt,
+            _options: &[PlayerId],
+            _count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            None
+        }
+
+        async fn narrate(&mut self, event: NarrationEvent) {
+            self.transforms.push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_bitten_player_turns_wolf_at_the_start_of_the_next_night() {
+        let bitten = PlayerId(1);
+        let mut alive = vec![AlivePlayer { id: bitten, role: Role::Seer }];
+        let mut presenter = RecordingPresenter { transforms: vec![] };
+
+        apply_pending_alpha_bites(&[bitten], &mut alive, &mut presenter).await;
+
+        assert_eq!(alive[0].role, Role::Wolf);
+        assert_eq!(
+            presenter.transforms,
+            vec![NarrationEvent::Transform { player: bitten, from: Role::Seer, to: Role::Wolf }]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_bitten_player_who_died_in_between_is_skipped() {
+        let mut alive: Vec<AlivePlayer> = vec![]; // the bitten player is no longer alive
+        let mut presenter = RecordingPresenter { transforms: vec![] };
+
+        apply_pending_alpha_bites(&[PlayerId(1)], &mut alive, &mut presenter).await;
+
+        assert!(presenter.transforms.is_empty());
+    }
+
+    #[tokio::test]
+    async fn nothing_pending_means_no_transforms() {
+        let mut alive = vec![AlivePlayer { id: PlayerId(1), role: Role::Seer }];
+        let mut presenter = RecordingPresenter { transforms: vec![] };
+
+        apply_pending_alpha_bites(&[], &mut alive, &mut presenter).await;
+
+        assert_eq!(alive[0].role, Role::Seer);
+        assert!(presenter.transforms.is_empty());
     }
 }
 

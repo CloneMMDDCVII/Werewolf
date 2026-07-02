@@ -6,6 +6,7 @@
 //! resolved outcome line.
 
 use game_engine::orchestrator::AlivePlayer;
+use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
 use game_engine::run_game;
 use i18n::LanguagePack;
@@ -42,7 +43,8 @@ async fn narrates_a_full_fixture_replay_as_a_readable_transcript() {
     // `run_game` itself the moment each death resolves - so by the time
     // `run_game` returns, every one should already be in `transcript.lines`
     // in the order it happened, not appended afterward from `outcome`.
-    let outcome = run_game(&alive, &mut transcript, 50).await;
+    let mut rng = SeededRngSource::new(fixture.game_id as u64);
+    let outcome = run_game(&alive, &mut transcript, &mut rng, 50).await;
 
     assert!(
         transcript.lines.iter().any(|l| l.starts_with("=== Day 1 ===")),

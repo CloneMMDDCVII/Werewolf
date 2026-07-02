@@ -5,6 +5,7 @@
 use async_trait::async_trait;
 use game_engine::orchestrator::{AlivePlayer, Presenter, Prompt};
 use game_engine::roles::PlayerId;
+use game_engine::rng::SeededRngSource;
 use game_engine::{run_game, WinOutcome};
 use shared::{KillMethod, Role, Team};
 
@@ -75,7 +76,8 @@ async fn wolves_win_once_they_outnumber_the_village() {
         village_lynches: victim2,
     };
 
-    let outcome = run_game(&players, &mut presenter, 10).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
     assert_eq!(outcome.winner, WinOutcome::Team(Team::Wolf));
     assert_eq!(
@@ -136,7 +138,8 @@ async fn a_lynched_tanner_wins_immediately_even_mid_game() {
     }
 
     let mut presenter = LynchTannerPresenter { tanner };
-    let outcome = run_game(&players, &mut presenter, 10).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
     assert_eq!(outcome.winner, WinOutcome::Team(Team::Tanner));
     assert_eq!(outcome.rounds_played, 1);
@@ -199,7 +202,8 @@ async fn a_lynched_hunter_takes_someone_down_with_them() {
         hunter,
         shot: doomed_villager,
     };
-    let outcome = run_game(&players, &mut presenter, 10).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
     // Only wolf and survivor remain (1 wolf >= 1 other), so the wolf wins
     // - and only because the Hunter's shot claimed a *second* death this
@@ -276,7 +280,8 @@ async fn a_wolf_eating_one_lover_kills_the_other_too() {
         night: 0,
         day: 0,
     };
-    let outcome = run_game(&players, &mut presenter, 1).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
 
     let mut deaths = outcome.deaths.clone();
     deaths.sort_by_key(|(id, _)| id.0);
@@ -313,7 +318,8 @@ async fn the_last_two_survivors_win_as_lovers() {
         night: 0,
         day: 0,
     };
-    let outcome = run_game(&players, &mut presenter, 10).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
     assert_eq!(outcome.winner, WinOutcome::Team(Team::Lovers));
     assert_eq!(outcome.rounds_played, 1);
@@ -374,7 +380,8 @@ async fn shooting_the_wise_elder_still_kills_them_but_demotes_the_gunner() {
         wise_elder,
         transforms: vec![],
     };
-    let outcome = run_game(&players, &mut presenter, 1).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
 
     assert_eq!(
         outcome.deaths,
@@ -453,7 +460,8 @@ async fn silver_spread_blocks_the_wolf_kill_the_following_night_only() {
         victim2,
         night: 1,
     };
-    let outcome = run_game(&players, &mut presenter, 2).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
     assert_eq!(
         outcome.deaths,
@@ -504,7 +512,8 @@ async fn sandman_sleep_cancels_the_whole_nights_deaths() {
     }
 
     let mut presenter = SandmanPresenter { wolf, sandman, victim };
-    let outcome = run_game(&players, &mut presenter, 1).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
 
     assert_eq!(
         outcome.deaths,
@@ -560,7 +569,8 @@ async fn a_thief_steals_the_targets_role_and_the_target_becomes_a_villager() {
         seer,
         transforms: vec![],
     };
-    run_game(&players, &mut presenter, 1).await;
+    let mut rng = SeededRngSource::new(0);
+    run_game(&players, &mut presenter, &mut rng, 1).await;
 
     assert!(
         presenter.transforms.iter().any(|e| matches!(
@@ -622,7 +632,8 @@ async fn a_harlot_visiting_the_wolves_target_dies_alongside_them() {
     }
 
     let mut presenter = HarlotVisitsVictimPresenter { wolf, harlot, victim };
-    let outcome = run_game(&players, &mut presenter, 1).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
 
     let mut deaths = outcome.deaths.clone();
     deaths.sort_by_key(|(id, _)| id.0);
@@ -690,7 +701,8 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
     // can't have already chained the bonus menu into that same day's
     // now-past night).
     let mut presenter = WolfCubBonusPresenter { wolf_cub, wolf, bonus_victim, day: 1 };
-    let outcome = run_game(&players, &mut presenter, 2).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
     let mut deaths = outcome.deaths.clone();
     deaths.sort_by_key(|(id, _)| id.0);
@@ -745,7 +757,8 @@ async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
     ];
 
     let mut presenter = SilentPresenter;
-    let outcome = run_game(&players, &mut presenter, 3).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 3).await;
 
     assert_eq!(outcome.rounds_played, 3);
     assert!(

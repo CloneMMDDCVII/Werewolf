@@ -20,6 +20,7 @@
 
 use async_trait::async_trait;
 use game_engine::orchestrator::{AlivePlayer, Presenter, Prompt};
+use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
 use game_engine::run_game;
 use i18n::LanguagePack;
@@ -110,7 +111,8 @@ async fn fuzzed_games_never_leak_placeholders_or_miscount_deaths() {
         };
         let mut transcript = TranscriptPresenter::new(&mut inner, &pack, &names);
 
-        let outcome = run_game(&players, &mut transcript, 30).await;
+        let mut rng = SeededRngSource::new(seed);
+        let outcome = run_game(&players, &mut transcript, &mut rng, 30).await;
 
         for line in &transcript.lines {
             assert!(

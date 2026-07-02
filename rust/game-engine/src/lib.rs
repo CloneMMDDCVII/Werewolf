@@ -8,6 +8,7 @@
 
 pub mod game;
 pub mod orchestrator;
+pub mod rng;
 pub mod roles;
 
 pub use game::{run_game, GameOutcome};

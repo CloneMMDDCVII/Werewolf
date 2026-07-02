@@ -7,6 +7,7 @@
 //! With no `game_id`, narrates the first fixture game. Defaults
 //! `output_path` to `<game_id>.txt` in the current directory.
 use game_engine::orchestrator::AlivePlayer;
+use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
 use game_engine::run_game;
 use i18n::LanguagePack;
@@ -64,7 +65,8 @@ async fn main() {
     // `TranscriptPresenter::narrate`, called by `run_game` itself the
     // moment each one resolves - no separate pass over `outcome` needed
     // to reconstruct them here anymore.
-    let outcome = run_game(&alive, &mut transcript, 50).await;
+    let mut rng = SeededRngSource::new(fixture.game_id as u64);
+    let outcome = run_game(&alive, &mut transcript, &mut rng, 50).await;
 
     // This last line is a harness summary, not in-game narration (the
     // game already narrated its own ending via `NarrationEvent::GameOver`

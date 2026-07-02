@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use game_engine::orchestrator::{AlivePlayer, Presenter, Prompt};
 use game_engine::roles::PlayerId;
+use game_engine::rng::SeededRngSource;
 use game_engine::{run_game, WinOutcome};
 use shared::{Role, Team};
 use std::collections::HashMap;
@@ -77,7 +78,8 @@ async fn traitor_becomes_a_wolf_once_the_last_wolf_dies_and_helps_wolves_win() {
         wild_child_picks: PlayerId(0), // unused here
     };
 
-    let outcome = run_game(&players, &mut presenter, 10).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
     assert_eq!(outcome.winner, WinOutcome::Team(Team::Wolf));
     // Sanity: the Wolf died to the day-1 lynch, and villager1 to the
@@ -129,7 +131,8 @@ async fn wild_child_becomes_a_wolf_once_her_role_model_dies() {
         wild_child_picks: role_model,
     };
 
-    let outcome = run_game(&players, &mut presenter, 10).await;
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
     assert_eq!(outcome.winner, WinOutcome::Team(Team::Wolf));
     assert_eq!(outcome.rounds_played, 1);
