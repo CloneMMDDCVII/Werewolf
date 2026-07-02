@@ -1,10 +1,13 @@
-//! Cultist proposes a conversion target overnight (Werewolf.cs:3690-3735
-//! onward). Real conversion is per-target-role RNG resolution ("convert
-//! Blacksmith at `Settings.BlacksmithConversionChance`", etc.) this file
-//! doesn't attempt — same "validate a target, emit the proposal" shape as
-//! Wolf's `EatVote`, just for `ConvertVote` instead. Unlike Wolf, there's
-//! no `NightFact` dependency here: the cult doesn't need anyone else's
-//! decision resolved first.
+//! Cultist proposes a conversion target overnight (Werewolf.cs:3591-3757).
+//! Same "validate a target, emit the proposal" shape as Wolf's `EatVote` —
+//! the real per-target-role resolution (RNG conversion chance, the
+//! Hunter/CultistHunter/wolf-team/Grave-Digger special cases) lives in
+//! `orchestrator::resolve_cultist_conversion`, not here, the same split as
+//! every other role whose payoff isn't decided by this file alone. Unlike
+//! Wolf, there's no `NightFact` dependency here: the cult doesn't need
+//! anyone else's decision resolved first (though the *resolution* does
+//! need to know whether the wolves went eating — that's `run_game`'s job
+//! to pass along, not this proposal's).
 
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
 use shared::{Role, Team};

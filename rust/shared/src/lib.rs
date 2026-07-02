@@ -165,6 +165,10 @@ pub enum KillMethod {
     LoverDied,
     SerialKilled,
     Spotted,
+    /// A cult's new recruit dying while trying to convert a Hunter who
+    /// shoots back instead of being converted (`IPlayer.cs`'s `KillMthd`
+    /// enum: `HunterCult`, Werewolf.cs:3635-3637).
+    HunterCult,
     /// Not in the legacy game (there was no Witch to poison anyone) — new
     /// kill method for `shared::Role::Witch`'s poison potion.
     Poison,

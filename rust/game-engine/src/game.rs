@@ -8,9 +8,9 @@
 
 use crate::orchestrator::{
     apply_day_results, apply_night_results, resolve_arsonist_detonation, resolve_chemistry,
-    resolve_day, resolve_grave_digger_falls, resolve_harlot_visit_deaths, resolve_hunter_shots,
-    resolve_lover_deaths, resolve_night, resolve_spumpkin_detonation, resolve_wolf_cub_bonus_kill,
-    AlivePlayer, NarrationEvent, Presenter,
+    resolve_cultist_conversion, resolve_day, resolve_grave_digger_falls, resolve_harlot_visit_deaths,
+    resolve_hunter_shots, resolve_lover_deaths, resolve_night, resolve_spumpkin_detonation,
+    resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
 };
 use crate::rng::RngSource;
 use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
@@ -135,6 +135,18 @@ pub async fn run_game(
         if let Some(burn_deaths) = resolve_arsonist_detonation(&night_actions, &doused, &alive) {
             night_deaths.extend(burn_deaths);
             doused.clear();
+        }
+        let cult_outcome =
+            resolve_cultist_conversion(&night_actions, wolf_target.is_some(), dug_graves, &alive, rng);
+        night_deaths.extend(cult_outcome.deaths);
+        if let Some(converted) = cult_outcome.transform {
+            if let Some(p) = alive.iter_mut().find(|p| p.id == converted) {
+                let from = p.role;
+                presenter
+                    .narrate(NarrationEvent::Transform { player: converted, from, to: Role::Cultist })
+                    .await;
+                p.role = Role::Cultist;
+            }
         }
         if wolf_cub_bonus_pending {
             if let Some(target) = resolve_wolf_cub_bonus_kill(&alive, presenter).await {

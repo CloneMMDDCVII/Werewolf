@@ -357,6 +357,15 @@ pub fn transform_locale_key(from: Role, to: Role) -> Option<&'static str> {
         (Role::Doppelganger, Role::Mason) => Some("DGToMason"),
         (Role::Doppelganger, Role::SnowWolf) => Some("DGToSnowWolf"),
         (Role::Gunner, Role::Villager) => Some("GunnerShotWiseElder"),
+        // The cult's recruitment message (Werewolf.cs:2063: `Send
+        // (GetLocaleString("CultConvertYou"), p.Id)`) doesn't vary by what
+        // the convert used to be - a genuine `(_, Cultist)` wildcard, not
+        // a missing case list. `(Doppelganger, Cultist)` still needs its
+        // own more specific `DGToCult` above (Rust match arms take the
+        // first one that fits, so the specific arm has to come first) -
+        // Doppelganger's own conversion flavor is different text
+        // entirely, checked directly against Werewolf.cs:2165-2172.
+        (_, Role::Cultist) => Some("CultConvertYou"),
         _ => None,
     }
 }
@@ -453,6 +462,7 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "DGToMason",
         "DGToSnowWolf",
         "GunnerShotWiseElder",
+        "CultConvertYou",
         // game_over_locale_key's non-`None` outputs.
         "VillageWins",
         "WolfWins",
@@ -1492,6 +1502,151 @@ pub fn resolve_spumpkin_detonation(
         .collect()
 }
 
+/// What a resolved cult-conversion attempt did — a converted target
+/// (`transform`), a chained death (`deaths` — the cult's "newbie" member,
+/// the one who does the actual visiting, dying instead of converting
+/// anyone), or neither, never both (matches the real
+/// `ConvertToCult`/`VisitPlayer` interaction: a conversion attempt either
+/// succeeds, fails safely, or gets the visitor killed — it's never a
+/// death *and* a conversion the same night).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CultConversionOutcome {
+    pub transform: Option<PlayerId>,
+    pub deaths: Vec<(PlayerId, KillMethod)>,
+}
+
+/// Every named `*ConversionChance` in Werewolf.cs's `Settings.cs`
+/// (both settings profiles agree on every value). Any role *not* listed
+/// here converts at the real default of 100% (Werewolf.cs:2489:
+/// `ConvertToCult(IPlayer target, ..., int chance = 100)`) — a
+/// Villager/Mason/Prince/Mayor/Gunner/etc. visited by the cult always
+/// converts, no roll needed, matching the C# default parameter rather
+/// than this proof-of-concept inventing its own "usually converts"
+/// number. `Doppelganger`/`Thief`/`Spumpkin`/`Arsonist` are the one
+/// group that goes the *other* way — Werewolf.cs:3729-3745 calls
+/// `ConvertToCult(target, voteCult, 0)` for all four (guaranteed to
+/// fail), so they're listed explicitly at `0` rather than silently
+/// falling into the same "no chance value found" bucket a typo would
+/// produce.
+fn cult_conversion_chance_percent(role: Role) -> u32 {
+    match role {
+        Role::Oracle => 50,
+        Role::Sandman => 60,
+        Role::WiseElder => 30,
+        Role::Pacifist => 80,
+        Role::Augur => 40,
+        Role::Seer => 40,
+        Role::GuardianAngel => 60,
+        Role::Detective => 70,
+        Role::Cursed => 60,
+        Role::Harlot => 70,
+        Role::Sorcerer => 40,
+        Role::Blacksmith => 75,
+        Role::Doppelganger | Role::Thief | Role::Spumpkin | Role::Arsonist => 0,
+        _ => 100,
+    }
+}
+
+/// The cult's nightly recruitment attempt (Werewolf.cs:3591-3757):
+/// majority-tallies `NightAction::ConvertVote` the same way the wolf-eat
+/// vote is tallied, then routes the target through several special cases
+/// before falling back to `cult_conversion_chance_percent`'s per-role
+/// roll. `newbie` — the cult's most-recently-converted member, who does
+/// the actual visiting and is the one who dies if a visit goes wrong
+/// (`voteCult.OrderByDescending(x => x.DayCult).First()`) — is
+/// approximated as *any* alive Cultist here: this proof-of-concept
+/// doesn't track conversion order (`DayCult`), so there's no real
+/// "newest" to pick: an honest simplification, not a bug.
+///
+/// Special cases, in the order the source checks them:
+/// - **Grave Digger** target: subject to the same fall trap
+///   `resolve_grave_digger_falls` models for Harlot/Guardian Angel
+///   (Werewolf.cs's shared `VisitPlayer`, reached before any of the
+///   per-role branches below) — except a Cultist isn't Village-team, so
+///   the halving those two visitors get doesn't apply here
+///   (`grave_digger_fall_chance_percent(dug_graves, false)`).
+/// - **Hunter** target: a nested pair of rolls (`HunterConversionChance`
+///   then, only if that fails, `HunterKillCultChance`) — convert, kill
+///   the newbie, or neither.
+/// - **CultistHunter** target: kills the newbie unconditionally
+///   (Werewolf.cs:3654-3656, `KillMthd.Hunt`) — no roll at all.
+/// - **Wolf-team** target (`Wolf`/`AlphaWolf`/`WolfCub`/`Lycan`): the
+///   newbie only dies if the wolves stayed home that night
+///   (Werewolf.cs:3669: `voteWolves.Any(... Choice ...)` — "did the
+///   wolves go eating"), approximated here as `wolves_went_eating`
+///   (whether the main wolf-eat vote had a target at all, the same
+///   signal `resolve_wolf_eat_target`'s caller already has as
+///   `wolf_target.is_some()`).
+/// - **Snow Wolf** target: the real check is whether *that specific
+///   player* went out freezing someone (Werewolf.cs:3687:
+///   `target.Choice != -1 && != 0`), not the main wolf vote — but
+///   `snow_wolf::SnowWolf`'s freeze ability isn't modeled at all (see
+///   that file's doc), so a Snow Wolf here is always "stayed home,"
+///   always killing the newbie. Consistent with the rest of this crate
+///   treating an unmodeled ability as simply never exercised.
+/// - Everything else: `cult_conversion_chance_percent(target_role)`.
+pub fn resolve_cultist_conversion(
+    night_actions: &[NightAction],
+    wolves_went_eating: bool,
+    dug_graves: u32,
+    alive: &[AlivePlayer],
+    rng: &mut dyn RngSource,
+) -> CultConversionOutcome {
+    let no_outcome = CultConversionOutcome::default();
+
+    let Some(target) = majority_target(night_actions.iter().filter_map(|a| match a {
+        NightAction::ConvertVote { target } => Some(*target),
+        _ => None,
+    })) else {
+        return no_outcome;
+    };
+    let Some(newbie) = alive.iter().find(|p| p.role == Role::Cultist).map(|p| p.id) else {
+        return no_outcome;
+    };
+    let Some(target_role) = alive.iter().find(|p| p.id == target).map(|p| p.role) else {
+        return no_outcome;
+    };
+
+    if target_role == Role::GraveDigger {
+        return if dug_graves >= 1 && rng.chance(grave_digger_fall_chance_percent(dug_graves, false)) {
+            CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::FallGrave)] }
+        } else {
+            no_outcome
+        };
+    }
+
+    const HUNTER_CONVERSION_CHANCE_PERCENT: u32 = 50;
+    const HUNTER_KILL_CULT_CHANCE_PERCENT: u32 = 50;
+
+    match target_role {
+        Role::Hunter => {
+            if rng.chance(HUNTER_CONVERSION_CHANCE_PERCENT) {
+                CultConversionOutcome { transform: Some(target), deaths: vec![] }
+            } else if rng.chance(HUNTER_KILL_CULT_CHANCE_PERCENT) {
+                CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::HunterCult)] }
+            } else {
+                no_outcome
+            }
+        }
+        Role::CultistHunter => CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::Hunt)] },
+        Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan => {
+            if wolves_went_eating {
+                no_outcome
+            } else {
+                CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitWolf)] }
+            }
+        }
+        Role::SnowWolf => CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitWolf)] },
+        _ => {
+            if rng.chance(cult_conversion_chance_percent(target_role)) {
+                CultConversionOutcome { transform: Some(target), deaths: vec![] }
+            } else {
+                no_outcome
+            }
+        }
+    }
+}
+
 /// The wolves' bonus kill after a Wolf Cub dies (Werewolf.cs:1047-1053,
 /// `WolfCubKilled`): every surviving wolf-team member gets asked a second
 /// "who do you want to eat?" question (`Prompt::WolfCubBonusKill`, which
@@ -1836,6 +1991,124 @@ mod lover_death_tests {
         );
 
         assert_eq!(chain, vec![]);
+    }
+}
+
+#[cfg(test)]
+mod cultist_conversion_tests {
+    use super::*;
+    use crate::rng::ScriptedRngSource;
+
+    fn roster() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(1), role: Role::Cultist },
+            AlivePlayer { id: PlayerId(2), role: Role::Seer },
+            AlivePlayer { id: PlayerId(3), role: Role::Hunter },
+            AlivePlayer { id: PlayerId(4), role: Role::CultistHunter },
+            AlivePlayer { id: PlayerId(5), role: Role::Wolf },
+            AlivePlayer { id: PlayerId(6), role: Role::SnowWolf },
+            AlivePlayer { id: PlayerId(7), role: Role::GraveDigger },
+            AlivePlayer { id: PlayerId(8), role: Role::Villager },
+        ]
+    }
+
+    fn vote(target: PlayerId) -> Vec<NightAction> {
+        vec![NightAction::ConvertVote { target }]
+    }
+
+    #[test]
+    fn no_votes_means_no_outcome_at_all() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let outcome = resolve_cultist_conversion(&[], true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome::default());
+    }
+
+    #[test]
+    fn a_default_role_always_converts() {
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(8)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome.transform, Some(PlayerId(8)));
+        assert_eq!(outcome.deaths, vec![]);
+    }
+
+    #[test]
+    fn a_seer_only_converts_on_a_successful_roll() {
+        let mut rng = ScriptedRngSource::new().with_chance(false);
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(2)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome::default());
+    }
+
+    #[test]
+    fn a_hunter_who_converts_never_rolls_the_kill_chance() {
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(3)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome.transform, Some(PlayerId(3)));
+    }
+
+    #[test]
+    fn a_hunter_who_fails_to_convert_may_kill_the_newbie() {
+        let mut rng = ScriptedRngSource::new().with_chance(false).with_chance(true);
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(3)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::HunterCult)] });
+    }
+
+    #[test]
+    fn a_hunter_who_fails_both_rolls_does_nothing() {
+        let mut rng = ScriptedRngSource::new().with_chance(false).with_chance(false);
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(3)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome::default());
+    }
+
+    #[test]
+    fn a_cultist_hunter_always_kills_the_newbie_no_roll() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(4)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::Hunt)] });
+    }
+
+    #[test]
+    fn visiting_a_wolf_who_went_eating_is_a_safe_empty_visit() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(5)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome::default());
+    }
+
+    #[test]
+    fn visiting_a_wolf_who_stayed_home_kills_the_newbie() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(5)), false, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitWolf)] });
+    }
+
+    #[test]
+    fn visiting_a_snow_wolf_always_kills_the_newbie_since_freeze_isnt_modeled() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        // even with wolves_went_eating true, SnowWolf isn't part of that vote
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(6)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitWolf)] });
+    }
+
+    #[test]
+    fn visiting_a_grave_digger_with_no_dug_graves_is_always_safe() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(7)), true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome::default());
+    }
+
+    #[test]
+    fn visiting_a_grave_digger_can_catch_the_newbie_in_the_trap() {
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(7)), true, 1, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::FallGrave)] });
+    }
+
+    #[test]
+    fn no_cultists_alive_means_no_outcome() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let roster_without_cultist: Vec<AlivePlayer> =
+            roster().into_iter().filter(|p| p.role != Role::Cultist).collect();
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(8)), true, 0, &roster_without_cultist, &mut rng);
+        assert_eq!(outcome, CultConversionOutcome::default());
     }
 }
 
