@@ -7,9 +7,9 @@
 //! isolation.
 
 use crate::orchestrator::{
-    apply_day_results, apply_night_results, resolve_day, resolve_harlot_visit_deaths,
-    resolve_hunter_shots, resolve_lover_deaths, resolve_night, resolve_wolf_cub_bonus_kill,
-    AlivePlayer, NarrationEvent, Presenter,
+    apply_day_results, apply_night_results, resolve_arsonist_detonation, resolve_day,
+    resolve_harlot_visit_deaths, resolve_hunter_shots, resolve_lover_deaths, resolve_night,
+    resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
 };
 use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
@@ -72,12 +72,24 @@ pub async fn run_game(
     // - the wrong sequencing, caught by checking the source instead of
     // assuming the shape from the mechanic's description alone.
     let mut wolf_cub_bonus_pending = false;
+    // Every player the Arsonist has doused, across every night so far
+    // (Werewolf.cs: `x.Doused`) - accumulates with no per-night reset
+    // until a detonation clears it (or a doused player dies some other
+    // way and simply stops being alive to burn). Tracked here rather
+    // than in `RoleState`, which only has a single `remembered_player`
+    // slot - see `arsonist::Arsonist`'s doc for why that's not enough.
+    let mut doused: Vec<PlayerId> = vec![];
 
     for round in 1..=max_rounds {
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
         for action in &night_actions {
             if let NightAction::LinkLovers { a, b } = action {
                 lovers.link(*a, *b);
+            }
+            if let NightAction::Douse { target } = action {
+                if !doused.contains(target) {
+                    doused.push(*target);
+                }
             }
         }
         apply_thief_steals(&night_actions, &mut alive, presenter).await;
@@ -86,7 +98,11 @@ pub async fn run_game(
             resolve_wolf_eat_target(wolf_target, &mut alive, &mut states, presenter).await;
 
         let mut night_deaths = apply_night_results(&night_actions, effective_wolf_target, silver_spread_tonight);
-        night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target));
+        night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target, &alive));
+        if let Some(burn_deaths) = resolve_arsonist_detonation(&night_actions, &doused, &alive) {
+            night_deaths.extend(burn_deaths);
+            doused.clear();
+        }
         if wolf_cub_bonus_pending {
             if let Some(target) = resolve_wolf_cub_bonus_kill(&alive, presenter).await {
                 let effective_target =

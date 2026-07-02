@@ -258,10 +258,17 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         // (Werewolf.cs:4358-4364: `DiedByVisitingKiller` + `KilledByRole
         // == Wolf` => `"HarlotFuckedWolfPublic"`) — not
         // `"HarlotFuckKillerPublic"`, which is the *SerialKiller*-visited
-        // variant of the same switch (Werewolf.cs:4368-4369) and doesn't
-        // apply here; `resolve_harlot_visit_deaths` only ever produces
-        // `VisitWolf`, never a SK-caused visit death.
+        // variant of the same switch (Werewolf.cs:4368-4369).
         KillMethod::VisitWolf => Some("HarlotFuckedWolfPublic"),
+        // The Harlot visiting the Serial Killer player themself
+        // (Werewolf.cs:2339-2345 → the same switch's `KilledByRole ==
+        // SerialKiller` + `DiedByVisitingKiller` case, 4368-4369).
+        KillMethod::VisitKiller => Some("HarlotFuckKillerPublic"),
+        // The Harlot visiting whoever the Serial Killer separately killed
+        // that same night — a different player from the SK themself
+        // (Werewolf.cs:3893-3897 → `KilledByRole == SerialKiller` +
+        // `DiedByVisitingVictim`, 4370-4371).
+        KillMethod::VisitVictim => Some("HarlotFuckedKilledPublic"),
         KillMethod::Eat => Some(match role {
             Role::ApprenticeSeer => "ApprenticeSeerEaten",
             Role::Detective => "DetectiveEaten",
@@ -372,6 +379,8 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         // death_locale_key's non-`None` outputs.
         "LynchKill",
         "HarlotFuckedWolfPublic",
+        "HarlotFuckKillerPublic",
+        "HarlotFuckedKilledPublic",
         "ApprenticeSeerEaten",
         "DetectiveEaten",
         "DrunkEaten",
@@ -1181,28 +1190,95 @@ pub fn resolve_lover_deaths(
     chain
 }
 
-/// Harlot visiting whoever the wolves actually ate that same night kills
-/// her too (Werewolf.cs:2352-2360: `KillMthd.VisitWolf`) — unconditional,
-/// no RNG involved, unlike most of `VisitPlayer`'s other branches. Takes
-/// `night_actions` rather than just the wolf target because it needs to
-/// find *which* Harlot visited, if any — `NightAction::Visit` carries her
-/// own id for exactly this.
+/// Three of `VisitPlayer`'s outcomes for a Harlot, all unconditional (no
+/// RNG involved, unlike most of that function's other branches — the one
+/// coin flip it does roll, Werewolf.cs:2340: `Program.R.Next(100) < 80`,
+/// only applies to a *wolf-team* visitor, gated behind
+/// `!WolfRoles.Contains(visitor.PlayerRole)`, which is always true for a
+/// Harlot):
+///
+/// - Visiting whoever the wolves actually ate that same night kills her
+///   too (Werewolf.cs:2352-2360: `KillMthd.VisitWolf`).
+/// - Visiting the Serial Killer *player themself* kills her
+///   (Werewolf.cs:2339-2345: `visited.PlayerRole == IRole.SerialKiller`
+///   unconditionally reaches `KillMthd.VisitKiller` for a non-wolf
+///   visitor).
+/// - Visiting whoever the Serial Killer separately killed that same
+///   night (a *different* player from the SK themself) also kills her
+///   (Werewolf.cs:3893-3897: the `VisitResult.AlreadyDead` case,
+///   `KillMthd.VisitVictim`, gated on `target.KilledByRole ==
+///   IRole.SerialKiller`).
+///
+/// Takes `night_actions`/`alive` rather than just the two targets because
+/// it needs to find *which* Harlot visited, if any (`NightAction::Visit`
+/// carries her own id), and needs the visited player's *role* to tell
+/// "visited the Serial Killer" apart from "visited the Serial Killer's
+/// victim" — two different keys for two different targets that happen to
+/// share a `killedByRole`.
 pub fn resolve_harlot_visit_deaths(
     night_actions: &[NightAction],
     wolf_target: Option<PlayerId>,
+    alive: &[AlivePlayer],
 ) -> Vec<(PlayerId, KillMethod)> {
-    let Some(wolf_target) = wolf_target else {
-        return vec![];
-    };
+    let sk_target = night_actions.iter().find_map(|a| match a {
+        NightAction::SerialKillVote { target } => Some(*target),
+        _ => None,
+    });
+
     night_actions
         .iter()
         .filter_map(|a| match a {
-            NightAction::Visit { visitor, target } if *target == wolf_target => {
+            NightAction::Visit { visitor, target } if Some(*target) == wolf_target => {
                 Some((*visitor, KillMethod::VisitWolf))
+            }
+            NightAction::Visit { visitor, target }
+                if alive.iter().any(|p| p.id == *target && p.role == Role::SerialKiller) =>
+            {
+                Some((*visitor, KillMethod::VisitKiller))
+            }
+            NightAction::Visit { visitor, target } if Some(*target) == sk_target => {
+                Some((*visitor, KillMethod::VisitVictim))
             }
             _ => None,
         })
         .collect()
+}
+
+/// Arsonist's mass burn (Werewolf.cs:3190-3202): choosing to detonate
+/// (`NightAction::Detonate`, "Spark") kills every currently-doused,
+/// still-alive player at once (`KillMethod::Burn`) — except whoever a
+/// Guardian Angel is protecting this exact night, who's saved instead
+/// (Werewolf.cs:3193-3195: `ga?.Choice == burn.Id` skips the `KillPlayer`
+/// call entirely for that one player, no partial protection for anyone
+/// else in the batch). Unconditional otherwise, no RNG.
+///
+/// Doused status accumulates across nights — `game::run_game` tracks the
+/// full set itself rather than through `RoleState`, since
+/// `arsonist::Arsonist`'s own doc flags that `RoleState::remembered_player`
+/// is a single slot, not the `Vec` this needs. Returns `None` (rather
+/// than an empty `Vec`) when no detonation happened this night, so a
+/// caller can tell "sparked with nobody doused" apart from "didn't spark
+/// at all" — only the latter should leave the doused set untouched for
+/// next night.
+pub fn resolve_arsonist_detonation(
+    night_actions: &[NightAction],
+    doused: &[PlayerId],
+    alive: &[AlivePlayer],
+) -> Option<Vec<(PlayerId, KillMethod)>> {
+    if !night_actions.iter().any(|a| matches!(a, NightAction::Detonate)) {
+        return None;
+    }
+    let protected_target = night_actions.iter().find_map(|a| match a {
+        NightAction::Protect { target } => Some(*target),
+        _ => None,
+    });
+    Some(
+        doused
+            .iter()
+            .filter(|&&p| Some(p) != protected_target && alive.iter().any(|a| a.id == p))
+            .map(|&p| (p, KillMethod::Burn))
+            .collect(),
+    )
 }
 
 /// The wolves' bonus kill after a Wolf Cub dies (Werewolf.cs:1047-1053,
@@ -1553,8 +1629,64 @@ mod lover_death_tests {
 }
 
 #[cfg(test)]
+mod arsonist_detonation_tests {
+    use super::*;
+
+    fn roster() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(1), role: Role::Arsonist },
+            AlivePlayer { id: PlayerId(2), role: Role::Villager },
+            AlivePlayer { id: PlayerId(3), role: Role::Seer },
+        ]
+    }
+
+    #[test]
+    fn detonating_burns_every_doused_player() {
+        let doused = [PlayerId(2), PlayerId(3)];
+        let actions = [NightAction::Detonate];
+        let deaths = resolve_arsonist_detonation(&actions, &doused, &roster());
+        assert_eq!(
+            deaths,
+            Some(vec![(PlayerId(2), KillMethod::Burn), (PlayerId(3), KillMethod::Burn)])
+        );
+    }
+
+    #[test]
+    fn not_detonating_is_none_not_an_empty_batch() {
+        let doused = [PlayerId(2)];
+        let actions = [NightAction::Douse { target: PlayerId(2) }];
+        assert_eq!(resolve_arsonist_detonation(&actions, &doused, &roster()), None);
+    }
+
+    #[test]
+    fn a_guardian_angels_protection_saves_exactly_one_doused_player() {
+        let doused = [PlayerId(2), PlayerId(3)];
+        let actions = [NightAction::Detonate, NightAction::Protect { target: PlayerId(2) }];
+        let deaths = resolve_arsonist_detonation(&actions, &doused, &roster());
+        assert_eq!(deaths, Some(vec![(PlayerId(3), KillMethod::Burn)]));
+    }
+
+    #[test]
+    fn an_already_dead_doused_player_is_skipped() {
+        let doused = [PlayerId(2), PlayerId(99)]; // 99 isn't in the roster
+        let actions = [NightAction::Detonate];
+        let deaths = resolve_arsonist_detonation(&actions, &doused, &roster());
+        assert_eq!(deaths, Some(vec![(PlayerId(2), KillMethod::Burn)]));
+    }
+}
+
+#[cfg(test)]
 mod harlot_visit_tests {
     use super::*;
+
+    fn roster() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(1), role: Role::Harlot },
+            AlivePlayer { id: PlayerId(2), role: Role::Villager },
+            AlivePlayer { id: PlayerId(3), role: Role::Villager },
+            AlivePlayer { id: PlayerId(4), role: Role::SerialKiller },
+        ]
+    }
 
     #[test]
     fn visiting_the_wolves_actual_target_kills_the_harlot() {
@@ -1565,7 +1697,7 @@ mod harlot_visit_tests {
             target: victim,
         }];
         assert_eq!(
-            resolve_harlot_visit_deaths(&actions, Some(victim)),
+            resolve_harlot_visit_deaths(&actions, Some(victim), &roster()),
             vec![(harlot, KillMethod::VisitWolf)]
         );
     }
@@ -1579,7 +1711,7 @@ mod harlot_visit_tests {
             visitor: harlot,
             target: elsewhere,
         }];
-        assert_eq!(resolve_harlot_visit_deaths(&actions, Some(wolf_target)), vec![]);
+        assert_eq!(resolve_harlot_visit_deaths(&actions, Some(wolf_target), &roster()), vec![]);
     }
 
     #[test]
@@ -1590,12 +1722,43 @@ mod harlot_visit_tests {
             visitor: harlot,
             target,
         }];
-        assert_eq!(resolve_harlot_visit_deaths(&actions, None), vec![]);
+        assert_eq!(resolve_harlot_visit_deaths(&actions, None, &roster()), vec![]);
     }
 
     #[test]
     fn no_harlot_in_play_means_no_visit_death() {
-        assert_eq!(resolve_harlot_visit_deaths(&[], Some(PlayerId(2))), vec![]);
+        assert_eq!(resolve_harlot_visit_deaths(&[], Some(PlayerId(2)), &roster()), vec![]);
+    }
+
+    #[test]
+    fn visiting_the_serial_killer_directly_kills_the_harlot() {
+        let harlot = PlayerId(1);
+        let sk = PlayerId(4);
+        let actions = [NightAction::Visit {
+            visitor: harlot,
+            target: sk,
+        }];
+        assert_eq!(
+            resolve_harlot_visit_deaths(&actions, None, &roster()),
+            vec![(harlot, KillMethod::VisitKiller)]
+        );
+    }
+
+    #[test]
+    fn visiting_the_serial_killers_own_target_kills_the_harlot() {
+        let harlot = PlayerId(1);
+        let sk_target = PlayerId(3);
+        let actions = [
+            NightAction::SerialKillVote { target: sk_target },
+            NightAction::Visit {
+                visitor: harlot,
+                target: sk_target,
+            },
+        ];
+        assert_eq!(
+            resolve_harlot_visit_deaths(&actions, None, &roster()),
+            vec![(harlot, KillMethod::VisitVictim)]
+        );
     }
 }
 

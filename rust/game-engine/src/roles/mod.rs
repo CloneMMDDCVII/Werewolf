@@ -151,8 +151,9 @@ pub enum NightAction {
     Douse { target: PlayerId },
     /// Arsonist choosing to detonate ("Spark", Werewolf.cs:1013,
     /// `player.Choice = -2`) instead of dousing this night: burns every
-    /// doused player at once. This proof-of-concept doesn't attempt the
-    /// actual mass-burn resolution (`KillMthd.Burn`, Werewolf.cs:3198-3202).
+    /// doused player at once (`KillMthd.Burn`, Werewolf.cs:3198-3202) — see
+    /// `orchestrator::resolve_arsonist_detonation`, which `game::run_game`
+    /// calls with this action and the cross-round doused set it keeps.
     Detonate,
 }
 

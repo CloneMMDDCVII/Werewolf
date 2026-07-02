@@ -8,12 +8,15 @@
 //! ice!"), which isn't a decision this file makes either way — it's the
 //! *absence* of a gate a future orchestrator would otherwise apply.
 //!
-//! Honest gap: `RoleState` only has one `remembered_player` slot, so this
-//! proof-of-concept can track the *most recent* douse target, not the
-//! full accumulated doused set the real game keeps per-player. Modeling
-//! that properly needs a `Vec<PlayerId>`, which no other role has needed
-//! yet — adding one just for Arsonist would be exactly the kind of
-//! premature generalization this codebase avoids elsewhere.
+//! The full doused set *is* tracked, and the mass-burn resolution itself
+//! (Werewolf.cs:3190-3202, `KillMthd.Burn`) **is** modeled — just not in
+//! this file, or in `RoleState`. `RoleState` only has a single
+//! `remembered_player` slot, not the `Vec<PlayerId>` a whole accumulated
+//! set needs, so `game::run_game` keeps its own `doused: Vec<PlayerId>`
+//! across rounds instead (the same "cross-round state lives in `run_game`,
+//! not a role file" pattern as `silver_spread_tonight`/
+//! `wolf_cub_bonus_pending`), and `orchestrator::resolve_arsonist_detonation`
+//! turns a `Detonate` action plus that set into `KillMethod::Burn` deaths.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
