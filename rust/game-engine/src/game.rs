@@ -57,6 +57,21 @@ pub async fn run_game(
     // state the same way LoversState is, just a plain bool instead of a
     // whole struct since there's only ever one thing to remember.
     let mut silver_spread_tonight = false;
+    // Same shape, for the Wolf Cub's bonus kill (Werewolf.cs:1047-1053):
+    // set whenever a Wolf Cub death is recorded, consumed at the start of
+    // the *next* night. This mirrors the legacy sequencing precisely
+    // (confirmed by reading NightCycle directly, not assumed): the
+    // WolfCubKilled flag is only reset at the end of a night's own
+    // resolution (Werewolf.cs:3235), *after* that night's menus already
+    // went out (Werewolf.cs:3030) - so a wolf answering the main "who do
+    // you eat?" question gets chained straight into a second "bonus eat?"
+    // question the same night, before either resolves, using whatever
+    // was left over from the last death. Both answers are collected and
+    // resolved together. An earlier version of this asked the bonus kill
+    // as a separate follow-up *after* the main kill had already resolved
+    // - the wrong sequencing, caught by checking the source instead of
+    // assuming the shape from the mechanic's description alone.
+    let mut wolf_cub_bonus_pending = false;
 
     for round in 1..=max_rounds {
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
@@ -66,13 +81,22 @@ pub async fn run_game(
             }
         }
         apply_thief_steals(&night_actions, &mut alive, presenter).await;
+
         let mut night_deaths = apply_night_results(&night_actions, wolf_target, silver_spread_tonight);
         night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target));
+        if wolf_cub_bonus_pending {
+            if let Some(target) = resolve_wolf_cub_bonus_kill(&alive, presenter).await {
+                night_deaths.push((target, KillMethod::Eat));
+            }
+            wolf_cub_bonus_pending = false;
+        }
         let (night_deaths, night_died_with_roles) =
             process_deaths(&night_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
-        maybe_wolf_cub_bonus_kill(&night_died_with_roles, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        wolf_cub_bonus_pending |= night_died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
         let night_shots = resolve_hunter_shots(&night_deaths, &night_died_with_roles, &alive, presenter).await;
-        process_deaths(&night_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        let (_, night_shot_roles) =
+            process_deaths(&night_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        wolf_cub_bonus_pending |= night_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
 
         if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
@@ -90,9 +114,11 @@ pub async fn run_game(
         let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
         let (day_deaths, day_died_with_roles) =
             process_deaths(&day_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
-        maybe_wolf_cub_bonus_kill(&day_died_with_roles, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        wolf_cub_bonus_pending |= day_died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
         let day_shots = resolve_hunter_shots(&day_deaths, &day_died_with_roles, &alive, presenter).await;
-        process_deaths(&day_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        let (_, day_shot_roles) =
+            process_deaths(&day_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
+        wolf_cub_bonus_pending |= day_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
 
         if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
@@ -297,38 +323,6 @@ async fn apply_thief_steals(
         if let Some(p) = alive.iter_mut().find(|p| p.id == *thief) {
             p.role = target_role;
         }
-    }
-}
-
-/// If a Wolf Cub is among the roles that just died, the wolves get one
-/// bonus kill (Werewolf.cs:1047-1053, `WolfCubKilled`) - resolved through
-/// the same death pipeline (`process_deaths`) as anything else, so it
-/// gets recorded, narrated, and can trigger its own transforms exactly
-/// like a normal kill.
-///
-/// **Timing simplification**: the legacy code applies this within the
-/// same night's resolution when the Wolf Cub dies at night, but the
-/// *following* night when it dies during the day (the bonus menu is only
-/// ever sent as part of `SendNightActions`). This proof-of-concept
-/// applies it immediately regardless of which phase triggered it, rather
-/// than threading another cross-round flag through for a day-death case -
-/// a Wolf Cub dying to a lynch or a Gunner's shot is the less common
-/// path, and the difference is only *when* the bonus kill lands, not
-/// whether it does.
-async fn maybe_wolf_cub_bonus_kill(
-    died_with_roles: &[(PlayerId, Role)],
-    alive: &mut Vec<AlivePlayer>,
-    states: &HashMap<PlayerId, RoleState>,
-    lovers: &LoversState,
-    kills: &mut Vec<KillEvent>,
-    deaths: &mut Vec<(PlayerId, KillMethod)>,
-    presenter: &mut dyn Presenter,
-) {
-    if !died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub) {
-        return;
-    }
-    if let Some(target) = resolve_wolf_cub_bonus_kill(alive, presenter).await {
-        process_deaths(&[(target, KillMethod::Eat)], alive, states, lovers, kills, deaths, presenter).await;
     }
 }
 

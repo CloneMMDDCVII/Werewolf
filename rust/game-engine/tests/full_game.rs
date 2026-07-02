@@ -653,6 +653,7 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
         wolf_cub: PlayerId,
         wolf: PlayerId,
         bonus_victim: PlayerId,
+        day: u32,
     }
     #[async_trait(?Send)]
     impl Presenter for WolfCubBonusPresenter {
@@ -667,23 +668,38 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
                 return None;
             }
             match prompt {
-                Prompt::LynchVote => Some(vec![self.wolf_cub]),
+                // Only vote to lynch the Wolf Cub on day 1 - by day 2
+                // they're already dead, and options wouldn't include them
+                // in a real presenter, but this scripted one doesn't
+                // check options, so it has to stop asking explicitly.
+                Prompt::LynchVote if self.day == 1 => Some(vec![self.wolf_cub]),
                 Prompt::WolfCubBonusKill if player == self.wolf => Some(vec![self.bonus_victim]),
                 _ => None,
             }
         }
+
+        fn advance_round(&mut self) {
+            self.day += 1;
+        }
     }
 
-    let mut presenter = WolfCubBonusPresenter { wolf_cub, wolf, bonus_victim };
-    let outcome = run_game(&players, &mut presenter, 1).await;
+    // Two rounds: the Wolf Cub is lynched day 1, and the bonus kill only
+    // lands the *following* night (Werewolf.cs:3030 sends that night's
+    // menus before Werewolf.cs:3235 resets WolfCubKilled - confirmed by
+    // reading NightCycle directly - so a Wolf Cub who dies during the day
+    // can't have already chained the bonus menu into that same day's
+    // now-past night).
+    let mut presenter = WolfCubBonusPresenter { wolf_cub, wolf, bonus_victim, day: 1 };
+    let outcome = run_game(&players, &mut presenter, 2).await;
 
     let mut deaths = outcome.deaths.clone();
     deaths.sort_by_key(|(id, _)| id.0);
     assert_eq!(
         deaths,
         vec![(wolf_cub, KillMethod::Lynch), (bonus_victim, KillMethod::Eat)],
-        "lynching the Wolf Cub should grant the wolves a bonus kill"
+        "lynching the Wolf Cub should grant the wolves a bonus kill the following night"
     );
+    assert_eq!(outcome.rounds_played, 2);
 }
 
 #[tokio::test]

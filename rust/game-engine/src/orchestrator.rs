@@ -1128,9 +1128,18 @@ pub fn resolve_harlot_visit_deaths(
 /// reuses the real `AskEat` text — the legacy code's own comment does
 /// exactly the same reuse, `GetLocaleString("AskEat")`), majority-tallied
 /// the same way the main wolf vote is, excluding wolf-team targets same
-/// as the original. Called by `run_game` immediately after any batch of
-/// deaths includes a Wolf Cub — see that call site's doc for the
-/// same-night-vs-next-night timing simplification this makes.
+/// as the original.
+///
+/// Called by `run_game` at the *start* of the next night, alongside (not
+/// after) the main wolf vote — confirmed by reading `NightCycle`
+/// directly: `SendNightActions` (which sends that night's menus,
+/// Werewolf.cs:3030) runs before `WolfCubKilled` gets reset
+/// (Werewolf.cs:3235), so a wolf answering the main "who do you eat?"
+/// question is immediately chained into this second question the same
+/// night, off whatever's left over from the last death, and both
+/// answers resolve together at the end of that night. Asking this
+/// *after* the main kill has already resolved — an earlier version of
+/// this call site did exactly that — was the wrong sequencing.
 pub async fn resolve_wolf_cub_bonus_kill(
     alive: &[AlivePlayer],
     presenter: &mut dyn Presenter,

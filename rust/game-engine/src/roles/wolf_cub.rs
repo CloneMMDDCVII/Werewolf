@@ -3,12 +3,15 @@
 //! validation logic, same `EatVote` action.
 //!
 //! The real distinguishing ability — if WolfCub dies, the wolves get a
-//! bonus kill (Werewolf.cs:1047-1053) — **is** modeled, in
-//! `game::maybe_wolf_cub_bonus_kill`, not here: it's triggered by a
-//! death, not by anything this passive-otherwise role does while alive,
-//! same reasoning as Hunter's revenge shot living in the orchestrator
-//! rather than in `roles::hunter`. See that function's doc for the
-//! same-night-vs-next-night timing simplification it makes. Team is
+//! bonus kill the following night (Werewolf.cs:1047-1053) — **is**
+//! modeled, in `orchestrator::resolve_wolf_cub_bonus_kill` plus a
+//! `wolf_cub_bonus_pending` flag `game::run_game` carries across rounds,
+//! not here: it's triggered by a death, not by anything this
+//! passive-otherwise role does while alive, same reasoning as Hunter's
+//! revenge shot living in the orchestrator rather than in
+//! `roles::hunter`. See `resolve_wolf_cub_bonus_kill`'s doc for exactly
+//! when the bonus question gets asked (same night as the main wolf vote,
+//! confirmed against `NightCycle` directly, not assumed). Team is
 //! already correct (`shared::Role::WolfCub` maps to `Team::Wolf`, and
 //! `is_wolf_muscle` already counts WolfCub as wolf muscle).
 
