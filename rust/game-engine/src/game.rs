@@ -82,11 +82,18 @@ pub async fn run_game(
         }
         apply_thief_steals(&night_actions, &mut alive, presenter).await;
 
-        let mut night_deaths = apply_night_results(&night_actions, wolf_target, silver_spread_tonight);
+        let effective_wolf_target =
+            resolve_wolf_eat_target(wolf_target, &mut alive, &mut states, presenter).await;
+
+        let mut night_deaths = apply_night_results(&night_actions, effective_wolf_target, silver_spread_tonight);
         night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target));
         if wolf_cub_bonus_pending {
             if let Some(target) = resolve_wolf_cub_bonus_kill(&alive, presenter).await {
-                night_deaths.push((target, KillMethod::Eat));
+                let effective_target =
+                    resolve_wolf_eat_target(Some(target), &mut alive, &mut states, presenter).await;
+                if let Some(target) = effective_target {
+                    night_deaths.push((target, KillMethod::Eat));
+                }
             }
             wolf_cub_bonus_pending = false;
         }
@@ -281,6 +288,68 @@ async fn demote_gunner_if_shot_a_wise_elder(
     }
 }
 
+/// Intercepts the wolves' primary/bonus eat target before it becomes a
+/// death, for the two roles whose wolf-eat resolution isn't "die"
+/// (Werewolf.cs:3296-3420, the `switch (target.PlayerRole)` inside the
+/// wolf-eat resolution loop — shared by both the primary and Wolf Cub
+/// bonus kill, since both targets are pushed into the same `choices` list
+/// and iterated through this one switch, confirmed by reading
+/// Werewolf.cs:3239-3270 directly):
+///
+/// - Cursed (Werewolf.cs:3298-3299): `Transform(target, IRole.Wolf, ...)`
+///   unconditionally, no `KillPlayer` call at all — a wolf-eaten Cursed
+///   player joins the wolves instead of dying. The real code also handles
+///   the "bitten" (Alpha Wolf conversion) case identically for Cursed, so
+///   there's no separate "Cursed but bitten" branch to distinguish.
+/// - Wise Elder (Werewolf.cs:3392-3406): the *first* non-bitten wolf-eat
+///   attempt has no `KillPlayer` call either — `target.HasUsedAbility` is
+///   set and the wolves are told they failed. Only a *second* attempt
+///   (`HasUsedAbility` already true) falls through to a normal kill
+///   (`goto default`). Modeled with `RoleState::primary_used`, the same
+///   one-shot flag every other "first time only" role uses.
+///
+/// Returns the effective wolf target to actually feed into
+/// `apply_night_results` (`None` if the attempt was absorbed by one of
+/// these two cases), applying and narrating any resulting transform
+/// (Cursed→Wolf) along the way. Shared by both the primary wolf-eat
+/// target and the Wolf Cub's bonus-kill target, since Werewolf.cs
+/// resolves both through the same switch (see the doc above).
+async fn resolve_wolf_eat_target(
+    wolf_target: Option<PlayerId>,
+    alive: &mut [AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+) -> Option<PlayerId> {
+    let target = wolf_target?;
+    let target_role = alive.iter().find(|p| p.id == target).map(|p| p.role)?;
+
+    match target_role {
+        Role::Cursed => {
+            presenter
+                .narrate(NarrationEvent::Transform {
+                    player: target,
+                    from: Role::Cursed,
+                    to: Role::Wolf,
+                })
+                .await;
+            if let Some(p) = alive.iter_mut().find(|p| p.id == target) {
+                p.role = Role::Wolf;
+            }
+            None
+        }
+        Role::WiseElder => {
+            let state = states.entry(target).or_default();
+            if state.primary_used {
+                Some(target)
+            } else {
+                state.primary_used = true;
+                None
+            }
+        }
+        _ => Some(target),
+    }
+}
+
 /// Applies the Thief's steal, immediately, the moment `resolve_night`
 /// produces it — unlike Doppelganger's `ChooseRoleModel` (which waits on
 /// a death), the swap is unconditional and instant (Werewolf.cs:2483-
@@ -462,6 +531,79 @@ fn resolved_winner(alive: &[AlivePlayer], kills: &[KillEvent], lovers: &LoversSt
     }
 
     None
+}
+
+#[cfg(test)]
+mod wolf_eat_special_case_tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    struct NoopPresenter;
+
+    #[async_trait(?Send)]
+    impl Presenter for NoopPresenter {
+        async fn ask_targets(
+            &mut self,
+            _player: PlayerId,
+            _prompt: crate::orchestrator::Prompt,
+            _options: &[PlayerId],
+            _count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            None
+        }
+    }
+
+    #[tokio::test]
+    async fn wolf_eating_the_cursed_converts_them_to_wolf_instead_of_killing() {
+        let cursed = PlayerId(1);
+        let mut alive = vec![AlivePlayer { id: cursed, role: Role::Cursed }];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+
+        let effective = resolve_wolf_eat_target(Some(cursed), &mut alive, &mut states, &mut presenter).await;
+
+        assert_eq!(effective, None, "no death should result from eating the Cursed");
+        assert_eq!(alive[0].role, Role::Wolf);
+    }
+
+    #[tokio::test]
+    async fn wise_elder_survives_the_first_wolf_eat_attempt() {
+        let elder = PlayerId(1);
+        let mut alive = vec![AlivePlayer { id: elder, role: Role::WiseElder }];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+
+        let effective = resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut presenter).await;
+
+        assert_eq!(effective, None, "the first attempt should be absorbed, no death");
+        assert!(states.get(&elder).unwrap().primary_used);
+    }
+
+    #[tokio::test]
+    async fn wise_elder_dies_on_a_second_wolf_eat_attempt() {
+        let elder = PlayerId(1);
+        let mut alive = vec![AlivePlayer { id: elder, role: Role::WiseElder }];
+        let mut states = HashMap::new();
+        states.insert(elder, RoleState { primary_used: true, ..Default::default() });
+        let mut presenter = NoopPresenter;
+
+        let effective = resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut presenter).await;
+
+        assert_eq!(effective, Some(elder), "a second attempt should go through as a normal kill");
+    }
+
+    #[tokio::test]
+    async fn every_other_role_is_unaffected() {
+        let villager = PlayerId(1);
+        let mut alive = vec![AlivePlayer { id: villager, role: Role::Villager }];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+
+        let effective = resolve_wolf_eat_target(Some(villager), &mut alive, &mut states, &mut presenter).await;
+
+        assert_eq!(effective, Some(villager));
+        assert_eq!(alive[0].role, Role::Villager);
+    }
 }
 
 #[cfg(test)]

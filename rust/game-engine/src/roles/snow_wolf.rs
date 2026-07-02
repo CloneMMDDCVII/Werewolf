@@ -1,12 +1,26 @@
-//! SnowWolf is wolf-team muscle (`WolfRoles.Concat(SnowWolf)`,
-//! Werewolf.cs:1736 onward) and shares the same night eat vote as
-//! `wolf::Wolf` — same treatment as `wolf_cub::WolfCub`/`lycan::Lycan`.
-//! Team is already correct via `is_wolf_muscle`. No distinguishing quirk
-//! of SnowWolf's own is modeled here (e.g. the Guardian Angel's
-//! block-detection special case at Werewolf.cs:3110 belongs to
-//! `guardian_angel::GuardianAngel`'s resolution, not this file).
+//! SnowWolf is wolf-team muscle for win-condition purposes (`is_wolf_muscle`
+//! counts it, and its own night-1 conversion excludes it from stealable/
+//! convertible pools alongside `WolfRoles`), but it does **not** share the
+//! main wolf-eat vote. Confirmed directly: the real vote-collection code
+//! (Werewolf.cs:48, `WolfRoles = { Wolf, AlphaWolf, WolfCub, Lycan }`, and
+//! the "Wolf Night - Non-snow wolves" region's
+//! `nightPlayers.GetPlayersForRoles(WolfRoles)`) explicitly excludes
+//! `IRole.SnowWolf` — the name is literal, it has its own separate "Snow
+//! Wolf Night" region with its own ability (freezing a player so their
+//! *next* night's action fails, Werewolf.cs's Snow Wolf Night region and
+//! `VisitResult`'s `.Frozen` check), not a vote in the shared eat.
+//!
+//! An earlier version of this file gave SnowWolf the exact same
+//! `EatVote` night action as `wolf::Wolf`, which was wrong — caught by
+//! checking the source's own `WolfRoles` array rather than assuming
+//! "wolf team" implies "votes in the wolf eat." The real Freeze ability
+//! itself still isn't modeled here (it would need a generic "this
+//! player's next action is nulled" mechanism this trait doesn't have),
+//! so this file is honestly passive in the meantime, same treatment as
+//! `cursed::Cursed`/`traitor::Traitor` before their own reactive quirks
+//! got modeled.
 
-use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
+use crate::roles::RoleBehavior;
 use shared::{Role, Team};
 
 pub struct SnowWolf;
@@ -14,45 +28,5 @@ pub struct SnowWolf;
 impl RoleBehavior for SnowWolf {
     fn team(&self) -> Team {
         Role::SnowWolf.team()
-    }
-
-    fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
-        match ctx.chosen_target {
-            Some(target) if is_valid_target(ctx, target) => {
-                vec![NightAction::EatVote { target }]
-            }
-            _ => vec![],
-        }
-    }
-}
-
-fn is_valid_target(ctx: &NightContext, target: PlayerId) -> bool {
-    target != ctx.self_id && ctx.alive.contains(&target)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn snow_wolf_votes_for_a_valid_alive_target() {
-        let snow_wolf = SnowWolf;
-        let ctx = NightContext {
-            alive: &[PlayerId(1), PlayerId(2)],
-            self_id: PlayerId(1),
-            chosen_target: Some(PlayerId(2)),
-            heal_target: None,
-            poison_target: None,
-            love_targets: None,
-            wolf_target: None,
-            toggle_choice: false,
-        };
-        let mut state = RoleState::default();
-        assert_eq!(
-            snow_wolf.night_action(&ctx, &mut state),
-            vec![NightAction::EatVote {
-                target: PlayerId(2)
-            }]
-        );
     }
 }

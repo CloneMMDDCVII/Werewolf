@@ -559,7 +559,7 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
         Role::Sorcerer => Some(Prompt::SorcererInvestigate),
         Role::Oracle => Some(Prompt::OracleInvestigate),
         Role::Cultist => Some(Prompt::CultistConvert),
-        Role::AlphaWolf | Role::WolfCub | Role::Lycan | Role::SnowWolf => Some(Prompt::WolfEat),
+        Role::AlphaWolf | Role::WolfCub | Role::Lycan => Some(Prompt::WolfEat),
         Role::Thief => Some(Prompt::ThiefSteal),
         Role::Chemist => Some(Prompt::ChemistBrew),
         Role::Arsonist => Some(Prompt::ArsonistDouse),
@@ -1026,11 +1026,23 @@ pub fn apply_night_results(
 /// a Grave Digger's trap, an idle/flee death, an Arsonist's mass burn, a
 /// wolf-standoff sub-case where the Hunter already shot back at a visiting
 /// wolf, and a couple of hardcoded 2-player endgame shortcuts. Every one
-/// of those would incorrectly grant a shot here. Also doesn't model
-/// "Domino" chaining (a Hunter's shot landing on *another* Hunter, who
-/// would get their own final shot in turn, Werewolf.cs:5480-5481) — this
-/// only asks each already-dead Hunter from the triggering batch once, not
-/// recursively.
+/// of those would incorrectly grant a shot here.
+///
+/// One of those cases *is* modeled precisely, though: a plain wolf-eat
+/// (`KillMethod::Eat`) death always passes `hunterFinalShot: false`
+/// (Werewolf.cs:3419, the `default:` case of the wolf-eat resolution
+/// switch — reached by every eaten role including Hunter itself, whose
+/// own case falls through to it when its shoot-back RNG fails,
+/// Werewolf.cs:3413) — confirmed to apply uniformly to both the primary
+/// wolf-eat and the Wolf Cub's bonus kill, since both targets are pushed
+/// through this same switch (Werewolf.cs:3239-3270). So `KillMethod::Eat`
+/// is excluded here entirely, unconditionally — no question is asked at
+/// all for that death method, not just a different prompt.
+///
+/// Also doesn't model "Domino" chaining (a Hunter's shot landing on
+/// *another* Hunter, who would get their own final shot in turn,
+/// Werewolf.cs:5480-5481) — this only asks each already-dead Hunter from
+/// the triggering batch once, not recursively.
 pub async fn resolve_hunter_shots(
     new_deaths: &[(PlayerId, KillMethod)],
     died_with_roles: &[(PlayerId, Role)],
@@ -1049,6 +1061,9 @@ pub async fn resolve_hunter_shots(
             .find(|&&(id, _)| id == hunter_id)
             .map(|&(_, m)| m)
             .expect("every id in died_with_roles has a matching entry in new_deaths");
+        if method == KillMethod::Eat {
+            continue;
+        }
         let prompt = if method == KillMethod::Lynch {
             Prompt::HunterFinalShotLynched
         } else {
@@ -1348,12 +1363,31 @@ mod hunter_shot_tests {
             answer: None,
             asked: vec![],
         };
-        let new_deaths = [(hunter, KillMethod::Eat)];
+        let new_deaths = [(hunter, KillMethod::Poison)];
         let died_with_roles = [(hunter, Role::Hunter)];
 
         resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
 
         assert_eq!(presenter.asked[0].1, Prompt::HunterFinalShotKilled);
+    }
+
+    /// Werewolf.cs:3419: the default wolf-eat kill explicitly passes
+    /// `hunterFinalShot: false` — a plain wolf-eat death never grants a
+    /// revenge shot, unlike every other kill method.
+    #[tokio::test]
+    async fn a_hunter_eaten_by_wolves_gets_no_final_shot_at_all() {
+        let hunter = PlayerId(1);
+        let mut presenter = ScriptedHunterPresenter {
+            answer: Some(PlayerId(2)),
+            asked: vec![],
+        };
+        let new_deaths = [(hunter, KillMethod::Eat)];
+        let died_with_roles = [(hunter, Role::Hunter)];
+
+        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+
+        assert_eq!(shots, vec![]);
+        assert!(presenter.asked.is_empty(), "a wolf-eaten hunter should never be asked for a final shot");
     }
 
     #[tokio::test]
