@@ -225,7 +225,7 @@ pub enum NarrationEvent {
 /// lynch/eat/etc. death of the same role — `DefaultKilled` covers every
 /// role without its own dedicated key. `KillMethod::VisitWolf` (a Harlot
 /// visiting the wolves' actual target, see `resolve_harlot_visit_deaths`)
-/// gets the real public death text too (`HarlotFuckKillerPublic` — yes,
+/// gets the real public death text too (`HarlotFuckedWolfPublic` — yes,
 /// that's the actual legacy key name).
 ///
 /// `KillMethod::LoverDied`/`HunterShot` are still `None`: their real text
@@ -235,10 +235,51 @@ pub enum NarrationEvent {
 /// flavor text needs that event to grow a second identity field first,
 /// which is more than this batch of "easy, unambiguous" mappings signed
 /// up for.
+///
+/// `KillMethod::Eat`'s per-role flavor (Werewolf.cs:4218-4267, the
+/// `p.KilledByRole == IRole.Wolf && !p.DiedByVisitingKiller &&
+/// !p.DiedByVisitingVictim` branch) is a *different* switch from the
+/// `SerialKilled` one below — ten roles get their own `"{Role}Eaten"` key
+/// (`ApprenticeSeer`, `Detective`, `Drunk`, `Fool`, `Gunner`, `Harlot`,
+/// `Mason`, `Seer`, `Sorcerer`, `WildChild`), `GuardianAngel` gets
+/// `"GuardianEaten"` (not `"GuardianAngelEaten"` — checked, that key
+/// doesn't exist), and everyone else falls through to `"DefaultEaten"`.
+/// Every one of these is reachable today: `apply_night_results` already
+/// produces plain `KillMethod::Eat` deaths for the main wolf-eat and
+/// Wolf Cub's bonus kill alike, and neither is a "visiting" death (that's
+/// `VisitWolf`, the Harlot's own separate case below), matching this
+/// branch's guard exactly.
 pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> {
     match method {
         KillMethod::Lynch => Some("LynchKill"),
-        KillMethod::VisitWolf => Some("HarlotFuckKillerPublic"),
+        // The Harlot dying by visiting the wolves' actual target
+        // (Werewolf.cs:2359-2360, `killedByRole: IRole.Wolf`). Matched to
+        // her own case in the "died by visiting" switch
+        // (Werewolf.cs:4358-4364: `DiedByVisitingKiller` + `KilledByRole
+        // == Wolf` => `"HarlotFuckedWolfPublic"`) — not
+        // `"HarlotFuckKillerPublic"`, which is the *SerialKiller*-visited
+        // variant of the same switch (Werewolf.cs:4368-4369) and doesn't
+        // apply here; `resolve_harlot_visit_deaths` only ever produces
+        // `VisitWolf`, never a SK-caused visit death.
+        KillMethod::VisitWolf => Some("HarlotFuckedWolfPublic"),
+        KillMethod::Eat => Some(match role {
+            Role::ApprenticeSeer => "ApprenticeSeerEaten",
+            Role::Detective => "DetectiveEaten",
+            Role::Drunk => "DrunkEaten",
+            Role::Fool => "FoolEaten",
+            Role::Gunner => "GunnerEaten",
+            Role::Harlot => "HarlotEaten",
+            Role::Mason => "MasonEaten",
+            Role::Seer => "SeerEaten",
+            Role::Sorcerer => "SorcererEaten",
+            Role::WildChild => "WildChildEaten",
+            Role::GuardianAngel => "GuardianEaten",
+            _ => "DefaultEaten",
+        }),
+        // Werewolf.cs:4251-4262. `Cupid` belongs in this list too (it was
+        // missing before — checked directly against the real switch,
+        // which includes `IRole.Cupid` alongside `Blacksmith`/`Cultist`/
+        // `Drunk`/`GuardianAngel`/`Gunner`/`Mayor`/`Prince`/`Seer`).
         KillMethod::SerialKilled => Some(match role {
             Role::Gunner => "GunnerKilled",
             Role::Seer => "SeerKilled",
@@ -248,6 +289,7 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
             Role::Cultist => "CultistKilled",
             Role::GuardianAngel => "GuardianAngelKilled",
             Role::Blacksmith => "BlacksmithKilled",
+            Role::Cupid => "CupidKilled",
             _ => "DefaultKilled",
         }),
         _ => None,
@@ -329,7 +371,19 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
     keys.extend([
         // death_locale_key's non-`None` outputs.
         "LynchKill",
-        "HarlotFuckKillerPublic",
+        "HarlotFuckedWolfPublic",
+        "ApprenticeSeerEaten",
+        "DetectiveEaten",
+        "DrunkEaten",
+        "FoolEaten",
+        "GunnerEaten",
+        "HarlotEaten",
+        "MasonEaten",
+        "SeerEaten",
+        "SorcererEaten",
+        "WildChildEaten",
+        "GuardianEaten",
+        "DefaultEaten",
         "GunnerKilled",
         "SeerKilled",
         "DrunkKilled",
@@ -338,6 +392,7 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "CultistKilled",
         "GuardianAngelKilled",
         "BlacksmithKilled",
+        "CupidKilled",
         "DefaultKilled",
         // transform_locale_key's non-`None` outputs.
         "TraitorTurnWolf",
@@ -403,6 +458,7 @@ mod locale_mapping_tests {
         assert_eq!(death_locale_key(Role::Gunner, KillMethod::SerialKilled), Some("GunnerKilled"));
         assert_eq!(death_locale_key(Role::Seer, KillMethod::SerialKilled), Some("SeerKilled"));
         assert_eq!(death_locale_key(Role::Blacksmith, KillMethod::SerialKilled), Some("BlacksmithKilled"));
+        assert_eq!(death_locale_key(Role::Cupid, KillMethod::SerialKilled), Some("CupidKilled"));
     }
 
     #[test]
@@ -412,7 +468,19 @@ mod locale_mapping_tests {
 
     #[test]
     fn a_harlot_dying_from_visiting_a_wolf_has_a_key() {
-        assert_eq!(death_locale_key(Role::Harlot, KillMethod::VisitWolf), Some("HarlotFuckKillerPublic"));
+        assert_eq!(death_locale_key(Role::Harlot, KillMethod::VisitWolf), Some("HarlotFuckedWolfPublic"));
+    }
+
+    #[test]
+    fn wolf_eat_maps_to_the_dying_roles_own_flavor_key() {
+        assert_eq!(death_locale_key(Role::Seer, KillMethod::Eat), Some("SeerEaten"));
+        assert_eq!(death_locale_key(Role::Detective, KillMethod::Eat), Some("DetectiveEaten"));
+        assert_eq!(death_locale_key(Role::GuardianAngel, KillMethod::Eat), Some("GuardianEaten"));
+    }
+
+    #[test]
+    fn wolf_eat_falls_back_to_default_for_an_uncelebrated_role() {
+        assert_eq!(death_locale_key(Role::Villager, KillMethod::Eat), Some("DefaultEaten"));
     }
 
     #[test]
