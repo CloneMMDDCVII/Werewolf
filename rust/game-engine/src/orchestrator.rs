@@ -261,10 +261,28 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         // `"HarlotFuckKillerPublic"`, which is the *SerialKiller*-visited
         // variant of the same switch (Werewolf.cs:4368-4369).
         KillMethod::VisitWolf => Some("HarlotFuckedWolfPublic"),
-        // The Harlot visiting the Serial Killer player themself
-        // (Werewolf.cs:2339-2345 → the same switch's `KilledByRole ==
-        // SerialKiller` + `DiedByVisitingKiller` case, 4368-4369).
-        KillMethod::VisitKiller => Some("HarlotFuckKillerPublic"),
+        // Whoever dies visiting the Serial Killer player themself
+        // (Werewolf.cs:2339-2347's shared `VisitPlayer` gate, reachable
+        // for three different visitors this port now models: a Harlot who
+        // picked the SK as her target, a wolf who drew the short straw in
+        // `game::resolve_wolf_eat_target`'s dodge check, or the cult's
+        // newbie in `resolve_cultist_conversion`). Genuinely three
+        // different real messages depending on the dying role — the
+        // "died by visiting" switch (Werewolf.cs:4322-4406) branches on
+        // `p.PlayerRole` before it ever looks at `KilledByRole`, so a
+        // wolf and a Harlot dying to the exact same mechanic still get
+        // different text.
+        KillMethod::VisitKiller => Some(match role {
+            Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan => "SerialKillerKilledWolf",
+            // SnowWolf gets its own key even though it's wolf-team too
+            // (Werewolf.cs:4396-4397: `case IRole.SnowWolf: if (KilledByRole
+            // == SerialKiller) msg = "SnowFrozeKiller"`) - checked directly,
+            // not folded into the plain-wolf case above.
+            Role::SnowWolf => "SnowFrozeKiller",
+            Role::Cultist => "CultConvertKillerPublic",
+            Role::Harlot => "HarlotFuckKillerPublic",
+            _ => return None,
+        }),
         // The Harlot visiting whoever the Serial Killer separately killed
         // that same night — a different player from the SK themself
         // (Werewolf.cs:3893-3897 → `KilledByRole == SerialKiller` +
@@ -420,6 +438,9 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "HarlotFuckedWolfPublic",
         "HarlotFuckKillerPublic",
         "HarlotFuckedKilledPublic",
+        "SerialKillerKilledWolf",
+        "SnowFrozeKiller",
+        "CultConvertKillerPublic",
         "ApprenticeSeerEaten",
         "DetectiveEaten",
         "DrunkEaten",
@@ -547,6 +568,16 @@ mod locale_mapping_tests {
     fn chemistry_success_and_failure_map_to_different_keys() {
         assert_eq!(death_locale_key(Role::Villager, KillMethod::Chemistry), Some("ChemistSuccessPublic"));
         assert_eq!(death_locale_key(Role::Chemist, KillMethod::Chemistry), Some("ChemistFailPublic"));
+    }
+
+    #[test]
+    fn visit_killer_deaths_vary_by_the_dying_roles_own_team() {
+        assert_eq!(death_locale_key(Role::Wolf, KillMethod::VisitKiller), Some("SerialKillerKilledWolf"));
+        assert_eq!(death_locale_key(Role::AlphaWolf, KillMethod::VisitKiller), Some("SerialKillerKilledWolf"));
+        assert_eq!(death_locale_key(Role::SnowWolf, KillMethod::VisitKiller), Some("SnowFrozeKiller"));
+        assert_eq!(death_locale_key(Role::Cultist, KillMethod::VisitKiller), Some("CultConvertKillerPublic"));
+        assert_eq!(death_locale_key(Role::Harlot, KillMethod::VisitKiller), Some("HarlotFuckKillerPublic"));
+        assert_eq!(death_locale_key(Role::Villager, KillMethod::VisitKiller), None);
     }
 
     #[test]
@@ -1559,6 +1590,8 @@ fn cult_conversion_chance_percent(role: Role) -> u32 {
 /// "newest" to pick: an honest simplification, not a bug.
 ///
 /// Special cases, in the order the source checks them:
+/// - **Serial Killer** target: the newbie dies unconditionally, no roll —
+///   see the `SerialKiller` branch's own comment for why.
 /// - **Grave Digger** target: subject to the same fall trap
 ///   `resolve_grave_digger_falls` models for Harlot/Guardian Angel
 ///   (Werewolf.cs's shared `VisitPlayer`, reached before any of the
@@ -1606,6 +1639,18 @@ pub fn resolve_cultist_conversion(
     let Some(target_role) = alive.iter().find(|p| p.id == target).map(|p| p.role) else {
         return no_outcome;
     };
+
+    // Werewolf.cs:2339-2347, VisitPlayer's own gate, checked before the
+    // per-role conversion switch is ever reached - same "not part of the
+    // switch, structurally earlier" shape as game::resolve_wolf_eat_target's
+    // Serial Killer dodge. A Cultist isn't wolf-team, so the "unless you're
+    // a wolf and very lucky" clause never applies: the newbie dies
+    // unconditionally, no roll at all, and (like the Grave Digger case)
+    // there's no `case IRole.SerialKiller:` in the real conversion switch
+    // for exactly this reason - VisitPlayer never lets it get there.
+    if target_role == Role::SerialKiller {
+        return CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitKiller)] };
+    }
 
     if target_role == Role::GraveDigger {
         return if dug_graves >= 1 && rng.chance(grave_digger_fall_chance_percent(dug_graves, false)) {
@@ -2086,6 +2131,15 @@ mod cultist_conversion_tests {
         // even with wolves_went_eating true, SnowWolf isn't part of that vote
         let outcome = resolve_cultist_conversion(&vote(PlayerId(6)), true, 0, &roster(), &mut rng);
         assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitWolf)] });
+    }
+
+    #[test]
+    fn visiting_the_serial_killer_always_kills_the_newbie_no_roll() {
+        let mut roster_with_sk = roster();
+        roster_with_sk.push(AlivePlayer { id: PlayerId(9), role: Role::SerialKiller });
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let outcome = resolve_cultist_conversion(&vote(PlayerId(9)), true, 0, &roster_with_sk, &mut rng);
+        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitKiller)] });
     }
 
     #[test]

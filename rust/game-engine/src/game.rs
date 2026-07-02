@@ -123,12 +123,14 @@ pub async fn run_game(
         }
         apply_thief_steals(&night_actions, &mut alive, presenter).await;
 
-        let wolf_eat = resolve_wolf_eat_target(wolf_target, &mut alive, &mut states, rng, presenter).await;
+        let wolf_eat =
+            resolve_wolf_eat_target(wolf_target, &night_actions, &mut alive, &mut states, rng, presenter).await;
         if let Some(bitten) = wolf_eat.bitten {
             bitten_pending.push(bitten);
         }
 
         let mut night_deaths = apply_night_results(&night_actions, wolf_eat.effective_target, silver_spread_tonight);
+        night_deaths.extend(wolf_eat.extra_death);
         night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target, &alive));
         night_deaths.extend(resolve_grave_digger_falls(&night_actions, dug_graves, &alive, rng));
         night_deaths.extend(resolve_chemistry(&night_actions, rng));
@@ -150,14 +152,22 @@ pub async fn run_game(
         }
         if wolf_cub_bonus_pending {
             if let Some(target) = resolve_wolf_cub_bonus_kill(&alive, presenter).await {
-                let bonus_eat =
-                    resolve_wolf_eat_target(Some(target), &mut alive, &mut states, rng, presenter).await;
+                let bonus_eat = resolve_wolf_eat_target(
+                    Some(target),
+                    &night_actions,
+                    &mut alive,
+                    &mut states,
+                    rng,
+                    presenter,
+                )
+                .await;
                 if let Some(bitten) = bonus_eat.bitten {
                     bitten_pending.push(bitten);
                 }
                 if let Some(target) = bonus_eat.effective_target {
                     night_deaths.push((target, KillMethod::Eat));
                 }
+                night_deaths.extend(bonus_eat.extra_death);
             }
             wolf_cub_bonus_pending = false;
         }
@@ -358,7 +368,7 @@ async fn demote_gunner_if_shot_a_wise_elder(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WolfEatOutcome {
     /// The target to actually feed into `apply_night_results` (`None` if
-    /// the attempt was fully absorbed by one of the other two fields, or
+    /// the attempt was fully absorbed by one of the other fields, or
     /// there was no target at all).
     effective_target: Option<PlayerId>,
     /// Set when the target was bitten rather than killed
@@ -372,15 +382,26 @@ struct WolfEatOutcome {
     /// below - but the two are conceptually different outcomes, not the
     /// same field reused).
     bitten: Option<PlayerId>,
+    /// A death this call produced *besides* whatever happens to
+    /// `effective_target` - today, only ever the wolf a Hunter shoots back
+    /// during a standoff (Werewolf.cs:3369: `KillPlayer(shotWuff,
+    /// KillMthd.HunterShot, ...)`), which happens *alongside*, not instead
+    /// of, the Hunter's own fate.
+    extra_death: Option<(PlayerId, KillMethod)>,
 }
 
-const NO_EFFECT: WolfEatOutcome = WolfEatOutcome { effective_target: None, bitten: None };
+const NO_EFFECT: WolfEatOutcome = WolfEatOutcome { effective_target: None, bitten: None, extra_death: None };
 
 /// Alpha Wolf's conversion chance (Werewolf.cs `Settings.cs:97,123`:
 /// `AlphaWolfConversionChance = 20`) — a per-group setting in the real
 /// game; this proof-of-concept has no group settings model, so it always
 /// uses the real default rather than inventing a knob nothing reads yet.
 const ALPHA_WOLF_CONVERSION_CHANCE_PERCENT: u32 = 20;
+
+/// A Hunter's base chance of shooting back during a wolf-eat standoff
+/// (Werewolf.cs `Settings.cs:95,121`: `HunterKillWolfChanceBase = 30`),
+/// before `wolf_voter_count` scales it up.
+const HUNTER_KILL_WOLF_CHANCE_BASE_PERCENT: u32 = 30;
 
 /// Intercepts the wolves' primary/bonus eat target before it becomes a
 /// death, for every case in the wolf-eat resolution switch that isn't
@@ -394,6 +415,34 @@ const ALPHA_WOLF_CONVERSION_CHANCE_PERCENT: u32 = 20;
 ///   wolf-eaten Cursed player joins the wolves outright. Checked *first*,
 ///   before bitten, since the source's own `switch` reaches this `case`
 ///   before ever evaluating `bitten` for this target.
+/// - Serial Killer dodge (Werewolf.cs:2339-2347) — structurally checked
+///   even earlier than Cursed in the real source: it's not part of the
+///   per-role `switch` at all, but a gate inside the shared `VisitPlayer`
+///   that runs *before* that switch is ever reached. The wolves' chosen
+///   visitor only has a 20% chance of surviving a visit to the Serial
+///   Killer (`R.Next(100) < 80` is the death condition - easy to misread
+///   backwards); an SK with no valid kill target that night has no chance
+///   at all. On a visitor death, the SK doesn't die this attempt - the
+///   whole per-role switch below (including bitten) is simply never
+///   reached, matching `VisitPlayer` returning something other than
+///   `Success`.
+/// - Hunter standoff (Werewolf.cs:3324-3377), also checked *before*
+///   bitten — the source's `case IRole.Hunter` doesn't look at `bitten`
+///   at all on its own success path, only falling into the shared bitten
+///   check via `goto default` if the standoff itself fails. Chance is
+///   `HunterKillWolfChanceBase + (wolf_voter_count - 1) * 20`
+///   (`wolf_voter_count` approximated as the number of `EatVote` actions
+///   cast, this proof-of-concept's closest equivalent to `voteWolves
+///   .Count()`). On success: one random living wolf-team member (picked
+///   via `RngSource::pick_index`, mirroring `voteWolves.ElementAt(R
+///   .Next(...))`) dies as `KillMethod::HunterShot`; the Hunter *also*
+///   dies via a normal `KillMethod::Eat` (`hunterFinalShot: false`,
+///   already handled generically by `resolve_hunter_shots` excluding
+///   `Eat`) - but only if more than one wolf voted
+///   (Werewolf.cs:3355: `if (voteWolves.Count() > 1)`) - a lone wolf who
+///   gets shot back at takes the Hunter's target down with them and the
+///   Hunter survives unscathed. On failure: falls through to the same
+///   bitten check as everyone else.
 /// - Bitten (Werewolf.cs:3289: `voteWolves.Any(AlphaWolf) &&
 ///   R.Next(100) < AlphaWolfConversionChance`): every other role reachable
 ///   here (`goto default` included - Harlot, Traitor, SerialKiller, a
@@ -413,6 +462,7 @@ const ALPHA_WOLF_CONVERSION_CHANCE_PERCENT: u32 = 20;
 ///   time only" role uses.
 async fn resolve_wolf_eat_target(
     wolf_target: Option<PlayerId>,
+    night_actions: &[NightAction],
     alive: &mut [AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
     rng: &mut dyn RngSource,
@@ -437,22 +487,67 @@ async fn resolve_wolf_eat_target(
         return NO_EFFECT;
     }
 
+    if target_role == Role::SerialKiller {
+        // Werewolf.cs:2339-2347, VisitPlayer's own gate, checked before the
+        // per-role switch even runs - so this isn't "the wolves eat the
+        // SK," it's "the wolves' chosen visitor tries to visit the SK and
+        // usually doesn't come back." A wolf-team visitor survives only on
+        // a 20% roll (`R.Next(100) < 80` is the *death* condition, easy to
+        // misread backwards); any non-wolf visitor, or an SK with no valid
+        // kill target that night, dies unconditionally with no roll at
+        // all - approximated here as "the SK cast no SerialKillVote,"
+        // this proof-of-concept's equivalent of `visited.Choice == 0 ||
+        // == -1` (`Frozen` isn't tracked at all, so it's simply never
+        // true). `wolves` reuses the same "pick a random wolf-team member"
+        // approximation as the Hunter standoff above, for the same reason
+        // (no per-vote visitor identity tracked). Survival means falling
+        // through to the normal switch below, same as everyone else - the
+        // SK isn't given any special immunity to bitten/etc, only this one
+        // extra gate in front of it.
+        let sk_had_target = night_actions.iter().any(|a| matches!(a, NightAction::SerialKillVote { .. }));
+        let wolves: Vec<PlayerId> = alive.iter().filter(|p| is_wolf_muscle(p.role)).map(|p| p.id).collect();
+        if !wolves.is_empty() && (!sk_had_target || rng.chance(80)) {
+            let visitor = wolves[rng.pick_index(wolves.len())];
+            return WolfEatOutcome {
+                effective_target: None,
+                bitten: None,
+                extra_death: Some((visitor, KillMethod::VisitKiller)),
+            };
+        }
+    }
+
+    if target_role == Role::Hunter {
+        let wolf_voter_count = night_actions.iter().filter(|a| matches!(a, NightAction::EatVote { .. })).count();
+        let wolves: Vec<PlayerId> = alive.iter().filter(|p| is_wolf_muscle(p.role)).map(|p| p.id).collect();
+        if wolf_voter_count > 0 && !wolves.is_empty() {
+            let chance = HUNTER_KILL_WOLF_CHANCE_BASE_PERCENT + (wolf_voter_count as u32 - 1) * 20;
+            if rng.chance(chance) {
+                let shot_wolf = wolves[rng.pick_index(wolves.len())];
+                return WolfEatOutcome {
+                    effective_target: (wolf_voter_count > 1).then_some(target),
+                    bitten: None,
+                    extra_death: Some((shot_wolf, KillMethod::HunterShot)),
+                };
+            }
+        }
+    }
+
     let has_alpha = alive.iter().any(|p| p.role == Role::AlphaWolf);
     if has_alpha && rng.chance(ALPHA_WOLF_CONVERSION_CHANCE_PERCENT) {
-        return WolfEatOutcome { effective_target: None, bitten: Some(target) };
+        return WolfEatOutcome { effective_target: None, bitten: Some(target), extra_death: None };
     }
 
     match target_role {
         Role::WiseElder => {
             let state = states.entry(target).or_default();
             if state.primary_used {
-                WolfEatOutcome { effective_target: Some(target), bitten: None }
+                WolfEatOutcome { effective_target: Some(target), bitten: None, extra_death: None }
             } else {
                 state.primary_used = true;
                 NO_EFFECT
             }
         }
-        _ => WolfEatOutcome { effective_target: Some(target), bitten: None },
+        _ => WolfEatOutcome { effective_target: Some(target), bitten: None, extra_death: None },
     }
 }
 
@@ -712,7 +807,7 @@ mod wolf_eat_special_case_tests {
         let mut rng = no_alpha_wolf_rng();
 
         let outcome =
-            resolve_wolf_eat_target(Some(cursed), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(cursed), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
         assert_eq!(outcome, NO_EFFECT, "no death, and no bite, should result from eating the Cursed");
         assert_eq!(alive[0].role, Role::Wolf);
@@ -727,7 +822,7 @@ mod wolf_eat_special_case_tests {
         let mut rng = no_alpha_wolf_rng();
 
         let outcome =
-            resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(elder), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
         assert_eq!(outcome, NO_EFFECT, "the first attempt should be absorbed, no death");
         assert!(states.get(&elder).unwrap().primary_used);
@@ -743,11 +838,11 @@ mod wolf_eat_special_case_tests {
         let mut rng = no_alpha_wolf_rng();
 
         let outcome =
-            resolve_wolf_eat_target(Some(elder), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(elder), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
         assert_eq!(
             outcome,
-            WolfEatOutcome { effective_target: Some(elder), bitten: None },
+            WolfEatOutcome { effective_target: Some(elder), bitten: None, extra_death: None },
             "a second attempt should go through as a normal kill"
         );
     }
@@ -761,9 +856,9 @@ mod wolf_eat_special_case_tests {
         let mut rng = no_alpha_wolf_rng();
 
         let outcome =
-            resolve_wolf_eat_target(Some(villager), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(villager), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(villager), bitten: None });
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(villager), bitten: None, extra_death: None });
         assert_eq!(alive[0].role, Role::Villager);
     }
 
@@ -781,9 +876,9 @@ mod wolf_eat_special_case_tests {
         let mut rng = no_alpha_wolf_rng();
 
         let outcome =
-            resolve_wolf_eat_target(Some(target), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(target), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(target), bitten: None });
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(target), bitten: None, extra_death: None });
     }
 
     #[tokio::test]
@@ -799,9 +894,9 @@ mod wolf_eat_special_case_tests {
         let mut rng = ScriptedRngSource::new().with_chance(true);
 
         let outcome =
-            resolve_wolf_eat_target(Some(target), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(target), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(outcome, WolfEatOutcome { effective_target: None, bitten: Some(target) });
+        assert_eq!(outcome, WolfEatOutcome { effective_target: None, bitten: Some(target), extra_death: None });
         assert_eq!(alive[0].role, Role::Seer, "no immediate transform - that's next night's job");
     }
 
@@ -818,9 +913,9 @@ mod wolf_eat_special_case_tests {
         let mut rng = ScriptedRngSource::new().with_chance(false);
 
         let outcome =
-            resolve_wolf_eat_target(Some(target), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(target), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
-        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(target), bitten: None });
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(target), bitten: None, extra_death: None });
     }
 
     #[tokio::test]
@@ -839,10 +934,161 @@ mod wolf_eat_special_case_tests {
         let mut rng = no_alpha_wolf_rng();
 
         let outcome =
-            resolve_wolf_eat_target(Some(cursed), &mut alive, &mut states, &mut rng, &mut presenter).await;
+            resolve_wolf_eat_target(Some(cursed), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
 
         assert_eq!(outcome, NO_EFFECT);
         assert_eq!(alive[0].role, Role::Wolf);
+    }
+
+    fn hunter_roster() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(1), role: Role::Hunter },
+            AlivePlayer { id: PlayerId(2), role: Role::Wolf },
+        ]
+    }
+
+    #[tokio::test]
+    async fn a_lone_wolf_shot_back_at_dies_alone_and_the_hunter_survives() {
+        let hunter = PlayerId(1);
+        let wolf = PlayerId(2);
+        let mut alive = hunter_roster();
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        // One EatVote -> wolf_voter_count == 1 -> standoff chance succeeds,
+        // then pick_index(1) picks the only wolf.
+        let mut rng = ScriptedRngSource::new().with_chance(true).with_index(0);
+        let actions = [NightAction::EatVote { target: hunter }];
+
+        let outcome =
+            resolve_wolf_eat_target(Some(hunter), &actions, &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(
+            outcome,
+            WolfEatOutcome { effective_target: None, bitten: None, extra_death: Some((wolf, KillMethod::HunterShot)) },
+            "with only one wolf voting, the hunter should survive - only the shot wolf dies"
+        );
+    }
+
+    #[tokio::test]
+    async fn multiple_wolves_shooting_back_costs_the_hunter_their_life_too() {
+        let hunter = PlayerId(1);
+        let wolf_a = PlayerId(2);
+        let wolf_b = PlayerId(3);
+        let mut alive = vec![
+            AlivePlayer { id: hunter, role: Role::Hunter },
+            AlivePlayer { id: wolf_a, role: Role::Wolf },
+            AlivePlayer { id: wolf_b, role: Role::AlphaWolf },
+        ];
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let actions =
+            [NightAction::EatVote { target: hunter }, NightAction::EatVote { target: hunter }];
+        let mut rng = ScriptedRngSource::new().with_chance(true).with_index(0);
+
+        let outcome =
+            resolve_wolf_eat_target(Some(hunter), &actions, &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(outcome.effective_target, Some(hunter), "more than one wolf voting means the hunter also dies");
+        assert!(outcome.extra_death.is_some(), "a wolf should still have been shot");
+    }
+
+    #[tokio::test]
+    async fn a_failed_standoff_falls_through_to_a_normal_kill() {
+        let hunter = PlayerId(1);
+        let mut alive = hunter_roster();
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let actions = [NightAction::EatVote { target: hunter }];
+        let mut rng = ScriptedRngSource::new().with_chance(false);
+
+        let outcome =
+            resolve_wolf_eat_target(Some(hunter), &actions, &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(
+            outcome,
+            WolfEatOutcome { effective_target: Some(hunter), bitten: None, extra_death: None },
+            "a failed standoff is a normal kill, with no AlphaWolf around to trigger a bite"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_wolf_votes_at_all_skips_the_standoff_roll_entirely() {
+        let hunter = PlayerId(1);
+        let mut alive = hunter_roster();
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        // No EatVote actions - an unscripted ScriptedRngSource would panic
+        // if the standoff roll were (wrongly) attempted anyway.
+        let mut rng = no_alpha_wolf_rng();
+
+        let outcome =
+            resolve_wolf_eat_target(Some(hunter), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(hunter), bitten: None, extra_death: None });
+    }
+
+    fn sk_roster() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(1), role: Role::SerialKiller },
+            AlivePlayer { id: PlayerId(2), role: Role::Wolf },
+        ]
+    }
+
+    #[tokio::test]
+    async fn a_wolf_visiting_the_sk_usually_dies_instead_of_the_sk() {
+        let sk = PlayerId(1);
+        let wolf = PlayerId(2);
+        let mut alive = sk_roster();
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let actions = [NightAction::SerialKillVote { target: PlayerId(99) }];
+        // sk_had_target is true (a real vote was cast), so the death roll
+        // is consulted, and it's scripted to succeed (die).
+        let mut rng = ScriptedRngSource::new().with_chance(true).with_index(0);
+
+        let outcome =
+            resolve_wolf_eat_target(Some(sk), &actions, &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(
+            outcome,
+            WolfEatOutcome { effective_target: None, bitten: None, extra_death: Some((wolf, KillMethod::VisitKiller)) }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_lucky_wolf_surviving_the_sk_visit_falls_through_to_a_normal_kill() {
+        let sk = PlayerId(1);
+        let mut alive = sk_roster();
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        let actions = [NightAction::SerialKillVote { target: PlayerId(99) }];
+        let mut rng = ScriptedRngSource::new().with_chance(false);
+
+        let outcome =
+            resolve_wolf_eat_target(Some(sk), &actions, &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(outcome, WolfEatOutcome { effective_target: Some(sk), bitten: None, extra_death: None });
+    }
+
+    #[tokio::test]
+    async fn an_sk_with_no_valid_kill_target_always_costs_the_visiting_wolf() {
+        let sk = PlayerId(1);
+        let wolf = PlayerId(2);
+        let mut alive = sk_roster();
+        let mut states = HashMap::new();
+        let mut presenter = NoopPresenter;
+        // No SerialKillVote action at all - the death roll should never
+        // even be consulted (unconditional death), matching
+        // `visited.Choice == 0 || == -1` in the source.
+        let mut rng = ScriptedRngSource::new().with_index(0);
+
+        let outcome =
+            resolve_wolf_eat_target(Some(sk), &[], &mut alive, &mut states, &mut rng, &mut presenter).await;
+
+        assert_eq!(
+            outcome,
+            WolfEatOutcome { effective_target: None, bitten: None, extra_death: Some((wolf, KillMethod::VisitKiller)) }
+        );
     }
 }
 
