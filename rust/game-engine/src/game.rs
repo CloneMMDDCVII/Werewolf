@@ -7,9 +7,10 @@
 //! isolation.
 
 use crate::orchestrator::{
-    apply_day_results, apply_night_results, resolve_arsonist_detonation, resolve_day,
-    resolve_harlot_visit_deaths, resolve_hunter_shots, resolve_lover_deaths, resolve_night,
-    resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
+    apply_day_results, apply_night_results, resolve_arsonist_detonation, resolve_chemistry,
+    resolve_day, resolve_grave_digger_falls, resolve_harlot_visit_deaths, resolve_hunter_shots,
+    resolve_lover_deaths, resolve_night, resolve_spumpkin_detonation, resolve_wolf_cub_bonus_kill,
+    AlivePlayer, NarrationEvent, Presenter,
 };
 use crate::rng::RngSource;
 use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
@@ -87,10 +88,27 @@ pub async fn run_game(
     // `apply_pending_alpha_bites` and `resolve_wolf_eat_target`'s doc for
     // exactly why this can't just be folded into a same-night death.
     let mut bitten_pending: Vec<PlayerId> = vec![];
+    // How much of `deaths` had already happened the last time a Grave
+    // Digger dug (Werewolf.cs:5294-5299: `DugGravesLastNight =
+    // diedSinceLastGrave.Count`, recomputed fresh every night). The delta
+    // against `deaths.len()` at the top of each round *is*
+    // "diedSinceLastGrave" - deaths accumulate in recorded order and
+    // never shrink, so this needs no separate bookkeeping beyond the one
+    // cursor.
+    let mut deaths_counted_for_graves: usize = 0;
 
     for round in 1..=max_rounds {
         apply_pending_alpha_bites(&bitten_pending, &mut alive, presenter).await;
         bitten_pending.clear();
+
+        // Werewolf.cs:5295-5296 excludes Flee/Idle deaths from the count;
+        // neither method is produced anywhere in this proof-of-concept
+        // yet, so the filter is a no-op today, kept for when they are.
+        let dug_graves = deaths[deaths_counted_for_graves..]
+            .iter()
+            .filter(|&&(_, method)| method != KillMethod::Flee && method != KillMethod::Idle)
+            .count() as u32;
+        deaths_counted_for_graves = deaths.len();
 
         let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
         for action in &night_actions {
@@ -112,6 +130,8 @@ pub async fn run_game(
 
         let mut night_deaths = apply_night_results(&night_actions, wolf_eat.effective_target, silver_spread_tonight);
         night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target, &alive));
+        night_deaths.extend(resolve_grave_digger_falls(&night_actions, dug_graves, &alive, rng));
+        night_deaths.extend(resolve_chemistry(&night_actions, rng));
         if let Some(burn_deaths) = resolve_arsonist_detonation(&night_actions, &doused, &alive) {
             night_deaths.extend(burn_deaths);
             doused.clear();
@@ -150,7 +170,8 @@ pub async fn run_game(
         let lynch_target_role = lynch_target.and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
         silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
-        let day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
+        let mut day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
+        day_deaths.extend(resolve_spumpkin_detonation(&day_actions, rng));
         let (day_deaths, day_died_with_roles) =
             process_deaths(&day_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         wolf_cub_bonus_pending |= day_died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);

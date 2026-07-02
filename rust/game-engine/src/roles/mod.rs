@@ -136,11 +136,12 @@ pub enum NightAction {
     /// rolls (Werewolf.cs:4173) is still not attempted.
     StealRole { thief: PlayerId, target: PlayerId },
     /// Chemist's nightly gambit (Werewolf.cs:3792-3821): visit a target,
-    /// with an RNG chance of killing them (`KillMthd.Chemistry`) or,
-    /// on failure, killing the Chemist instead. Only the target-picking
-    /// half is modeled here; the coin flip and self-kill fallback are
-    /// resolution logic, same caveat as `Visit`/`Protect`.
-    Chemistry { target: PlayerId },
+    /// with an RNG chance of killing them (`KillMthd.Chemistry`) or, on
+    /// failure, killing the Chemist instead — see
+    /// `orchestrator::resolve_chemistry`, which needs `chemist`'s own id
+    /// for exactly that self-kill case, the same reasoning `Shoot` and
+    /// `StealRole` already carry their actor's id for.
+    Chemistry { chemist: PlayerId, target: PlayerId },
     /// Arsonist dousing a target with kerosene, any night, as many nights
     /// as they like (Werewolf.cs:3792 region / `x.Doused`) — there's no
     /// `primary_used`-style gate in the legacy code, doused players just
@@ -242,10 +243,11 @@ pub enum DayAction {
     Trouble,
     /// Spumpkin's day detonation (Werewolf.cs:2901-2926): pick a target,
     /// with an RNG chance (40%, Werewolf.cs:2907) of killing both the
-    /// target and the Spumpkin himself. Only "is this a valid target to
-    /// detonate on" is modeled; the coin flip and the mutual-kill
-    /// resolution are for a future orchestrator, same caveat as `Shoot`.
-    Detonate { target: PlayerId },
+    /// target and the Spumpkin himself — see
+    /// `orchestrator::resolve_spumpkin_detonation`, which needs
+    /// `spumpkin`'s own id for the mutual-kill, same reasoning `Shoot`
+    /// carries `shooter`.
+    Detonate { spumpkin: PlayerId, target: PlayerId },
 }
 
 /// Same shape as `NightContext`, for the day phase. Kept as its own type

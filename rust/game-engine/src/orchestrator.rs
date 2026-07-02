@@ -27,6 +27,7 @@
 //! topological sort is future work for whenever a second dependency shows
 //! up and two hardcoded levels stop being enough.
 
+use crate::rng::RngSource;
 use crate::roles::{
     behavior_for, DayAction, DayContext, LoversState, NightAction, NightContext, NightFact,
     PlayerId, RoleState,
@@ -299,6 +300,35 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
             Role::Cupid => "CupidKilled",
             _ => "DefaultKilled",
         }),
+        // Werewolf.cs:4288-4302, the "killed by visiting Grave Digger"
+        // switch. Wolf-team/Cultist/Thief keys are listed for completeness
+        // even though `resolve_grave_digger_falls` can't produce them yet
+        // (see that function's doc for why) - a real, verified mapping
+        // that's momentarily unreachable is still worth having ready for
+        // when the wolf-visitor-identity gap closes, unlike guessing at a
+        // key that doesn't exist.
+        KillMethod::FallGrave => Some(match role {
+            Role::Wolf | Role::AlphaWolf | Role::Lycan | Role::WolfCub => "WolfFellPublic",
+            Role::Harlot => "HarlotFellPublic",
+            Role::Cultist => "CultistFellPublic",
+            Role::Thief => "ThiefFellPublic",
+            _ => "DefaultFellPublic",
+        }),
+        // `resolve_chemistry` produces this for either the target (success)
+        // or the Chemist themself (failure) - two different real messages
+        // (Werewolf.cs:3801-3814: `ChemistSuccessPublic`/`ChemistFailPublic`),
+        // each needing only the one name involved (unlike `HunterShot`/
+        // `LoverDied`, which need two and stay unmapped for exactly that
+        // reason). `role == Chemist` is what tells the two apart here: if
+        // the Chemist is the one who died, this had to be the failure
+        // case, not a coincidence of some *other* dead Chemist - only one
+        // Chemist exists per game, the same uniqueness every other
+        // single-instance role in this switch already relies on.
+        KillMethod::Chemistry => Some(if role == Role::Chemist {
+            "ChemistFailPublic"
+        } else {
+            "ChemistSuccessPublic"
+        }),
         _ => None,
     }
 }
@@ -403,6 +433,17 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "BlacksmithKilled",
         "CupidKilled",
         "DefaultKilled",
+        // FallGrave's currently-*reachable* outputs only - "WolfFellPublic"/
+        // "CultistFellPublic"/"ThiefFellPublic" are real, verified mappings
+        // death_locale_key already returns for their roles, but
+        // resolve_grave_digger_falls can't produce a FallGrave death for
+        // any of those roles yet (see its doc), so they'd inflate this
+        // count with something unreachable today - left out until the gap
+        // closes, same discipline as everywhere else in this list.
+        "HarlotFellPublic",
+        "DefaultFellPublic",
+        "ChemistSuccessPublic",
+        "ChemistFailPublic",
         // transform_locale_key's non-`None` outputs.
         "TraitorTurnWolf",
         "ApprenticeNowSeer",
@@ -490,6 +531,12 @@ mod locale_mapping_tests {
     #[test]
     fn wolf_eat_falls_back_to_default_for_an_uncelebrated_role() {
         assert_eq!(death_locale_key(Role::Villager, KillMethod::Eat), Some("DefaultEaten"));
+    }
+
+    #[test]
+    fn chemistry_success_and_failure_map_to_different_keys() {
+        assert_eq!(death_locale_key(Role::Villager, KillMethod::Chemistry), Some("ChemistSuccessPublic"));
+        assert_eq!(death_locale_key(Role::Chemist, KillMethod::Chemistry), Some("ChemistFailPublic"));
     }
 
     #[test]
@@ -1281,6 +1328,170 @@ pub fn resolve_arsonist_detonation(
     )
 }
 
+/// The percent chance a Grave Digger's trap catches whoever visits them
+/// (Werewolf.cs:2389: `20 + (30 - 30 * 0.5^(dug-1))`, halved for a
+/// Village-team visitor at 2390). Only called with `dug_graves >= 1` —
+/// the real code short-circuits to a guaranteed-safe visit otherwise
+/// (2380: `if (visited.DugGravesLastNight < 1) return VisitResult.Success`),
+/// modeled by the caller never invoking this at all rather than this
+/// function handling a `0` specially.
+///
+/// C#'s `Program.R.Next(100) < fallChance` compares an integer roll
+/// against a `double`, so a fractional `fallChance` (e.g. `45.5`) is
+/// meaningfully more generous than either whole neighbor. `RngSource`
+/// only takes an integer percent, so this rounds to the nearest whole
+/// percent rather than truncating — closer to the real odds than always
+/// rounding down, and simple enough not to need its own `RngSource`
+/// method just for one formula.
+fn grave_digger_fall_chance_percent(dug_graves: u32, visitor_is_village: bool) -> u32 {
+    let chance = 20.0 + (30.0 - 30.0 * 0.5_f64.powi(dug_graves as i32 - 1));
+    let chance = if visitor_is_village { chance / 2.0 } else { chance };
+    chance.round() as u32
+}
+
+/// Whoever visits a Grave Digger who's dug at least one grave risks
+/// falling in and dying instead of whatever their visit would normally
+/// do (Werewolf.cs:2377-2411, `KillMthd.FallGrave`, always
+/// `hunterFinalShot: false`). Scoped to the two visitor roles this
+/// proof-of-concept can name a single, definite visitor for:
+///
+/// - Harlot (`NightAction::Visit`) — falls into `HarlotFellPublic`.
+/// - Guardian Angel (`NightAction::Protect`) — falls into
+///   `DefaultFellPublic` (not one of the switch's named exceptions,
+///   Werewolf.cs:4297-4300).
+///
+/// **Deliberately not modeled**: a Serial Killer visiting a Grave Digger
+/// never falls at all (Werewolf.cs:2382-2387, `StumbledGrave` is pure
+/// flavor tracking — the visit still resolves as a normal success,
+/// killing the Grave Digger like any other `SerialKillVote` target), so
+/// there's no SK case to add here — this isn't a gap, it's the real rule.
+/// Wolves visiting a Grave Digger *can* fall (Werewolf.cs's `default`
+/// case, `WolfFellPublic`), but the real code picks one specific wolf out
+/// of the voting pack to be "the visitor" (`voteWolves.ElementAt(...)`,
+/// see `RngSource::pick_index`) — this proof-of-concept's wolf-eat vote
+/// only tracks a majority *target*, not which individual wolf cast the
+/// deciding visit, so there's no single identity to attribute the fall
+/// to yet. Left out rather than attributed to an arbitrary wolf.
+///
+/// The Guardian Angel case also skips one real exception
+/// (Werewolf.cs:2385: a GA who already saved the Grave Digger some other
+/// way this exact night is safe) — this proof-of-concept doesn't track
+/// `WasSavedLastNight` outside the wolf-protect check, so it isn't
+/// checked here either; an honest simplification, not an oversight.
+pub fn resolve_grave_digger_falls(
+    night_actions: &[NightAction],
+    dug_graves: u32,
+    alive: &[AlivePlayer],
+    rng: &mut dyn RngSource,
+) -> Vec<(PlayerId, KillMethod)> {
+    if dug_graves < 1 {
+        return vec![];
+    }
+    let chance = grave_digger_fall_chance_percent(dug_graves, true); // both candidate visitors are Village-team
+
+    let is_grave_digger = |id: PlayerId| alive.iter().any(|p| p.id == id && p.role == Role::GraveDigger);
+
+    let mut falls = vec![];
+    for action in night_actions {
+        let visitor = match action {
+            NightAction::Visit { visitor, target } if is_grave_digger(*target) => Some(*visitor),
+            // `Protect` doesn't carry the protector's own id the way
+            // `Visit` does (see `NightAction::Protect`'s doc) - look up
+            // whoever's alive as a Guardian Angel instead, the same "there's
+            // normally only one" reasoning `resolve_wolf_cub_bonus_kill` and
+            // friends already rely on elsewhere in this file.
+            NightAction::Protect { target } if is_grave_digger(*target) => {
+                alive.iter().find(|p| p.role == Role::GuardianAngel).map(|p| p.id)
+            }
+            _ => None,
+        };
+        if let Some(visitor) = visitor {
+            if rng.chance(chance) {
+                falls.push((visitor, KillMethod::FallGrave));
+            }
+        }
+    }
+    falls
+}
+
+/// Chemist's success chance (Werewolf.cs `Settings.cs:105,131`:
+/// `ChemistSuccessChance = 50`) — a per-group setting in the real game,
+/// same "no group settings model, always the real default" reasoning as
+/// `ALPHA_WOLF_CONVERSION_CHANCE_PERCENT` in `game`.
+const CHEMIST_SUCCESS_CHANCE_PERCENT: u32 = 50;
+
+/// The Chemist's nightly gambit (Werewolf.cs:3792-3821): a coin flip on
+/// each `NightAction::Chemistry` — success kills the target
+/// (`KillMthd.Chemistry`), failure kills the Chemist instead (the same
+/// method; the real code passes the Chemist as both victim and killer for
+/// the failure case too, `KillPlayer(chemist, KillMthd.Chemistry, killer:
+/// chemist)`).
+///
+/// Simplified relative to the source in one way, honestly: the real
+/// gambit first runs the target through the generic `VisitPlayer`
+/// (blocked by a wolf/Serial Killer/Grave Digger/burning target, or a
+/// Harlot/Guardian Angel who stepped out), and only rolls the success
+/// chance if that visit itself succeeds. This proof-of-concept has no
+/// generic "was this visit even let through" resolution for an arbitrary
+/// target the way `resolve_grave_digger_falls`/`resolve_harlot_visit_deaths`
+/// narrowly do for their own specific visitor roles — so a Chemist
+/// targeting, say, a wolf or another Grave Digger is treated as an
+/// ordinary successful visit here, which the real game would have
+/// resolved differently. An honest gap, not a silent one.
+pub fn resolve_chemistry(
+    night_actions: &[NightAction],
+    rng: &mut dyn RngSource,
+) -> Vec<(PlayerId, KillMethod)> {
+    night_actions
+        .iter()
+        .filter_map(|a| match a {
+            NightAction::Chemistry { chemist, target } => {
+                let victim = if rng.chance(CHEMIST_SUCCESS_CHANCE_PERCENT) { *target } else { *chemist };
+                Some((victim, KillMethod::Chemistry))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Spumpkin's day-phase detonation (Werewolf.cs:2901-2930): a 40% chance
+/// (Werewolf.cs:2907, no named `Settings` constant — a bare literal in
+/// the source itself) of killing both the target (`KillMthd.Shoot` — yes,
+/// the same method Gunner's shot uses, confirmed directly:
+/// `KillPlayer(check, KillMthd.Shoot, killer: spumpkin, ...)`) and the
+/// Spumpkin themself.
+///
+/// The real code passes a `null` `killMethod` for the Spumpkin's own
+/// death (`KillPlayer(spumpkin, killMethod: null, killer: null, ...)`),
+/// which in the source only affects whether a DB kill row gets written
+/// and whether a Hunter final shot could trigger — irrelevant here (this
+/// proof-of-concept doesn't write history rows, and a Spumpkin isn't a
+/// Hunter), so both deaths are given the same `KillMethod::Shoot` rather
+/// than inventing a "no method" case this crate's `(PlayerId, KillMethod)`
+/// death shape has no room for.
+///
+/// The WiseElder-demotion special case (Werewolf.cs:2916: detonating a
+/// Wise Elder transforms the *Spumpkin* to Villager first) doesn't change
+/// who dies — `KillPlayer(spumpkin, ...)` and `KillPlayer(check, ...)`
+/// both still run unconditionally right after, regardless of which
+/// branch of that `switch` fired — so it's flavor/achievement bookkeeping
+/// only, safe to skip without changing lethality.
+pub fn resolve_spumpkin_detonation(
+    day_actions: &[DayAction],
+    rng: &mut dyn RngSource,
+) -> Vec<(PlayerId, KillMethod)> {
+    day_actions
+        .iter()
+        .filter_map(|a| match a {
+            DayAction::Detonate { spumpkin, target } if rng.chance(40) => {
+                Some([(*spumpkin, KillMethod::Shoot), (*target, KillMethod::Shoot)])
+            }
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
 /// The wolves' bonus kill after a Wolf Cub dies (Werewolf.cs:1047-1053,
 /// `WolfCubKilled`): every surviving wolf-team member gets asked a second
 /// "who do you want to eat?" question (`Prompt::WolfCubBonusKill`, which
@@ -1625,6 +1836,171 @@ mod lover_death_tests {
         );
 
         assert_eq!(chain, vec![]);
+    }
+}
+
+#[cfg(test)]
+mod chemistry_tests {
+    use super::*;
+    use crate::rng::ScriptedRngSource;
+
+    #[test]
+    fn a_successful_gambit_kills_the_target() {
+        let chemist = PlayerId(1);
+        let target = PlayerId(2);
+        let actions = [NightAction::Chemistry { chemist, target }];
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+
+        assert_eq!(resolve_chemistry(&actions, &mut rng), vec![(target, KillMethod::Chemistry)]);
+    }
+
+    #[test]
+    fn a_failed_gambit_kills_the_chemist_instead() {
+        let chemist = PlayerId(1);
+        let target = PlayerId(2);
+        let actions = [NightAction::Chemistry { chemist, target }];
+        let mut rng = ScriptedRngSource::new().with_chance(false);
+
+        assert_eq!(resolve_chemistry(&actions, &mut rng), vec![(chemist, KillMethod::Chemistry)]);
+    }
+
+    #[test]
+    fn no_chemistry_action_means_no_roll_at_all() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        assert_eq!(resolve_chemistry(&[], &mut rng), vec![]);
+    }
+}
+
+#[cfg(test)]
+mod spumpkin_detonation_tests {
+    use super::*;
+    use crate::rng::ScriptedRngSource;
+
+    #[test]
+    fn a_successful_detonation_kills_both() {
+        let spumpkin = PlayerId(1);
+        let target = PlayerId(2);
+        let actions = [DayAction::Detonate { spumpkin, target }];
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+
+        let deaths = resolve_spumpkin_detonation(&actions, &mut rng);
+
+        assert_eq!(deaths, vec![(spumpkin, KillMethod::Shoot), (target, KillMethod::Shoot)]);
+    }
+
+    #[test]
+    fn a_failed_detonation_kills_nobody() {
+        let spumpkin = PlayerId(1);
+        let target = PlayerId(2);
+        let actions = [DayAction::Detonate { spumpkin, target }];
+        let mut rng = ScriptedRngSource::new().with_chance(false);
+
+        assert_eq!(resolve_spumpkin_detonation(&actions, &mut rng), vec![]);
+    }
+
+    #[test]
+    fn no_detonate_action_means_no_roll_at_all() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        assert_eq!(resolve_spumpkin_detonation(&[], &mut rng), vec![]);
+    }
+}
+
+#[cfg(test)]
+mod grave_digger_fall_tests {
+    use super::*;
+    use crate::rng::ScriptedRngSource;
+
+    #[test]
+    fn fall_chance_matches_the_real_formula_at_one_dig() {
+        // 20 + (30 - 30*0.5^0) = 20, halved for a Village-team visitor -> 10
+        assert_eq!(grave_digger_fall_chance_percent(1, true), 10);
+    }
+
+    #[test]
+    fn fall_chance_matches_the_real_formula_at_two_digs() {
+        // 20 + (30 - 30*0.5^1) = 35, halved -> 17.5, rounded -> 18
+        assert_eq!(grave_digger_fall_chance_percent(2, true), 18);
+    }
+
+    #[test]
+    fn fall_chance_is_not_halved_for_a_non_village_visitor() {
+        assert_eq!(grave_digger_fall_chance_percent(1, false), 20);
+    }
+
+    #[test]
+    fn fall_chance_approaches_fifty_percent_for_many_digs() {
+        let chance = grave_digger_fall_chance_percent(20, false);
+        assert!((49..=50).contains(&chance), "expected ~50, got {chance}");
+    }
+
+    fn roster_with_grave_digger() -> Vec<AlivePlayer> {
+        vec![
+            AlivePlayer { id: PlayerId(1), role: Role::Harlot },
+            AlivePlayer { id: PlayerId(2), role: Role::GraveDigger },
+            AlivePlayer { id: PlayerId(3), role: Role::GuardianAngel },
+        ]
+    }
+
+    #[test]
+    fn no_dug_graves_means_no_roll_at_all() {
+        let harlot = PlayerId(1);
+        let grave_digger = PlayerId(2);
+        let actions = [NightAction::Visit { visitor: harlot, target: grave_digger }];
+        // An unscripted ScriptedRngSource would panic if `chance()` were
+        // called at all - proving the "dug_graves < 1" short-circuit.
+        let mut rng = ScriptedRngSource::new();
+
+        let falls = resolve_grave_digger_falls(&actions, 0, &roster_with_grave_digger(), &mut rng);
+
+        assert_eq!(falls, vec![]);
+    }
+
+    #[test]
+    fn a_harlot_who_fails_the_roll_visits_safely() {
+        let harlot = PlayerId(1);
+        let grave_digger = PlayerId(2);
+        let actions = [NightAction::Visit { visitor: harlot, target: grave_digger }];
+        let mut rng = ScriptedRngSource::new().with_chance(false);
+
+        let falls = resolve_grave_digger_falls(&actions, 1, &roster_with_grave_digger(), &mut rng);
+
+        assert_eq!(falls, vec![]);
+    }
+
+    #[test]
+    fn a_harlot_who_fails_the_trap_falls_in_and_dies() {
+        let harlot = PlayerId(1);
+        let grave_digger = PlayerId(2);
+        let actions = [NightAction::Visit { visitor: harlot, target: grave_digger }];
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+
+        let falls = resolve_grave_digger_falls(&actions, 1, &roster_with_grave_digger(), &mut rng);
+
+        assert_eq!(falls, vec![(harlot, KillMethod::FallGrave)]);
+    }
+
+    #[test]
+    fn a_guardian_angel_protecting_the_grave_digger_can_also_fall() {
+        let ga = PlayerId(3);
+        let grave_digger = PlayerId(2);
+        let actions = [NightAction::Protect { target: grave_digger }];
+        let mut rng = ScriptedRngSource::new().with_chance(true);
+
+        let falls = resolve_grave_digger_falls(&actions, 1, &roster_with_grave_digger(), &mut rng);
+
+        assert_eq!(falls, vec![(ga, KillMethod::FallGrave)]);
+    }
+
+    #[test]
+    fn visiting_someone_who_isnt_the_grave_digger_never_rolls() {
+        let harlot = PlayerId(1);
+        let ga = PlayerId(3);
+        let actions = [NightAction::Visit { visitor: harlot, target: ga }];
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+
+        let falls = resolve_grave_digger_falls(&actions, 3, &roster_with_grave_digger(), &mut rng);
+
+        assert_eq!(falls, vec![]);
     }
 }
 

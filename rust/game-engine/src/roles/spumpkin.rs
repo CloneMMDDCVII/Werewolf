@@ -4,10 +4,12 @@
 //! `spumpkin.Choice` resets every day (Werewolf.cs:5116-5130) so a failed
 //! (60%) attempt can simply try again tomorrow — same "no limit, the coin
 //! flip is the only gate" shape as `chemist::Chemist`, not a one-shot like
-//! `gunner::Gunner`'s bullets. The RNG coin flip itself, the mutual-kill
-//! resolution, and the WiseElder-demotion special case (Werewolf.cs:2916:
-//! detonating a WiseElder turns the Spumpkin into a Villager instead of
-//! killing anyone) are all resolution logic for a future orchestrator.
+//! `gunner::Gunner`'s bullets. The coin flip and mutual-kill resolution
+//! are modeled in `orchestrator::resolve_spumpkin_detonation`, not here —
+//! including the WiseElder-demotion special case (Werewolf.cs:2916), which
+//! turns out not to change lethality at all (the real code still kills
+//! both regardless — see that function's doc for why the special case is
+//! flavor-only and safe to skip).
 
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
@@ -22,7 +24,7 @@ impl RoleBehavior for Spumpkin {
     fn day_action(&self, ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {
-                vec![DayAction::Detonate { target }]
+                vec![DayAction::Detonate { spumpkin: ctx.self_id, target }]
             }
             _ => vec![],
         }
@@ -50,12 +52,14 @@ mod tests {
         assert_eq!(
             spumpkin.day_action(&ctx(Some(PlayerId(2))), &mut state),
             vec![DayAction::Detonate {
+                spumpkin: PlayerId(1),
                 target: PlayerId(2)
             }]
         );
         assert_eq!(
             spumpkin.day_action(&ctx(Some(PlayerId(2))), &mut state),
             vec![DayAction::Detonate {
+                spumpkin: PlayerId(1),
                 target: PlayerId(2)
             }],
             "a failed (60%) attempt isn't a per-game use, unlike Gunner's bullets"

@@ -2,9 +2,10 @@
 //! (Werewolf.cs:3792-3821): success kills the target (`KillMthd
 //! .Chemistry`), failure kills the Chemist instead. Unlike Gunner/Witch,
 //! there's no per-game usage limit — the coin flip is the only gate — so
-//! this file only validates "is this a living, non-self target," the same
-//! restraint `gunner::Gunner` and `witch::Witch` show about not modeling
-//! resolution logic that belongs to a future orchestrator.
+//! this file only validates "is this a living, non-self target." The coin
+//! flip itself is modeled in `orchestrator::resolve_chemistry`, not here —
+//! same "propose the target, someone else resolves the RNG" split as
+//! every other gambit in this crate.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
@@ -19,7 +20,7 @@ impl RoleBehavior for Chemist {
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {
-                vec![NightAction::Chemistry { target }]
+                vec![NightAction::Chemistry { chemist: ctx.self_id, target }]
             }
             _ => vec![],
         }
@@ -51,12 +52,14 @@ mod tests {
         assert_eq!(
             chemist.night_action(&ctx(Some(PlayerId(2))), &mut state),
             vec![NightAction::Chemistry {
+                chemist: PlayerId(1),
                 target: PlayerId(2)
             }]
         );
         assert_eq!(
             chemist.night_action(&ctx(Some(PlayerId(2))), &mut state),
             vec![NightAction::Chemistry {
+                chemist: PlayerId(1),
                 target: PlayerId(2)
             }],
             "no per-game usage limit, unlike Gunner or Witch"
