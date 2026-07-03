@@ -4,25 +4,30 @@
 //! whom* a game starts; the engine only ever sees a roster that already
 //! cleared every check here.
 //!
-//! **Scoped to the joining phase only.** Three real mechanics are
-//! deliberately left out, honestly, not silently:
-//! - `ExtendTime` (Werewolf.cs:2521-2534): adding seconds to the join
-//!   timer is tightly coupled to the real timer's exact polling loop
-//!   (`Thread.Sleep(1000)` ticking a mutable `i`, Werewolf.cs:410-501) —
-//!   there's no clean state to extend without modeling that loop itself,
-//!   which belongs to whatever real scheduler eventually drives this
-//!   (Telegram's bot runtime, a `tokio::time::interval`, ...), not this
-//!   crate's pure state machine.
-//! - Flee-while-running (Werewolf.cs:848-860, the `IsRunning` branch of
-//!   `RemovePlayer`): killing a player mid-game needs `game_engine
-//!   ::run_game` to accept an external "this player left" event during
-//!   an in-progress night/day, which it doesn't have a seam for yet.
-//! - Killing an in-progress game (Werewolf.cs:5393-5406, `Kill()` when
-//!   `IsRunning`): same gap — there's no cancellation seam into
-//!   `run_game` once it's started. `Lobby::kill` only covers the joining
-//!   phase, where "kill" and "there's no game to interrupt yet" are the
-//!   same thing.
+//! **Scoped to the joining phase only.** `Lobby::extend_time` covers
+//! `ExtendTime`'s own gating rules (Werewolf.cs:2521-2534) but not the
+//! timer loop itself, and `Lobby::kill` only covers the joining-phase
+//! case of `Kill()` (Werewolf.cs:5393-5406) — both left honestly
+//! incomplete rather than silently:
+//! - The join timer's actual countdown (`Thread.Sleep(1000)` ticking a
+//!   mutable `i`, Werewolf.cs:410-501) belongs to whatever real
+//!   scheduler eventually drives this (Telegram's bot runtime, a
+//!   `tokio::time::interval`, ...), not this crate's pure state machine
+//!   — `extend_time` returns the signed delta a caller's timer should
+//!   apply, but doesn't apply it to anything itself.
+//! - Killing an *in-progress* game (`Kill()` when `IsRunning`) needs the
+//!   same kind of external-event seam `game_engine::run_game` just
+//!   grew for flee (`Presenter::drain_fled_players`) — extending that
+//!   pattern to "end the game outright, no winner" is real, tracked
+//!   work (see `COMMANDS.md`'s `killgame` entry), just not done yet.
+//!
+//! Flee-while-running (Werewolf.cs:848-860) *is* covered now, just not
+//! by this module — `game_engine::game::apply_fled_players` (fed by
+//! `Presenter::drain_fled_players`) is `run_game`'s side of it. A
+//! `Lobby` only exists before a game starts; once `try_start` returns
+//! `Started`, this module's job is done and the engine takes over.
 
+use shared::GameMode;
 use std::collections::HashSet;
 
 /// A player's identity as seen during joining — just enough to run the
@@ -40,6 +45,11 @@ pub struct Candidate {
 pub const DEFAULT_MIN_PLAYERS: usize = 5;
 /// Werewolf.cs `Settings.cs:78`.
 pub const DEFAULT_MAX_PLAYERS: usize = 35;
+/// `Werewolf Control`'s `Helpers/Settings.cs:179` (a *different* Settings
+/// class from the game engine's own, in the bot-command project — the cap
+/// on how many seconds a single `/extend` can move the timer, regardless
+/// of what the caller asked for).
+pub const DEFAULT_MAX_EXTEND_SECONDS: i32 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LobbyState {
@@ -90,6 +100,30 @@ pub enum StartOutcome {
     Aborted(AbortReason),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtendError {
+    /// Werewolf.cs:2523: `ExtendTime` itself only does anything while
+    /// still `Joining`.
+    NotJoining,
+    /// `GameCommands.cs::Extend`: a negative (time-*removing*) request
+    /// from a non-admin - "otherwise we're allowing people to
+    /// /forcestart" is the source's own comment for why this is
+    /// admin-only.
+    NegativeRequiresAdmin,
+    /// Both `GameCommands.cs::Extend` (the surrounding command's own
+    /// "are you even in this game" check) and `Werewolf.cs::ExtendTime`
+    /// (`Players.FirstOrDefault(x => x.TeleUser.Id == id)`) require the
+    /// requester to be an actual joined player - even a group admin who
+    /// hasn't joined can't extend, matching the real `ExtendTime`'s own
+    /// lookup silently no-opping for exactly that case, made explicit
+    /// here as an error instead.
+    NotInGame,
+    /// Werewolf.cs:2528-2531: a non-admin gets exactly one extend per
+    /// game (`HaveExtended`); admins can extend as many times as they
+    /// like.
+    AlreadyExtended,
+}
+
 /// A single group's pre-game roster and join-phase rules. One `Lobby`
 /// per game session, the same lifetime as one `Werewolf` instance in the
 /// legacy code, but trimmed to just the joining phase (see module doc).
@@ -104,6 +138,22 @@ pub struct Lobby {
     /// by whatever real timer loop drives this `Lobby` to mean "stop
     /// waiting, resolve now" - `try_start` is that resolution.
     close_requested: bool,
+    /// Werewolf.cs's `HaveExtended` (a `HashSet<long>` there too) - every
+    /// non-admin who has already used their one `/extend`.
+    have_extended: HashSet<i64>,
+    /// `/startgame` vs `/startchaos` (`GameCommands.cs::StartGame`/
+    /// `StartChaos`, both calling the same `Helpers.cs::StartGame
+    /// (GameMode, Update)` with a different `GameMode`). Tracked here
+    /// since it's decided at lobby-creation time, before a single player
+    /// has joined - but **purely metadata for now**: the only place
+    /// `GameMode` actually changes anything in the source is
+    /// `Werewolf.cs:1458`, `GameBalancing.Balance(..., GameMode ==
+    /// GameMode.Chaos, ...)`, which decides *which roles* get handed
+    /// out for N players. That role-balancing algorithm isn't ported at
+    /// all yet - `run_game` only ever runs a roster with roles already
+    /// assigned - so `game_mode()` has nothing downstream to affect
+    /// until it exists. An honest placeholder, not a finished feature.
+    game_mode: GameMode,
 }
 
 impl Lobby {
@@ -112,17 +162,31 @@ impl Lobby {
     }
 
     pub fn with_limits(min_players: usize, max_players: usize) -> Self {
+        Self::with_limits_and_mode(min_players, max_players, GameMode::Normal)
+    }
+
+    pub fn with_game_mode(game_mode: GameMode) -> Self {
+        Self::with_limits_and_mode(DEFAULT_MIN_PLAYERS, DEFAULT_MAX_PLAYERS, game_mode)
+    }
+
+    pub fn with_limits_and_mode(min_players: usize, max_players: usize, game_mode: GameMode) -> Self {
         Lobby {
             state: LobbyState::Joining,
             players: vec![],
             min_players,
             max_players,
             close_requested: false,
+            have_extended: HashSet::new(),
+            game_mode,
         }
     }
 
     pub fn state(&self) -> LobbyState {
         self.state
+    }
+
+    pub fn game_mode(&self) -> GameMode {
+        self.game_mode
     }
 
     pub fn players(&self) -> &[Candidate] {
@@ -188,6 +252,61 @@ impl Lobby {
 
     pub fn should_close_for_joining(&self) -> bool {
         self.close_requested
+    }
+
+    /// Werewolf.cs:2521-2534 (`ExtendTime`) plus `GameCommands.cs::Extend`'s
+    /// own gating (the negative-requires-admin rule and the
+    /// `max_extend_seconds` clamp - `Werewolf Control`'s command layer,
+    /// not the game engine, owns both). Returns the clamped delta a
+    /// caller's real timer loop should apply to its own countdown - this
+    /// `Lobby` has no countdown of its own to adjust (see module doc).
+    ///
+    /// `max_extend_seconds` is a parameter rather than a hardcoded
+    /// constant since it's genuinely a per-group setting in the source
+    /// (`grp.MaxExtend ?? Settings.MaxExtend`, `GameCommands.cs:178`) -
+    /// unlike most settings elsewhere in this port, a caller here already
+    /// has to look up *something* group-specific to build a full `/extend`
+    /// handler (whether the group even allows extending at all,
+    /// `GroupConfig.AllowExtend`, isn't modeled here either - same
+    /// "no group config store yet" gap `evaluate_winner_with_kills` and
+    /// friends already have), so plumbing the one number through costs
+    /// nothing extra.
+    pub fn extend_time(
+        &mut self,
+        requester_id: i64,
+        is_admin: bool,
+        requested_seconds: i32,
+        max_extend_seconds: i32,
+    ) -> Result<i32, ExtendError> {
+        if self.state != LobbyState::Joining {
+            return Err(ExtendError::NotJoining);
+        }
+        // Checked before the negative/admin rule below, matching the
+        // source's own order: `GameCommands.cs::Extend`'s "are you even
+        // in this game" check runs first for non-admins, then
+        // `ExtendTime`'s own player lookup runs regardless of admin
+        // status - an admin who isn't a joined player passes the first
+        // but fails the second, silently in the source (`ExtendTime`
+        // just no-ops), surfaced here as the same explicit error instead
+        // (see `ExtendError::NotInGame`'s own doc).
+        if !self.players.iter().any(|p| p.telegram_id == requester_id) {
+            return Err(ExtendError::NotInGame);
+        }
+        if requested_seconds < 0 && !is_admin {
+            return Err(ExtendError::NegativeRequiresAdmin);
+        }
+        if !is_admin && self.have_extended.contains(&requester_id) {
+            return Err(ExtendError::AlreadyExtended);
+        }
+
+        let clamped = if requested_seconds.abs() > max_extend_seconds {
+            max_extend_seconds * requested_seconds.signum()
+        } else {
+            requested_seconds
+        };
+
+        self.have_extended.insert(requester_id);
+        Ok(clamped)
     }
 
     /// Werewolf.cs:501-517: once joining closes (timer expiry or
@@ -394,5 +513,101 @@ mod tests {
         assert_eq!(ids.len(), 2);
         assert!(ids.contains(&1));
         assert!(ids.contains(&2));
+    }
+
+    #[test]
+    fn a_joined_player_can_extend_the_timer() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
+    }
+
+    #[test]
+    fn extend_is_clamped_to_max_extend_seconds() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(lobby.extend_time(1, false, 999, DEFAULT_MAX_EXTEND_SECONDS), Ok(60));
+    }
+
+    #[test]
+    fn a_negative_extend_is_also_clamped() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(lobby.extend_time(1, true, -999, DEFAULT_MAX_EXTEND_SECONDS), Ok(-60));
+    }
+
+    #[test]
+    fn a_non_admin_cannot_extend_negatively() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(
+            lobby.extend_time(1, false, -10, DEFAULT_MAX_EXTEND_SECONDS),
+            Err(ExtendError::NegativeRequiresAdmin)
+        );
+    }
+
+    #[test]
+    fn an_admin_can_extend_negatively() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(lobby.extend_time(1, true, -10, DEFAULT_MAX_EXTEND_SECONDS), Ok(-10));
+    }
+
+    #[test]
+    fn a_non_player_cannot_extend_even_as_admin() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(
+            lobby.extend_time(99, true, 30, DEFAULT_MAX_EXTEND_SECONDS),
+            Err(ExtendError::NotInGame)
+        );
+    }
+
+    #[test]
+    fn a_non_admin_can_only_extend_once() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
+        assert_eq!(
+            lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS),
+            Err(ExtendError::AlreadyExtended)
+        );
+    }
+
+    #[test]
+    fn an_admin_can_extend_repeatedly() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        assert_eq!(lobby.extend_time(1, true, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
+        assert_eq!(lobby.extend_time(1, true, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
+    }
+
+    #[test]
+    fn cannot_extend_once_started() {
+        let mut lobby = Lobby::with_limits(1, 35);
+        lobby.join(candidate(1, "Alice")).unwrap();
+        lobby.try_start();
+        assert_eq!(
+            lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS),
+            Err(ExtendError::NotJoining)
+        );
+    }
+
+    #[test]
+    fn default_lobbies_are_normal_mode() {
+        assert_eq!(Lobby::new().game_mode(), GameMode::Normal);
+    }
+
+    #[test]
+    fn a_chaos_lobby_reports_chaos_mode() {
+        assert_eq!(Lobby::with_game_mode(GameMode::Chaos).game_mode(), GameMode::Chaos);
+    }
+
+    #[test]
+    fn game_mode_survives_join_leave_and_start() {
+        let mut lobby = Lobby::with_limits_and_mode(1, 35, GameMode::Chaos);
+        lobby.join(candidate(1, "Alice")).unwrap();
+        lobby.try_start();
+        assert_eq!(lobby.game_mode(), GameMode::Chaos);
     }
 }

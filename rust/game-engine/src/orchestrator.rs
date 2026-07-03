@@ -347,6 +347,11 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         } else {
             "ChemistSuccessPublic"
         }),
+        // Werewolf.cs:848: `SendWithQueue(GetLocaleString("Flee", p
+        // .GetName()))`, sent unconditionally the moment a mid-game flee
+        // resolves - real, role-agnostic, single-name text, unlike most
+        // of this switch.
+        KillMethod::Flee => Some("Flee"),
         _ => None,
     }
 }
@@ -474,6 +479,7 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "DefaultFellPublic",
         "ChemistSuccessPublic",
         "ChemistFailPublic",
+        "Flee",
         // transform_locale_key's non-`None` outputs.
         "TraitorTurnWolf",
         "ApprenticeNowSeer",
@@ -581,6 +587,12 @@ mod locale_mapping_tests {
     }
 
     #[test]
+    fn flee_has_one_role_agnostic_key() {
+        assert_eq!(death_locale_key(Role::Villager, KillMethod::Flee), Some("Flee"));
+        assert_eq!(death_locale_key(Role::Seer, KillMethod::Flee), Some("Flee"));
+    }
+
+    #[test]
     fn lover_died_and_hunter_shot_still_have_no_key() {
         assert_eq!(death_locale_key(Role::Villager, KillMethod::LoverDied), None);
         assert_eq!(death_locale_key(Role::Villager, KillMethod::HunterShot), None);
@@ -656,6 +668,27 @@ pub trait Presenter {
     /// before this hook existed) have no use for it, same reasoning as
     /// `ask_toggle`'s default.
     async fn narrate(&mut self, _event: NarrationEvent) {}
+
+    /// Players who asked to flee since the last time this was checked
+    /// (Werewolf.cs's `RemovePlayer`, the `IsRunning` branch,
+    /// 848-860) — a mid-game leave, not the joining-phase one
+    /// `control::lobby::Lobby::leave` already covers.
+    ///
+    /// The legacy game reacts to a flee the instant the command arrives,
+    /// mid-question if need be. This proof-of-concept has no
+    /// interrupt-mid-`await` mechanism for that — `game::run_game` polls
+    /// this at three checkpoints per round instead (start of the round,
+    /// after night resolves, after day resolves), the same places it
+    /// already checks for a win. A flee lands within one of those three
+    /// windows, not instantly, which is an honest approximation stated
+    /// here rather than a silent gap: a real Telegram-backed presenter
+    /// would drain whatever `/flee` commands arrived since the last
+    /// poll. Default: nobody ever flees, so every existing test/fixture
+    /// presenter's behavior is unchanged without needing to implement
+    /// this.
+    fn drain_fled_players(&mut self) -> Vec<PlayerId> {
+        vec![]
+    }
 }
 
 /// The one place that validates a presenter's answer actually matches what

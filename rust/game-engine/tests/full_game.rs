@@ -767,3 +767,50 @@ async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
         outcome.winner
     );
 }
+
+/// A presenter that reports one player fleeing the very first time it's
+/// polled, then never again - proves `run_game` actually reacts to
+/// `Presenter::drain_fled_players` rather than just compiling against it.
+struct OneTimeFleePresenter {
+    fled: Option<PlayerId>,
+}
+
+#[async_trait(?Send)]
+impl Presenter for OneTimeFleePresenter {
+    async fn ask_targets(
+        &mut self,
+        _player: PlayerId,
+        _prompt: Prompt,
+        _options: &[PlayerId],
+        _count: usize,
+    ) -> Option<Vec<PlayerId>> {
+        None
+    }
+
+    fn drain_fled_players(&mut self) -> Vec<PlayerId> {
+        self.fled.take().into_iter().collect()
+    }
+}
+
+#[tokio::test]
+async fn fleeing_mid_game_can_immediately_hand_the_wolves_a_win() {
+    let wolf = PlayerId(1);
+    let villager1 = PlayerId(2);
+    let villager2 = PlayerId(3);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: villager1, role: Role::Villager },
+        AlivePlayer { id: villager2, role: Role::Villager },
+    ];
+
+    // Fleeing villager1 leaves 1 wolf vs 1 villager - wolves >= others,
+    // an immediate win with no night or day ever needing to resolve.
+    let mut presenter = OneTimeFleePresenter { fled: Some(villager1) };
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 5).await;
+
+    assert_eq!(outcome.winner, WinOutcome::Team(Team::Wolf));
+    assert_eq!(outcome.deaths, vec![(villager1, KillMethod::Flee)]);
+    assert_eq!(outcome.rounds_played, 1);
+}

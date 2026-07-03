@@ -101,9 +101,19 @@ pub async fn run_game(
         apply_pending_alpha_bites(&bitten_pending, &mut alive, presenter).await;
         bitten_pending.clear();
 
-        // Werewolf.cs:5295-5296 excludes Flee/Idle deaths from the count;
-        // neither method is produced anywhere in this proof-of-concept
-        // yet, so the filter is a no-op today, kept for when they are.
+        apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+        if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
+            presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
+            return GameOutcome {
+                winner: outcome,
+                rounds_played: round,
+                deaths,
+            };
+        }
+
+        // Werewolf.cs:5295-5296 excludes Flee/Idle deaths from the count -
+        // Flee is reachable now (see apply_fled_players), so this filter
+        // is doing real work, not just kept for later.
         let dug_graves = deaths[deaths_counted_for_graves..]
             .iter()
             .filter(|&&(_, method)| method != KillMethod::Flee && method != KillMethod::Idle)
@@ -179,6 +189,7 @@ pub async fn run_game(
             process_deaths(&night_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         wolf_cub_bonus_pending |= night_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
 
+        apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
         if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
             return GameOutcome {
@@ -202,6 +213,7 @@ pub async fn run_game(
             process_deaths(&day_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         wolf_cub_bonus_pending |= day_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
 
+        apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
         if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
             return GameOutcome {
@@ -314,6 +326,35 @@ async fn process_deaths(
     let transforms = apply_transforms(alive, states, &died_with_roles);
     narrate_all(transforms, presenter).await;
     (all_deaths, died_with_roles)
+}
+
+/// Turns whatever `Presenter::drain_fled_players` reports into real
+/// deaths via the same `process_deaths` pipeline every other death
+/// source uses (Werewolf.cs:848-860: `RemovePlayer`'s `IsRunning`
+/// branch calls `CheckRoleChanges` - `apply_transforms`, already inside
+/// `process_deaths` - and `DBKill(p, p, KillMthd.Flee)`). A fled id that
+/// isn't currently alive (already dead, or never existed) is silently
+/// dropped rather than treated as an error - by the time this is
+/// polled, "did they already die some other way first" is a race this
+/// proof-of-concept resolves by just not re-killing a corpse, the same
+/// way a real Telegram presenter would find nothing left to remove.
+async fn apply_fled_players(
+    presenter: &mut dyn Presenter,
+    alive: &mut Vec<AlivePlayer>,
+    states: &HashMap<PlayerId, RoleState>,
+    lovers: &LoversState,
+    kills: &mut Vec<KillEvent>,
+    deaths: &mut Vec<(PlayerId, KillMethod)>,
+) {
+    let fled_deaths: Vec<(PlayerId, KillMethod)> = presenter
+        .drain_fled_players()
+        .into_iter()
+        .filter(|id| alive.iter().any(|p| p.id == *id))
+        .map(|id| (id, KillMethod::Flee))
+        .collect();
+    if !fled_deaths.is_empty() {
+        process_deaths(&fled_deaths, alive, states, lovers, kills, deaths, presenter).await;
+    }
 }
 
 /// Tells the presenter about a batch of already-built events, in order.
@@ -1152,6 +1193,114 @@ mod alpha_bite_transform_tests {
 
         assert_eq!(alive[0].role, Role::Seer);
         assert!(presenter.transforms.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod fled_player_tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    struct FleeingPresenter {
+        pending_fled: Vec<PlayerId>,
+        events: Vec<NarrationEvent>,
+    }
+
+    #[async_trait(?Send)]
+    impl Presenter for FleeingPresenter {
+        async fn ask_targets(
+            &mut self,
+            _player: PlayerId,
+            _prompt: crate::orchestrator::Prompt,
+            _options: &[PlayerId],
+            _count: usize,
+        ) -> Option<Vec<PlayerId>> {
+            None
+        }
+
+        async fn narrate(&mut self, event: NarrationEvent) {
+            self.events.push(event);
+        }
+
+        fn drain_fled_players(&mut self) -> Vec<PlayerId> {
+            std::mem::take(&mut self.pending_fled)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_fled_player_dies_by_flee_and_is_removed() {
+        let fled = PlayerId(1);
+        let mut alive = vec![
+            AlivePlayer { id: fled, role: Role::Villager },
+            AlivePlayer { id: PlayerId(2), role: Role::Seer },
+        ];
+        let states = HashMap::new();
+        let lovers = LoversState::default();
+        let mut kills = vec![];
+        let mut deaths = vec![];
+        let mut presenter = FleeingPresenter { pending_fled: vec![fled], events: vec![] };
+
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+
+        assert_eq!(alive.len(), 1);
+        assert_eq!(alive[0].id, PlayerId(2));
+        assert_eq!(deaths, vec![(fled, KillMethod::Flee)]);
+        assert!(presenter
+            .events
+            .contains(&NarrationEvent::Death { victim: fled, role: Role::Villager, method: KillMethod::Flee }));
+    }
+
+    #[tokio::test]
+    async fn fleeing_a_lover_kills_their_partner_too() {
+        let fled = PlayerId(1);
+        let partner = PlayerId(2);
+        let mut alive = vec![
+            AlivePlayer { id: fled, role: Role::Villager },
+            AlivePlayer { id: partner, role: Role::Seer },
+        ];
+        let states = HashMap::new();
+        let mut lovers = LoversState::default();
+        lovers.link(fled, partner);
+        let mut kills = vec![];
+        let mut deaths = vec![];
+        let mut presenter = FleeingPresenter { pending_fled: vec![fled], events: vec![] };
+
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+
+        assert!(alive.is_empty());
+        assert!(deaths.contains(&(partner, KillMethod::LoverDied)));
+    }
+
+    #[tokio::test]
+    async fn no_fled_players_touches_nothing() {
+        let mut alive = vec![AlivePlayer { id: PlayerId(1), role: Role::Villager }];
+        let states = HashMap::new();
+        let lovers = LoversState::default();
+        let mut kills = vec![];
+        let mut deaths = vec![];
+        let mut presenter = FleeingPresenter { pending_fled: vec![], events: vec![] };
+
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+
+        assert_eq!(alive.len(), 1);
+        assert!(deaths.is_empty());
+        assert!(presenter.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_fled_id_thats_already_dead_is_silently_ignored() {
+        let mut alive = vec![AlivePlayer { id: PlayerId(2), role: Role::Villager }];
+        let states = HashMap::new();
+        let lovers = LoversState::default();
+        let mut kills = vec![];
+        let mut deaths = vec![];
+        // PlayerId(1) isn't in `alive` at all - already dead or never existed.
+        let mut presenter = FleeingPresenter { pending_fled: vec![PlayerId(1)], events: vec![] };
+
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+
+        assert_eq!(alive.len(), 1);
+        assert!(deaths.is_empty());
     }
 }
 
