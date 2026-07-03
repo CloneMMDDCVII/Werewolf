@@ -26,8 +26,20 @@
 //! `Presenter::drain_fled_players`) is `run_game`'s side of it. A
 //! `Lobby` only exists before a game starts; once `try_start` returns
 //! `Started`, this module's job is done and the engine takes over.
+//!
+//! [`Lobby::assign_roles`] is the last step of that handoff —
+//! `game_engine::balancing::balance` picks which role each joined player
+//! gets (honoring `game_mode`), and this just zips the result against
+//! `players()` to build the `AlivePlayer` roster `game_engine::run_game`
+//! actually takes. `startgame`/`startchaos` finally resolve end-to-end
+//! through this: `Lobby` decides who's playing, `balancing` decides who's
+//! playing *what*, `run_game` plays it out.
 
-use shared::GameMode;
+use game_engine::balancing::{balance, BalanceError};
+use game_engine::orchestrator::AlivePlayer;
+use game_engine::rng::RngSource;
+use game_engine::roles::PlayerId;
+use shared::{GameMode, Role};
 use std::collections::HashSet;
 
 /// A player's identity as seen during joining — just enough to run the
@@ -348,6 +360,54 @@ impl Lobby {
     pub fn telegram_ids(&self) -> HashSet<i64> {
         self.players.iter().map(|p| p.telegram_id).collect()
     }
+
+    /// Werewolf.cs:1458: `GameBalancing.Balance(roleflags, Players.Count,
+    /// GameMode == Shared.GameMode.Chaos, BurningOverkill, out
+    /// PossibleRoles)`, immediately followed by assigning the shuffled
+    /// result to the (already-shuffled-into-join-order) player list —
+    /// there's no separate "which player gets which role" shuffle in the
+    /// source beyond `balance`'s own internal one, so zipping
+    /// `players()` against `balance`'s output in order is faithful, not
+    /// a shortcut.
+    ///
+    /// Only callable once `try_start` has actually returned `Started` —
+    /// asking "what roles" before "is this even a game" has been decided
+    /// isn't a real question the source ever asks either (`Balance` is
+    /// called from deep inside the same `IsInitializing` block that
+    /// already passed the `MinPlayers` check).
+    pub fn assign_roles(
+        &self,
+        disabled_roles: &[Role],
+        burning_overkill: bool,
+        rng: &mut dyn RngSource,
+    ) -> Result<Vec<AlivePlayer>, AssignRolesError> {
+        if self.state != LobbyState::Started {
+            return Err(AssignRolesError::NotStarted);
+        }
+
+        let roles = balance(self.players.len(), self.game_mode == GameMode::Chaos, disabled_roles, burning_overkill, rng)?;
+
+        Ok(self
+            .players
+            .iter()
+            .zip(roles)
+            .map(|(player, role)| AlivePlayer { id: PlayerId(player.telegram_id as u64), role })
+            .collect())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignRolesError {
+    /// Asked before `try_start` resolved to `Started` - there's no
+    /// finished roster to assign roles to yet.
+    NotStarted,
+    Balance(BalanceError),
+}
+
+impl From<BalanceError> for AssignRolesError {
+    fn from(e: BalanceError) -> Self {
+        AssignRolesError::Balance(e)
+    }
 }
 
 impl Default for Lobby {
@@ -609,5 +669,49 @@ mod tests {
         lobby.join(candidate(1, "Alice")).unwrap();
         lobby.try_start();
         assert_eq!(lobby.game_mode(), GameMode::Chaos);
+    }
+
+    fn started_lobby(player_count: i64) -> Lobby {
+        let mut lobby = Lobby::with_limits(1, 35);
+        for id in 1..=player_count {
+            lobby.join(candidate(id, &format!("Player{id}"))).unwrap();
+        }
+        lobby.try_start();
+        lobby
+    }
+
+    #[test]
+    fn cannot_assign_roles_before_starting() {
+        let mut lobby = Lobby::new();
+        lobby.join(candidate(1, "Alice")).unwrap();
+        let mut rng = game_engine::rng::SeededRngSource::new(0);
+        assert_eq!(lobby.assign_roles(&[], true, &mut rng).unwrap_err(), AssignRolesError::NotStarted);
+    }
+
+    #[test]
+    fn assigns_a_role_to_every_joined_player() {
+        let lobby = started_lobby(6);
+        let mut rng = game_engine::rng::SeededRngSource::new(0);
+        let roster = lobby.assign_roles(&[], true, &mut rng).expect("6p game should balance");
+
+        assert_eq!(roster.len(), 6);
+        let mut ids: Vec<_> = roster.iter().map(|p| p.id.0).collect();
+        ids.sort();
+        assert_eq!(ids, vec![1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn chaos_lobbies_pass_chaos_mode_through_to_balance() {
+        let lobby = {
+            let mut lobby = Lobby::with_limits_and_mode(1, 35, GameMode::Chaos);
+            for id in 1..=8 {
+                lobby.join(candidate(id, &format!("Player{id}"))).unwrap();
+            }
+            lobby.try_start();
+            lobby
+        };
+        let mut rng = game_engine::rng::SeededRngSource::new(0);
+        let roster = lobby.assign_roles(&[], true, &mut rng).expect("8p chaos game should balance");
+        assert_eq!(roster.len(), 8);
     }
 }

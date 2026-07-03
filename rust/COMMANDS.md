@@ -17,8 +17,8 @@ scope (explained in notes, not just skipped silently)
 | `join` | `Werewolf.cs::AddPlayer` (685-761) | ✅ | `control::lobby::Lobby::join` |
 | `flee` | `Werewolf.cs::RemovePlayer` (829-869) | ✅ | Joining-phase leave: `Lobby::leave`. Running-game flee: `game_engine::game::apply_fled_players`, fed by `Presenter::drain_fled_players` (see below) |
 | `forcestart` | `Werewolf.cs::ForceStart` (2517-2519) | ✅ | `Lobby::force_start` + `Lobby::try_start` |
-| `startgame` | `Helpers.cs::StartGame(GameMode.Normal, ...)` | 🟡 | `Lobby` gets you to a validated roster; role *assignment* (`GameBalancing.Balance`) isn't ported — `run_game` still expects a roster with roles already picked |
-| `startchaos` | `Helpers.cs::StartGame(GameMode.Chaos, ...)` | 🟡 | `Lobby::with_game_mode` tracks the mode; `GameMode::Chaos`'s actual effect on role selection (`GameBalancing.Balance(..., chaos: true, ...)`) is unported — same gap as `startgame` |
+| `startgame` | `Helpers.cs::StartGame(GameMode.Normal, ...)` | ✅ | `Lobby` → `Lobby::assign_roles` (`game_engine::balancing::balance`) → `run_game`, end to end |
+| `startchaos` | `Helpers.cs::StartGame(GameMode.Chaos, ...)` | ✅ | Same path, `Lobby::with_game_mode(GameMode::Chaos)` |
 | `extend` | `Werewolf.cs::ExtendTime` (2521-2534) + `GameCommands.cs::Extend` (the `MaxExtend`/admin-bypass gating) | ✅ | `Lobby::extend_time` |
 | `players` | `Werewolf.cs::ShowPlayers` | ⬜ | Pure read of `Lobby::players()`/`AlivePlayer` roster + a presenter call - thin, not yet wired to a real presenter |
 | `stopwaiting` | DB-only (`NotifyGame` waitlist) | ⛔ | No game-logic content - a "notify me next game" DB row, belongs with whatever owns notifications, not `control`/`game-engine` |
@@ -79,3 +79,19 @@ of those three windows, not mid-question) - an honest approximation,
 not a silent one, documented on `drain_fled_players` itself.
 `killgame`'s "end this game outright, no winner" would be the natural
 next thing built on the same polling pattern, not yet added.
+
+## The seam behind `startgame`/`startchaos`'s ✅
+
+`game_engine::balancing` (`Shared/GameBalancing.cs`) picks which role
+each joined player gets: 1-5 wolves scaled to player count, one of
+every other legacy role added to a candidate pool, shuffled, truncated
+to the roster size, a few structural fixups (no wolf-dependent role
+without a wolf, no Cultist without a CultistHunter, no Apprentice Seer
+without a Seer), then checked against team-size and (outside `chaos`
+mode) strength-variance rules before accepting - retried up to 500
+times. `Lobby::assign_roles` is the glue: calls `balance`, zips the
+result against the joined roster, hands back the `Vec<AlivePlayer>`
+`run_game` takes directly. `Chef`/`Barkeep`/`Witch` (roles this port
+added with no legacy precedent) never appear - `GameBalancing.cs`
+predates all three, so there's no real strength value or balancing
+rule to assign them by.

@@ -6,6 +6,7 @@
 //! an abstract `Presenter` trait — this crate never depends on Telegram
 //! (or on `sim`), only on the idea that *something* can answer a question.
 
+pub mod balancing;
 pub mod game;
 pub mod orchestrator;
 pub mod rng;
