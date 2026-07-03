@@ -6,26 +6,29 @@
 //!
 //! **Scoped to the joining phase only.** `Lobby::extend_time` covers
 //! `ExtendTime`'s own gating rules (Werewolf.cs:2521-2534) but not the
-//! timer loop itself, and `Lobby::kill` only covers the joining-phase
-//! case of `Kill()` (Werewolf.cs:5393-5406) — both left honestly
-//! incomplete rather than silently:
-//! - The join timer's actual countdown (`Thread.Sleep(1000)` ticking a
-//!   mutable `i`, Werewolf.cs:410-501) belongs to whatever real
-//!   scheduler eventually drives this (Telegram's bot runtime, a
-//!   `tokio::time::interval`, ...), not this crate's pure state machine
-//!   — `extend_time` returns the signed delta a caller's timer should
-//!   apply, but doesn't apply it to anything itself.
-//! - Killing an *in-progress* game (`Kill()` when `IsRunning`) needs the
-//!   same kind of external-event seam `game_engine::run_game` just
-//!   grew for flee (`Presenter::drain_fled_players`) — extending that
-//!   pattern to "end the game outright, no winner" is real, tracked
-//!   work (see `COMMANDS.md`'s `killgame` entry), just not done yet.
+//! timer loop itself — the join timer's actual countdown
+//! (`Thread.Sleep(1000)` ticking a mutable `i`, Werewolf.cs:410-501)
+//! belongs to whatever real scheduler eventually drives this (Telegram's
+//! bot runtime, a `tokio::time::interval`, ...), not this crate's pure
+//! state machine, so `extend_time` returns the signed delta a caller's
+//! timer should apply rather than applying it to anything itself.
 //!
-//! Flee-while-running (Werewolf.cs:848-860) *is* covered now, just not
+//! `Lobby::kill` only covers the joining-phase case of `Kill()`
+//! (Werewolf.cs:5393-5406, `/killgame`) — but that's *all* of `Kill()`
+//! this crate needs to cover. Once `try_start` returns `Started`, a
+//! `Lobby` has done its job and handed off to `game_engine::run_game`;
+//! killing an *in-progress* game from then on is `run_game`'s own
+//! `Presenter::game_was_killed` seam (the same pattern
+//! `drain_fled_players` established for flee), not something this
+//! module reaches back into. A caller driving both needs to know which
+//! phase it's in and call the right one - there's no single "kill this
+//! game, whatever phase it's in" entry point spanning both crates, since
+//! nothing here actually needs one: the caller already knows whether it
+//! has a `Lobby` or a running `run_game` task.
+//!
+//! Flee-while-running (Werewolf.cs:848-860) is covered the same way, not
 //! by this module — `game_engine::game::apply_fled_players` (fed by
-//! `Presenter::drain_fled_players`) is `run_game`'s side of it. A
-//! `Lobby` only exists before a game starts; once `try_start` returns
-//! `Started`, this module's job is done and the engine takes over.
+//! `Presenter::drain_fled_players`) is `run_game`'s side of it.
 //!
 //! [`Lobby::assign_roles`] is the last step of that handoff —
 //! `game_engine::balancing::balance` picks which role each joined player

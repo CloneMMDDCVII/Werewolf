@@ -101,6 +101,15 @@ pub async fn run_game(
         apply_pending_alpha_bites(&bitten_pending, &mut alive, presenter).await;
         bitten_pending.clear();
 
+        if presenter.game_was_killed() {
+            presenter.narrate(NarrationEvent::GameOver { winner: WinOutcome::Killed }).await;
+            return GameOutcome {
+                winner: WinOutcome::Killed,
+                rounds_played: round,
+                deaths,
+            };
+        }
+
         apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
         if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
@@ -189,6 +198,15 @@ pub async fn run_game(
             process_deaths(&night_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         wolf_cub_bonus_pending |= night_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
 
+        if presenter.game_was_killed() {
+            presenter.narrate(NarrationEvent::GameOver { winner: WinOutcome::Killed }).await;
+            return GameOutcome {
+                winner: WinOutcome::Killed,
+                rounds_played: round,
+                deaths,
+            };
+        }
+
         apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
         if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
             presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
@@ -212,6 +230,15 @@ pub async fn run_game(
         let (_, day_shot_roles) =
             process_deaths(&day_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
         wolf_cub_bonus_pending |= day_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
+
+        if presenter.game_was_killed() {
+            presenter.narrate(NarrationEvent::GameOver { winner: WinOutcome::Killed }).await;
+            return GameOutcome {
+                winner: WinOutcome::Killed,
+                rounds_played: round,
+                deaths,
+            };
+        }
 
         apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
         if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {

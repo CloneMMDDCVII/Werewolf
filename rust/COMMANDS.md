@@ -57,11 +57,17 @@ All ⛔, no plan to port: bot-fleet management (`bangroup`, `build`,
 `ohaider`, `movelang`, `commitlangs`, `resetlink`, `user`, `unlockbeta`,
 `lockbeta`, `preferred`, `leavegroup`, `reloadenglish`, `clearcount`,
 `sendonline`, `adddonation`, `updatestatus`, `getbans`, `permban`,
-`remban`, `getcommands`, `grouplist`, `rolelist`). `killgame`
-(`DevCommands.cs:237`, admin-only force-end of a running game) is the one
-exception worth flagging: it's the in-game counterpart to `Lobby::kill`
-(joining-phase only) and needs the same cancellation seam described below
-for running-game flee - tracked, not forgotten.
+`remban`, `getcommands`, `grouplist`, `rolelist`).
+
+`killgame` (`DevCommands.cs:237`, admin-only force-end of a running
+game) is the one exception, and it's ✅ now: `Presenter::game_was_killed`,
+polled by `run_game` at the same three checkpoints as
+`drain_fled_players`, ends the game immediately with the new
+`WinOutcome::Killed` (deliberately "no winner," not "we don't know the
+winner" like `RngDependent`/`InsufficientData`/`Unimplemented` - the
+source's own `Kill()` sends a literal `"Game removed"`, not a
+`GetLocaleString` call, so `WinOutcome::Killed` has no locale key at
+all, checked directly rather than assumed).
 
 ## The seam behind the ✅ running-game entries
 
@@ -77,8 +83,14 @@ death as `KillMethod::Flee`, and runs the same `resolved_winner` check
 every other death triggers. Not truly instant (a flee lands within one
 of those three windows, not mid-question) - an honest approximation,
 not a silent one, documented on `drain_fled_players` itself.
-`killgame`'s "end this game outright, no winner" would be the natural
-next thing built on the same polling pattern, not yet added.
+
+`Presenter::game_was_killed` is the same pattern applied to `killgame`:
+another default-`false` method, polled right alongside
+`drain_fled_players` at the same three checkpoints. A `true` short-
+circuits everything else that checkpoint would have done (fled players,
+win checks) and returns immediately with `WinOutcome::Killed` - an
+admin ending the game outright takes priority over any death that
+would otherwise resolve the same instant.
 
 ## The seam behind `startgame`/`startchaos`'s ✅
 

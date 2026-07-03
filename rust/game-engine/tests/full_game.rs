@@ -814,3 +814,46 @@ async fn fleeing_mid_game_can_immediately_hand_the_wolves_a_win() {
     assert_eq!(outcome.deaths, vec![(villager1, KillMethod::Flee)]);
     assert_eq!(outcome.rounds_played, 1);
 }
+
+/// A presenter that reports the game as killed the very first time it's
+/// polled - proves `run_game` actually reacts to `Presenter
+/// ::game_was_killed` rather than just compiling against it.
+struct OneTimeKillPresenter {
+    killed: bool,
+}
+
+#[async_trait(?Send)]
+impl Presenter for OneTimeKillPresenter {
+    async fn ask_targets(
+        &mut self,
+        _player: PlayerId,
+        _prompt: Prompt,
+        _options: &[PlayerId],
+        _count: usize,
+    ) -> Option<Vec<PlayerId>> {
+        None
+    }
+
+    fn game_was_killed(&mut self) -> bool {
+        std::mem::take(&mut self.killed)
+    }
+}
+
+#[tokio::test]
+async fn an_admin_killing_the_game_ends_it_with_no_winner() {
+    let wolf = PlayerId(1);
+    let villager = PlayerId(2);
+
+    let players = vec![
+        AlivePlayer { id: wolf, role: Role::Wolf },
+        AlivePlayer { id: villager, role: Role::Villager },
+    ];
+
+    let mut presenter = OneTimeKillPresenter { killed: true };
+    let mut rng = SeededRngSource::new(0);
+    let outcome = run_game(&players, &mut presenter, &mut rng, 5).await;
+
+    assert_eq!(outcome.winner, WinOutcome::Killed);
+    assert_eq!(outcome.deaths, vec![]);
+    assert_eq!(outcome.rounds_played, 1);
+}

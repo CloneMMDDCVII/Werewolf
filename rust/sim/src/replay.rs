@@ -88,5 +88,10 @@ pub fn replay(fixture: &GameFixture) -> ReplayResult {
         WinOutcome::RngDependent(reason)
         | WinOutcome::InsufficientData(reason)
         | WinOutcome::Unimplemented(reason) => ReplayResult::NotEvaluated(reason),
+        WinOutcome::Killed => unreachable!(
+            "evaluate_winner_with_kills never produces Killed - that variant is only ever set \
+             externally by game::run_game reacting to an admin's /killgame, not by evaluating a \
+             player snapshot"
+        ),
     }
 }

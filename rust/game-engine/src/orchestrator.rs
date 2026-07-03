@@ -420,7 +420,8 @@ pub fn game_over_locale_key(outcome: &crate::WinOutcome) -> Option<&'static str>
         | WinOutcome::Team(Team::Thief)
         | WinOutcome::RngDependent(_)
         | WinOutcome::InsufficientData(_)
-        | WinOutcome::Unimplemented(_) => None,
+        | WinOutcome::Unimplemented(_)
+        | WinOutcome::Killed => None,
     }
 }
 
@@ -688,6 +689,17 @@ pub trait Presenter {
     /// this.
     fn drain_fled_players(&mut self) -> Vec<PlayerId> {
         vec![]
+    }
+
+    /// Has an admin ended this game outright since the last check
+    /// (`/killgame`, Werewolf.cs `Kill()`, 5393-5406)? Polled at the same
+    /// checkpoints as `drain_fled_players`, for the same reason (no
+    /// interrupt-mid-`await` mechanism) — see `game::run_game`, which
+    /// treats a `true` here as an immediate `WinOutcome::Killed`, no
+    /// further night/day resolution. Default `false`: every existing
+    /// test/fixture presenter's behavior is unchanged.
+    fn game_was_killed(&mut self) -> bool {
+        false
     }
 }
 

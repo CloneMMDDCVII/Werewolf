@@ -69,6 +69,16 @@ pub enum WinOutcome {
     /// Multi-step cult auto-convert / 3-way thief-sorcerer-doppelganger
     /// endings (Werewolf.cs:4568-4592, 4700-4806) — not yet ported.
     Unimplemented(&'static str),
+    /// An admin ended the game outright (`/killgame`, Werewolf.cs
+    /// `Kill()`, 5393-5406) — deliberately no winner, not "we don't know
+    /// the winner" like the three variants above. The source sends a
+    /// literal `"Game removed"` here, not a `GetLocaleString` call, so
+    /// unlike every other `WinOutcome` this one has no real locale key
+    /// to map to at all (`game_over_locale_key` returns `None`, same as
+    /// it does for the other non-`Team` variants, but for a different
+    /// reason - there's genuinely nothing to translate, not just
+    /// "unmapped yet").
+    Killed,
 }
 
 /// Evaluate the winner from a final (post-game) player snapshot.
