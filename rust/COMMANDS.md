@@ -20,7 +20,7 @@ scope (explained in notes, not just skipped silently)
 | `startgame` | `Helpers.cs::StartGame(GameMode.Normal, ...)` | ✅ | `Lobby` → `Lobby::assign_roles` (`game_engine::balancing::balance`) → `run_game`, end to end |
 | `startchaos` | `Helpers.cs::StartGame(GameMode.Chaos, ...)` | ✅ | Same path, `Lobby::with_game_mode(GameMode::Chaos)` |
 | `extend` | `Werewolf.cs::ExtendTime` (2521-2534) + `GameCommands.cs::Extend` (the `MaxExtend`/admin-bypass gating) | ✅ | `Lobby::extend_time` |
-| `players` | `Werewolf.cs::ShowPlayers` | ⬜ | Pure read of `Lobby::players()`/`AlivePlayer` roster + a presenter call - thin, not yet wired to a real presenter |
+| `players` | `Werewolf.cs::SendPlayerList`/`OutputPlayers` (1352-1427) | ✅ | Joining phase: `Lobby::players()` (just names). Running game: `game_engine::player_list::render_player_list` |
 | `stopwaiting` | DB-only (`NotifyGame` waitlist) | ⛔ | No game-logic content - a "notify me next game" DB row, belongs with whatever owns notifications, not `control`/`game-engine` |
 | `nextgame` | DB-only (`NotifyGame` waitlist) | ⛔ | Same as `stopwaiting` |
 
@@ -107,3 +107,22 @@ result against the joined roster, hands back the `Vec<AlivePlayer>`
 added with no legacy precedent) never appear - `GameBalancing.cs`
 predates all three, so there's no real strength value or balancing
 rule to assign them by.
+
+## The seam behind `players`'s ✅
+
+`game_engine::player_list::render_player_list` ports the content-half of
+`SendPlayerList` (1352-1408) - the actual `/players` command
+(`GameCommands.cs::Players` -> `GameInfo.ShowPlayers()` ->
+`Werewolf.cs::OutputPlayers()`) doesn't rebuild the list at all, it just
+re-points to whatever player-list message is already being kept live,
+throttled to once per 10 seconds - that Telegram-message-editing
+plumbing is presentation, not ported. What *is* ported is "given the
+roster and who's died how, what does each line say": alive players show
+as alive; dead ones show `Fled` vs `Dead` (recovered from
+`KillMethod::Flee` rather than tracked as a separate flag) and, only if
+the group reveals roles on death, their role and love status - checked
+directly against the source, where that reveal clause is nested
+*inside* the `ShowRolesDeath` condition, not shown unconditionally. The
+`ShufflePlayerList` anonymized-order variant (plus its Valentine's Day
+love-emoji easter egg) is a cosmetic alternate rendering, not part of
+"what does the list say," and isn't ported.

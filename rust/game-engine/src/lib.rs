@@ -9,6 +9,7 @@
 pub mod balancing;
 pub mod game;
 pub mod orchestrator;
+pub mod player_list;
 pub mod rng;
 pub mod roles;
 
