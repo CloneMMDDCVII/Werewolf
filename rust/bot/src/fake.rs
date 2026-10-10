@@ -31,6 +31,8 @@ struct State {
     /// Chats whose next send fails with RetryAfter(secs).
     flood: HashMap<i64, u64>,
     send_attempts: u32,
+    /// Chats whose next send panics.
+    panic_on: HashSet<i64>,
 }
 
 pub struct FakeTelegram {
@@ -80,6 +82,11 @@ impl FakeTelegram {
     /// The next send to `chat` is refused with "retry after `secs`".
     pub fn flood_once(&self, chat: i64, secs: u64) {
         self.state.lock().unwrap().flood.insert(chat, secs);
+    }
+
+    /// The next send to `chat` panics, as a bug in the game would.
+    pub fn panic_once(&self, chat: i64) {
+        self.state.lock().unwrap().panic_on.insert(chat);
     }
 
     pub fn send_attempts(&self) -> u32 {
@@ -143,6 +150,10 @@ impl Telegram for FakeTelegram {
     async fn send(&self, chat: i64, text: &str, keyboard: Option<Keyboard>) -> Result<MsgRef, SendError> {
         let mut s = self.state.lock().unwrap();
         s.send_attempts += 1;
+        if s.panic_on.remove(&chat) {
+            drop(s);
+            panic!("injected panic sending to {chat}");
+        }
         if let Some(secs) = s.flood.remove(&chat) {
             return Err(SendError::RetryAfter(secs));
         }

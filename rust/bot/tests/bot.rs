@@ -569,6 +569,50 @@ async fn flood_control_is_waited_out() {
     })
 }
 
+/// Collects the bot's error log lines, for every test in this binary.
+struct ErrorLog(std::sync::Mutex<Vec<String>>);
+
+static ERRORS: ErrorLog = ErrorLog(std::sync::Mutex::new(Vec::new()));
+
+impl log::Log for ErrorLog {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Error
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            self.0.lock().unwrap().push(record.args().to_string());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+fn capture_errors() {
+    let _ = log::set_logger(&ERRORS);
+    log::set_max_level(log::LevelFilter::Error);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_game_that_panics_frees_its_group_and_says_why() {
+    local!(async {
+        capture_errors();
+        let bot = Bot::new(10).await;
+        bot.start_game(1..=5).await;
+        bot.tg.panic_once(GROUP);
+        for _ in 0..600 {
+            if bot.core.active_groups() == 0 {
+                break;
+            }
+            tick(1).await;
+        }
+        assert_eq!(bot.core.active_groups(), 0, "the group is still taken");
+        let logged = format!("group {GROUP}: game panicked: injected panic sending to {GROUP}");
+        assert!(ERRORS.0.lock().unwrap().contains(&logged));
+        bot.start_game(1..=5).await;
+    })
+}
+
 #[tokio::test(start_paused = true)]
 async fn games_cut_off_by_a_crash_are_announced_on_restart() {
     local!(async {
