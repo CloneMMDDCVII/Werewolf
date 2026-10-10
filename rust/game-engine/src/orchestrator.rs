@@ -27,7 +27,8 @@
 //! topological sort is future work for whenever a second dependency shows
 //! up and two hardcoded levels stop being enough.
 
-use crate::messages::{Announcement, Note};
+use crate::messages::{Announcement, Note, SecretTally};
+use crate::rules::GameRules;
 use crate::rng::RngSource;
 use crate::roles::{
     behavior_for, DayAction, DayContext, LoversState, NightAction, NightContext, NightFact,
@@ -204,6 +205,9 @@ pub enum NarrationEvent {
         victim: PlayerId,
         role: Role,
         method: KillMethod,
+        /// Whether the group shows roles on death (`ShowRolesDeath`). The
+        /// role is always carried; this says whether to say it.
+        reveal_role: bool,
     },
     /// A role transform resolved (Werewolf.cs's `Transform(...)` calls) —
     /// Traitor becoming a Wolf, Doppelganger copying a dead role model,
@@ -226,6 +230,8 @@ pub enum NarrationEvent {
     Private { to: PlayerId, note: Note },
     /// Something told to the whole group — see `messages::Announcement`.
     Announce(Announcement),
+    /// The end-of-game summary, right after `GameOver`.
+    GameSummary(crate::summary::GameSummary),
 }
 
 /// Maps a death to the real legacy flavor key, where this proof-of-concept
@@ -1036,6 +1042,55 @@ async fn ask_lynch_vote(
     Some(choice)
 }
 
+/// Tells the group about a vote as it lands: who voted for whom, or under
+/// secret lynch only how many have voted so far (Werewolf.cs:1125-1137).
+async fn announce_vote(
+    voter: PlayerId,
+    target: PlayerId,
+    voted_so_far: usize,
+    alive: usize,
+    rules: &GameRules,
+    presenter: &mut dyn Presenter,
+) {
+    let announcement = match rules.secret_lynch {
+        None => Announcement::PlayerVotedLynch { voter, target },
+        Some(_) => Announcement::PlayerVoteCounts { voted: voted_so_far as u32, alive: alive as u32 },
+    };
+    presenter.narrate(NarrationEvent::Announce(announcement)).await;
+}
+
+/// Secret lynch results, most votes first (Werewolf.cs:2717-2741), when
+/// the group shows votes. A revealed Mayor appears with a count of 2.
+fn secret_lynch_results(
+    votes_by_voter: &[(PlayerId, PlayerId)],
+    players: &[AlivePlayer],
+    states: &HashMap<PlayerId, RoleState>,
+    rules: &GameRules,
+) -> Option<Announcement> {
+    let secret = rules.secret_lynch.filter(|s| s.show_votes)?;
+    let mut tallies: Vec<SecretTally> = vec![];
+    for &(voter, target) in votes_by_voter {
+        let weight = if is_revealed_mayor(voter, players, states) { 2 } else { 1 };
+        let tally = match tallies.iter_mut().find(|t| t.target == target) {
+            Some(t) => t,
+            None => {
+                tallies.push(SecretTally { target, votes: 0, voters: secret.show_voters.then(Vec::new) });
+                tallies.last_mut().expect("just pushed")
+            }
+        };
+        tally.votes += weight;
+        if let Some(voters) = &mut tally.voters {
+            voters.push((voter, weight));
+        }
+    }
+    tallies.sort_by(|a, b| b.votes.cmp(&a.votes));
+    Some(Announcement::SecretLynchResults(tallies))
+}
+
+fn is_revealed_mayor(voter: PlayerId, players: &[AlivePlayer], states: &HashMap<PlayerId, RoleState>) -> bool {
+    players.iter().any(|p| p.id == voter && p.role == Role::Mayor) && states.get(&voter).is_some_and(|s| s.primary_used)
+}
+
 /// Counts votes, with a revealed Mayor's vote counting twice on every
 /// lynch after the reveal (Werewolf.cs:2651: `p.HasUsedAbility`, which
 /// stays set for the rest of the game).
@@ -1047,12 +1102,8 @@ fn tally_lynch(
     if votes_by_voter.is_empty() {
         return LynchResult::NoVotes;
     }
-    let revealed_mayor = |voter: PlayerId| {
-        players.iter().any(|p| p.id == voter && p.role == Role::Mayor)
-            && states.get(&voter).is_some_and(|s| s.primary_used)
-    };
     let votes = votes_by_voter.iter().flat_map(|&(voter, target)| {
-        let weight = if revealed_mayor(voter) { 2 } else { 1 };
+        let weight = if is_revealed_mayor(voter, players, states) { 2 } else { 1 };
         std::iter::repeat(target).take(weight)
     });
     match majority_target(votes) {
@@ -1067,6 +1118,7 @@ fn tally_lynch(
 pub async fn resolve_lynch_vote(
     players: &[AlivePlayer],
     states: &HashMap<PlayerId, RoleState>,
+    rules: &GameRules,
     presenter: &mut dyn Presenter,
     rng: &mut dyn RngSource,
 ) -> LynchResult {
@@ -1075,7 +1127,11 @@ pub async fn resolve_lynch_vote(
     for player in players {
         if let Some(target) = ask_lynch_vote(player, &alive, presenter, rng).await {
             votes_by_voter.push((player.id, target));
+            announce_vote(player.id, target, votes_by_voter.len(), alive.len(), rules, presenter).await;
         }
+    }
+    if let Some(results) = secret_lynch_results(&votes_by_voter, players, states, rules) {
+        presenter.narrate(NarrationEvent::Announce(results)).await;
     }
     tally_lynch(&votes_by_voter, players, states)
 }
@@ -1088,6 +1144,7 @@ pub async fn resolve_lynch_vote(
 pub async fn resolve_day(
     players: &[AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
+    rules: &GameRules,
     presenter: &mut dyn Presenter,
     rng: &mut dyn RngSource,
 ) -> (Vec<DayAction>, LynchResult) {
@@ -1098,6 +1155,7 @@ pub async fn resolve_day(
     for player in players {
         if let Some(target) = ask_lynch_vote(player, &alive, presenter, rng).await {
             votes_by_voter.push((player.id, target));
+            announce_vote(player.id, target, votes_by_voter.len(), alive.len(), rules, presenter).await;
         }
 
         let behavior = behavior_for(player.role);
@@ -1121,6 +1179,9 @@ pub async fn resolve_day(
         day_actions.extend(behavior.day_action(&ctx, state));
     }
 
+    if let Some(results) = secret_lynch_results(&votes_by_voter, players, states, rules) {
+        presenter.narrate(NarrationEvent::Announce(results)).await;
+    }
     (day_actions, tally_lynch(&votes_by_voter, players, states))
 }
 
@@ -2841,7 +2902,7 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
         let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, Some(target));
 
@@ -2886,7 +2947,7 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
         let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, None);
         let mut states2 = HashMap::new();
@@ -2925,7 +2986,7 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (day_actions, lynch) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
         let lynch = lynch.target();
         assert_eq!(lynch, Some(lynch_target));
         assert!(day_actions.iter().any(|a| matches!(a, DayAction::Shoot { target, .. } if *target == shot_target)));
@@ -2982,7 +3043,7 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
         let lynch_target = lynch_target.target();
         assert_eq!(
             lynch_target,
@@ -3028,7 +3089,7 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
         let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, None);
     }

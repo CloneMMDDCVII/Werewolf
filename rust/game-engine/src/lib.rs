@@ -15,8 +15,10 @@ pub mod orchestrator;
 pub mod player_list;
 pub mod rng;
 pub mod roles;
+pub mod rules;
+pub mod summary;
 
-pub use game::{run_game, GameOutcome};
+pub use game::{run_game, run_game_with_role_pool, run_game_with_rules, GameOutcome};
 
 use shared::{KillMethod, Role, Team};
 

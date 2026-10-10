@@ -22,7 +22,8 @@ use game_engine::orchestrator::{
     death_locale_key, game_over_locale_key, prompt_locale_key, transform_locale_key, NarrationEvent,
     Presenter, Prompt,
 };
-use game_engine::messages::MessageArg;
+use game_engine::messages::{render, Message};
+use shared::{KillMethod, Role};
 use game_engine::roles::PlayerId;
 use i18n::LanguagePack;
 use std::collections::HashMap;
@@ -122,31 +123,34 @@ impl<'a> TranscriptPresenter<'a> {
                 .unwrap_or_else(|| prompt_fallback_text(prompt).to_string()),
             None => prompt_fallback_text(prompt).to_string(),
         };
+        let raw = match prompt {
+            Prompt::GunnerShoot { bullets } => raw.replace("{0}", &bullets.to_string()),
+            _ => raw,
+        };
         strip_unfilled_placeholders(&raw)
     }
 
-    /// Fills a `Note`/`Announcement` template: players by name, roles by
-    /// their display name (falling back to the enum name for the few roles
-    /// with no English.xml entry, see `Role::locale_key`).
-    fn render_message(&self, key: &str, args: &[MessageArg]) -> String {
-        let mut text = self.pack.get(key).map(str::to_string).unwrap_or_else(|| format!("({key})"));
-        for (i, arg) in args.iter().enumerate() {
-            let value = match *arg {
-                MessageArg::Player(id) => self.name(id),
-                MessageArg::Role(role) => self
-                    .pack
-                    .get(role.locale_key())
-                    .map(str::to_string)
-                    .unwrap_or_else(|| format!("{role:?}")),
-            };
-            text = text.replace(&format!("{{{i}}}"), &value);
-        }
-        strip_unfilled_placeholders(&text)
+    /// Fills a `Note`/`Announcement` template through
+    /// `messages::render`: players by name, roles by their display name.
+    fn render_message(&self, message: &Message) -> String {
+        let lookup = |key: &str| self.pack.get(key).map(str::to_string);
+        let name = |id: PlayerId| self.name(id);
+        strip_unfilled_placeholders(&render(message, &lookup, &name))
+    }
+
+    fn role_text(&self, role: Role) -> String {
+        self.pack.get(role.locale_key()).map(str::to_string).unwrap_or_else(|| format!("{role:?}"))
     }
 
     pub fn push_line(&mut self, line: impl Into<String>) {
         self.lines.push(line.into());
     }
+}
+
+/// Deaths announced during the day, whose lines are sent even when roles
+/// are hidden.
+fn is_day_death(method: KillMethod) -> bool {
+    matches!(method, KillMethod::Lynch | KillMethod::Shoot | KillMethod::HunterShot | KillMethod::Idle | KillMethod::Flee)
 }
 
 /// Some locale templates carry a `{0}`/`{1}` for data this proof-of-concept
@@ -171,20 +175,9 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
         let answer = self.inner.ask_targets(player, prompt, options, count).await;
 
         if prompt == Prompt::LynchVote {
-            // Matches the real bot's per-voter announcement
-            // (`PlayerVotedLynch`, "{0} has voted to lynch {1}.") rather
-            // than the generic "asked/chose" phrasing below - lynch votes
-            // are cast in public, not asked privately.
-            if let Some(targets) = &answer {
-                let template = self
-                    .pack
-                    .get("PlayerVotedLynch")
-                    .unwrap_or("{0} has voted to lynch {1}.");
-                let line = template
-                    .replacen("{0}", &self.name(player), 1)
-                    .replacen("{1}", &self.name(targets[0]), 1);
-                self.lines.push(line);
-            }
+            // Lynch votes are public; the engine announces each one
+            // (`Announcement::PlayerVotedLynch`) or, in a secret lynch,
+            // only the count, so there is nothing to log here.
             return answer;
         }
 
@@ -234,23 +227,25 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
 
     async fn narrate(&mut self, event: NarrationEvent) {
         match event {
-            NarrationEvent::Death { victim, role, method } => {
+            NarrationEvent::Death { victim, role, method, reveal_role } => {
                 let name = self.name(victim);
-                let template = match death_locale_key(role, method) {
-                    Some(key) => self.pack.get(key).unwrap_or_else(|| death_fallback_template()),
-                    None => self
-                        .pack
-                        .get("GenericDeathNoReveal")
-                        .unwrap_or_else(|| death_fallback_template()),
+                // Werewolf.cs:4217-4220: with roles hidden, night deaths
+                // all read as `GenericDeathNoReveal`; day deaths keep their
+                // own line with the "{name} was {role}" part left empty
+                // (Werewolf.cs:2765, 2889).
+                let key = match death_locale_key(role, method) {
+                    Some(key) if reveal_role || is_day_death(method) => key,
+                    _ => "GenericDeathNoReveal",
+                };
+                let template = self.pack.get(key).unwrap_or_else(|| death_fallback_template());
+                let reveal = if reveal_role {
+                    format!("{name} {} {}", self.pack.get("Was").unwrap_or("was"), self.role_text(role))
+                } else {
+                    String::new()
                 };
                 // `.replace`, not `.replacen(..., 1)`: `GenericDeathNoReveal`
-                // repeats `{0}` twice in the same sentence (the victim's
-                // name appears once as "notices that {0} is not around"
-                // and again as "the remains of {0}") - replacing only the
-                // first occurrence left the second one to `strip_unfilled_
-                // placeholders`, rendering as a bogus "[?]" instead of the
-                // name.
-                let line = template.replace("{0}", &name).replacen("{1}", "", 1);
+                // repeats `{0}` twice in the same sentence.
+                let line = template.replace("{0}", &name).replacen("{1}", &reveal, 1);
                 self.lines.push(format!("{} ({method:?})", strip_unfilled_placeholders(&line)));
             }
             NarrationEvent::Transform { player, from, to } => {
@@ -274,12 +269,18 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
                     .push(format!("{} ({from:?} -> {to:?})", strip_unfilled_placeholders(&line)));
             }
             NarrationEvent::Private { to, note } => {
-                let text = self.render_message(note.locale_key(), &note.args());
+                let text = self.render_message(&note.message());
                 self.lines.push(format!("(to {}) {text}", self.name(to)));
             }
             NarrationEvent::Announce(announcement) => {
-                let text = self.render_message(announcement.locale_key(), &announcement.args());
+                let text = self.render_message(&announcement.message());
                 self.lines.push(text);
+            }
+            NarrationEvent::GameSummary(summary) => {
+                let lookup = |key: &str| self.pack.get(key).map(str::to_string);
+                let name = |id: PlayerId| self.name(id);
+                let text = summary.render(&lookup, &name);
+                self.lines.extend(text.lines().map(str::to_string));
             }
             NarrationEvent::GameOver { winner } => {
                 let template = match game_over_locale_key(&winner) {

@@ -54,11 +54,21 @@ impl ScriptedPresenter {
             .collect()
     }
 
+    /// Announcements about what happened, without the phase timers and
+    /// the per-vote lines every day carries.
     fn announcements(&self) -> Vec<Announcement> {
         self.narrated
             .iter()
             .filter_map(|e| match e {
-                NarrationEvent::Announce(a) => Some(*a),
+                NarrationEvent::Announce(
+                    Announcement::NightTime { .. }
+                    | Announcement::DayTime { .. }
+                    | Announcement::Day { .. }
+                    | Announcement::LynchTime { .. }
+                    | Announcement::PlayerVotedLynch { .. }
+                    | Announcement::PlayerVoteCounts { .. },
+                ) => None,
+                NarrationEvent::Announce(a) => Some(a.clone()),
                 _ => None,
             })
             .collect()

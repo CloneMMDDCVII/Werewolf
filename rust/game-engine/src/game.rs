@@ -8,6 +8,8 @@
 
 use crate::freeze::{apply_freeze, ask_freeze};
 use crate::messages::Announcement;
+use crate::rules::GameRules;
+use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::orchestrator::{
     apply_day_results, apply_night_results, last_day_veto, resolve_arsonist_detonation, resolve_chemistry,
     resolve_cultist_conversion, resolve_day, resolve_grave_digger_falls, resolve_harlot_visit_deaths,
@@ -73,6 +75,28 @@ pub async fn run_game_with_role_pool(
     rng: &mut dyn RngSource,
     max_rounds: u32,
 ) -> GameOutcome {
+    run_game_with_rules(players, role_pool, &GameRules::default(), presenter, rng, max_rounds).await
+}
+
+/// What stays fixed for the whole game: the starting roster and the
+/// group's rules.
+struct Setup<'a> {
+    players: &'a [AlivePlayer],
+    rules: &'a GameRules,
+}
+
+/// `run_game_with_role_pool`, following the group's settings (see
+/// `rules::GameRules` and `control::game_rules::rules_for`).
+pub async fn run_game_with_rules(
+    players: &[AlivePlayer],
+    role_pool: &[Role],
+    rules: &GameRules,
+    presenter: &mut dyn Presenter,
+    rng: &mut dyn RngSource,
+    max_rounds: u32,
+) -> GameOutcome {
+    let setup = Setup { players, rules };
+    let reveal = rules.show_roles_on_death;
     let mut alive: Vec<AlivePlayer> = players.to_vec();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
     let mut kills: Vec<KillEvent> = vec![];
@@ -129,7 +153,7 @@ pub async fn run_game_with_role_pool(
         bitten_pending.clear();
 
         if let Some(outcome) =
-            check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
         {
             return outcome;
         }
@@ -144,6 +168,8 @@ pub async fn run_game_with_role_pool(
         deaths_counted_for_graves = deaths.len();
 
         let start_of_night = alive.clone();
+        let night_seconds = rules.night_seconds(round, &alive);
+        presenter.narrate(NarrationEvent::Announce(Announcement::NightTime { seconds: night_seconds })).await;
         let freeze = ask_freeze(&alive, frozen_last_night, silver_spread_tonight, presenter).await;
         let (mut tagged_actions, wolf_target) = resolve_night_by_actor(&alive, &mut states, presenter).await;
         let freeze_outcome = apply_freeze(freeze, &mut tagged_actions, &alive, dug_graves, rng);
@@ -225,6 +251,7 @@ pub async fn run_game_with_role_pool(
             &lovers,
             &mut kills,
             &mut deaths,
+            reveal,
             presenter,
         )
         .await;
@@ -241,12 +268,17 @@ pub async fn run_game_with_role_pool(
         narrate_all(readings, presenter).await;
 
         if let Some(outcome) =
-            check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
         {
             return outcome;
         }
 
-        let (day_actions, lynch) = resolve_day(&alive, &mut states, presenter, rng).await;
+        let day_seconds = rules.day_seconds(alive.len());
+        presenter.narrate(NarrationEvent::Announce(Announcement::DayTime { seconds: day_seconds })).await;
+        presenter.narrate(NarrationEvent::Announce(Announcement::Day { number: round })).await;
+        let lynch_seconds = rules.timers.lynch_seconds;
+        presenter.narrate(NarrationEvent::Announce(Announcement::LynchTime { seconds: lynch_seconds })).await;
+        let (day_actions, lynch) = resolve_day(&alive, &mut states, rules, presenter, rng).await;
         let veto = last_day_veto(&day_actions);
         if veto == Some(DayAction::Trouble) {
             if let Some(troublemaker) = alive.iter().find(|p| p.role == Role::Troublemaker) {
@@ -275,12 +307,13 @@ pub async fn run_game_with_role_pool(
             &lovers,
             &mut kills,
             &mut deaths,
+            reveal,
             presenter,
         )
         .await;
 
         if let Some(outcome) =
-            check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
         {
             return outcome;
         }
@@ -289,7 +322,8 @@ pub async fn run_game_with_role_pool(
         // other day actions (Werewolf.cs:2548-2846).
         if veto == Some(DayAction::Trouble) {
             presenter.narrate(NarrationEvent::Announce(Announcement::TroubleDoubleLynchNow)).await;
-            let second = resolve_lynch_vote(&alive, &states, presenter, rng).await;
+            presenter.narrate(NarrationEvent::Announce(Announcement::LynchTime { seconds: lynch_seconds })).await;
+            let second = resolve_lynch_vote(&alive, &states, rules, presenter, rng).await;
             let second_role = second.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
             let second_deaths = apply_day_results(&[], second.target(), second_role, &mut states);
             if let Some(announcement) = second.announcement() {
@@ -302,12 +336,13 @@ pub async fn run_game_with_role_pool(
                 &lovers,
                 &mut kills,
                 &mut deaths,
+                reveal,
                 presenter,
             )
             .await;
 
             if let Some(outcome) =
-                check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+                check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
             {
                 return outcome;
             }
@@ -320,6 +355,8 @@ pub async fn run_game_with_role_pool(
         "max_rounds reached without a resolved winner (likely repeated tied votes)",
     );
     presenter.narrate(NarrationEvent::GameOver { winner: winner.clone() }).await;
+    let summary = game_summary(&setup, &winner, &alive, &lovers, &kills, &deaths);
+    presenter.narrate(NarrationEvent::GameSummary(summary)).await;
     GameOutcome {
         winner,
         rounds_played: max_rounds,
@@ -330,8 +367,10 @@ pub async fn run_game_with_role_pool(
 /// The checkpoint `run_game` runs after every phase: an admin ending the
 /// game (`/killgame`), then any flees, then the win check. `Some` means
 /// the game is over and has already been narrated as such.
+#[allow(clippy::too_many_arguments)]
 async fn check_for_game_end(
     round: u32,
+    setup: &Setup<'_>,
     presenter: &mut dyn Presenter,
     alive: &mut Vec<AlivePlayer>,
     states: &HashMap<PlayerId, RoleState>,
@@ -342,10 +381,13 @@ async fn check_for_game_end(
     let winner = if presenter.game_was_killed() {
         WinOutcome::Killed
     } else {
-        apply_fled_players(presenter, alive, states, lovers, kills, deaths).await;
+        let reveal = setup.rules.show_roles_on_death;
+        apply_fled_players(presenter, alive, states, lovers, kills, deaths, reveal).await;
         resolved_winner(alive, kills, lovers)?
     };
     presenter.narrate(NarrationEvent::GameOver { winner: winner.clone() }).await;
+    let summary = game_summary(setup, &winner, alive, lovers, kills, deaths);
+    presenter.narrate(NarrationEvent::GameSummary(summary)).await;
     Some(GameOutcome {
         winner,
         rounds_played: round,
@@ -353,10 +395,44 @@ async fn check_for_game_end(
     })
 }
 
+/// Builds the end-of-game summary: survivors first, then the dead in the
+/// order they died, each with their final role (`kills` records the role
+/// each victim died as, in the same order as `deaths`).
+fn game_summary(
+    setup: &Setup<'_>,
+    winner: &WinOutcome,
+    alive: &[AlivePlayer],
+    lovers: &LoversState,
+    kills: &[KillEvent],
+    deaths: &[(PlayerId, KillMethod)],
+) -> GameSummary {
+    let lynched_tanner = kills.iter().any(|k| k.method == KillMethod::Lynch && k.victim_role == Role::Tanner);
+    let in_love = |id: PlayerId| lovers.partner_of(id).is_some();
+    let entry = |id: PlayerId, role: Role, alive: bool, fled: bool| SummaryEntry {
+        id,
+        role,
+        alive,
+        fled,
+        in_love: in_love(id),
+        won: is_winner(winner, role, in_love(id), lynched_tanner),
+    };
+    let mut entries: Vec<SummaryEntry> = setup
+        .players
+        .iter()
+        .filter_map(|p| alive.iter().find(|a| a.id == p.id))
+        .map(|a| entry(a.id, a.role, true, false))
+        .collect();
+    for (&(id, method), kill) in deaths.iter().zip(kills) {
+        entries.push(entry(id, kill.victim_role, false, method == KillMethod::Flee));
+    }
+    GameSummary { end_roles: setup.rules.end_roles, entries }
+}
+
 /// Processes a batch of deaths, then every Hunter final shot they
 /// trigger, repeatedly: a Hunter shot by a Hunter gets a final shot of
 /// their own, and so on down the chain (Werewolf.cs:5480-5481, the
 /// "Domino" case). Returns whether a Wolf Cub died anywhere in the chain.
+#[allow(clippy::too_many_arguments)]
 async fn process_deaths_and_hunter_shots(
     new_deaths: &[(PlayerId, KillMethod)],
     alive: &mut Vec<AlivePlayer>,
@@ -364,13 +440,14 @@ async fn process_deaths_and_hunter_shots(
     lovers: &LoversState,
     kills: &mut Vec<KillEvent>,
     deaths: &mut Vec<(PlayerId, KillMethod)>,
+    reveal: bool,
     presenter: &mut dyn Presenter,
 ) -> bool {
     let mut wolf_cub_died = false;
     let mut batch = new_deaths.to_vec();
     while !batch.is_empty() {
         let (processed, died_with_roles) =
-            process_deaths(&batch, alive, states, lovers, kills, deaths, presenter).await;
+            process_deaths(&batch, alive, states, lovers, kills, deaths, reveal, presenter).await;
         wolf_cub_died |= died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
         batch = resolve_hunter_shots(&processed, &died_with_roles, alive, presenter).await;
     }
@@ -420,11 +497,12 @@ fn record_deaths(
 async fn narrate_deaths(
     new_deaths: &[(PlayerId, KillMethod)],
     died_with_roles: &[(PlayerId, Role)],
+    reveal_role: bool,
     presenter: &mut dyn Presenter,
 ) {
     for (&(victim, method), &(_, role)) in new_deaths.iter().zip(died_with_roles) {
         presenter
-            .narrate(NarrationEvent::Death { victim, role, method })
+            .narrate(NarrationEvent::Death { victim, role, method, reveal_role })
             .await;
     }
 }
@@ -447,6 +525,7 @@ async fn narrate_deaths(
 /// (`resolve_hunter_shots`, which needs both the method - for which
 /// prompt to ask - and the role - to find a Hunter) doesn't have to
 /// re-derive them.
+#[allow(clippy::too_many_arguments)]
 async fn process_deaths(
     new_deaths: &[(PlayerId, KillMethod)],
     alive: &mut Vec<AlivePlayer>,
@@ -454,6 +533,7 @@ async fn process_deaths(
     lovers: &LoversState,
     kills: &mut Vec<KillEvent>,
     deaths: &mut Vec<(PlayerId, KillMethod)>,
+    reveal_role: bool,
     presenter: &mut dyn Presenter,
 ) -> (Vec<(PlayerId, KillMethod)>, Vec<(PlayerId, Role)>) {
     let lover_chain = resolve_lover_deaths(new_deaths, lovers, alive);
@@ -461,7 +541,7 @@ async fn process_deaths(
     all_deaths.extend(lover_chain);
 
     let died_with_roles = record_deaths(alive, &all_deaths, kills, deaths);
-    narrate_deaths(&all_deaths, &died_with_roles, presenter).await;
+    narrate_deaths(&all_deaths, &died_with_roles, reveal_role, presenter).await;
     alive.retain(|p| !all_deaths.iter().any(|&(v, _)| v == p.id));
     let transforms = apply_transforms(alive, states, &died_with_roles);
     narrate_all(transforms, presenter).await;
@@ -485,6 +565,7 @@ async fn apply_fled_players(
     lovers: &LoversState,
     kills: &mut Vec<KillEvent>,
     deaths: &mut Vec<(PlayerId, KillMethod)>,
+    reveal_role: bool,
 ) {
     // One player can be reported twice in a window (a `/flee` and an
     // admin's `/smite`, or a smite naming them twice); they still die once.
@@ -496,7 +577,7 @@ async fn apply_fled_players(
         .map(|id| (id, KillMethod::Flee))
         .collect();
     if !fled_deaths.is_empty() {
-        process_deaths(&fled_deaths, alive, states, lovers, kills, deaths, presenter).await;
+        process_deaths(&fled_deaths, alive, states, lovers, kills, deaths, reveal_role, presenter).await;
     }
 }
 
@@ -1406,14 +1487,19 @@ mod fled_player_tests {
         let mut deaths = vec![];
         let mut presenter = FleeingPresenter { pending_fled: vec![fled], events: vec![] };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
 
         assert_eq!(alive.len(), 1);
         assert_eq!(alive[0].id, PlayerId(2));
         assert_eq!(deaths, vec![(fled, KillMethod::Flee)]);
         assert!(presenter
             .events
-            .contains(&NarrationEvent::Death { victim: fled, role: Role::Villager, method: KillMethod::Flee }));
+            .contains(&NarrationEvent::Death {
+                victim: fled,
+                role: Role::Villager,
+                method: KillMethod::Flee,
+                reveal_role: true
+            }));
     }
 
     #[tokio::test]
@@ -1431,7 +1517,7 @@ mod fled_player_tests {
         let mut deaths = vec![];
         let mut presenter = FleeingPresenter { pending_fled: vec![fled], events: vec![] };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
 
         assert!(alive.is_empty());
         assert!(deaths.contains(&(partner, KillMethod::LoverDied)));
@@ -1446,7 +1532,7 @@ mod fled_player_tests {
         let mut deaths = vec![];
         let mut presenter = FleeingPresenter { pending_fled: vec![], events: vec![] };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
 
         assert_eq!(alive.len(), 1);
         assert!(deaths.is_empty());
@@ -1463,7 +1549,7 @@ mod fled_player_tests {
         // PlayerId(1) isn't in `alive` at all - already dead or never existed.
         let mut presenter = FleeingPresenter { pending_fled: vec![PlayerId(1)], events: vec![] };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
+        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
 
         assert_eq!(alive.len(), 1);
         assert!(deaths.is_empty());
