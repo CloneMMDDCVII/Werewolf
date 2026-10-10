@@ -7,6 +7,7 @@
 
 use bot::config::{self, Config};
 use bot::core::{BotCore, CoreConfig, MemoryAdmission};
+use bot::health::{self, Heartbeat, Probe};
 use bot::spawn::PoolSpawner;
 use bot::telegram::{Retrying, Telegram};
 use bot::teloxide_adapter::{poll, TeloxideTelegram};
@@ -47,7 +48,11 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let config: Config = match config::load(&path, std::env::var(config::TOKEN_ENV).ok()) {
+    let config: Config = match config::load(
+        &path,
+        std::env::var(config::TOKEN_ENV).ok(),
+        std::env::var(config::HEALTH_ADDR_ENV).ok(),
+    ) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{e}");
@@ -99,6 +104,25 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let heartbeat = Arc::new(Heartbeat::new());
+    if let Some(addr) = config.health_addr {
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("could not serve the health check on {addr} (health_addr): {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let running = {
+            let core = core.clone();
+            move || core.running_games()
+        };
+        tokio::spawn(health::serve(
+            listener,
+            Arc::new(Probe::new(heartbeat.clone(), store.clone(), running)),
+        ));
+        log::info!("health check at http://{addr}/healthz");
+    }
     core.announce_interrupted_games().await;
 
     log::info!("running; press Ctrl+C to stop");
@@ -109,12 +133,18 @@ async fn main() -> ExitCode {
         let core = core.clone();
         let telegram = telegram.clone();
         let stop = stop_polling.clone();
+        let heartbeat = heartbeat.clone();
         tokio::spawn(async move {
             poll(
                 telegram.inner(),
                 move |incoming| {
                     let core = core.clone();
                     tokio::spawn(async move { core.handle(incoming).await });
+                },
+                move |ok| {
+                    if ok {
+                        heartbeat.beat();
+                    }
                 },
                 stop.cancelled_owned(),
             )

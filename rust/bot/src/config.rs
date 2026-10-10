@@ -1,11 +1,14 @@
 //! `werewolf.toml`: the bot's only configuration file. The token can come
 //! from `WEREWOLF_BOT_TOKEN` instead, which wins over the file, so a
 //! container or service manager never has to write a secret to disk.
+//! `health_addr` can likewise come from `WEREWOLF_HEALTH_ADDR`.
 
 use serde::Deserialize;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 pub const TOKEN_ENV: &str = "WEREWOLF_BOT_TOKEN";
+pub const HEALTH_ADDR_ENV: &str = "WEREWOLF_HEALTH_ADDR";
 pub const FILE_NAME: &str = "werewolf.toml";
 
 pub const TEMPLATE: &str = r#"# Werewolf for Telegram: bot configuration.
@@ -39,6 +42,11 @@ pub const TEMPLATE: &str = r#"# Werewolf for Telegram: bot configuration.
 # Rough memory one running game needs, used to refuse new games before the
 # machine runs out of memory.
 # per_game_memory_mb = 16
+
+# Serve GET /healthz on this address for a monitor or load balancer: 200
+# when Telegram polling and the database are working, 503 when not. Off
+# unless set. The WEREWOLF_HEALTH_ADDR environment variable wins over this.
+# health_addr = "127.0.0.1:8080"
 "#;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +58,8 @@ pub struct Config {
     pub global_admins: Vec<i64>,
     pub language_admins: Vec<i64>,
     pub per_game_memory_mb: u64,
+    /// Where to serve `/healthz`; `None` serves nothing.
+    pub health_addr: Option<SocketAddr>,
     /// The file this came from, if any.
     pub path: Option<PathBuf>,
 }
@@ -64,6 +74,7 @@ struct FileConfig {
     global_admins: Option<Vec<i64>>,
     language_admins: Option<Vec<i64>>,
     per_game_memory_mb: Option<u64>,
+    health_addr: Option<String>,
 }
 
 #[derive(Debug)]
@@ -113,11 +124,12 @@ pub fn default_path() -> PathBuf {
         .join(FILE_NAME)
 }
 
-/// Loads the configuration. `env_token` is the value of
-/// `WEREWOLF_BOT_TOKEN`, passed in so tests don't touch the process
-/// environment.
-pub fn load(path: &Path, env_token: Option<String>) -> Result<Config, ConfigError> {
+/// Loads the configuration. `env_token` and `env_health_addr` are the
+/// values of `WEREWOLF_BOT_TOKEN` and `WEREWOLF_HEALTH_ADDR`, passed in so
+/// tests don't touch the process environment.
+pub fn load(path: &Path, env_token: Option<String>, env_health_addr: Option<String>) -> Result<Config, ConfigError> {
     let env_token = env_token.filter(|t| !t.trim().is_empty());
+    let env_health_addr = env_health_addr.filter(|a| !a.trim().is_empty());
     let (file, base) = if path.exists() {
         let raw = std::fs::read_to_string(path).map_err(|e| ConfigError::Unreadable(path.into(), e.to_string()))?;
         let file: FileConfig = toml::from_str(&raw).map_err(|e| ConfigError::Invalid(path.into(), e.to_string()))?;
@@ -136,6 +148,14 @@ pub fn load(path: &Path, env_token: Option<String>) -> Result<Config, ConfigErro
         .or(file.token.filter(|t| !t.trim().is_empty()))
         .ok_or_else(|| ConfigError::MissingToken(path.into()))?;
     let base = base.unwrap_or_else(|| PathBuf::from("."));
+    let health_addr = env_health_addr
+        .or(file.health_addr)
+        .map(|a| {
+            a.trim()
+                .parse::<SocketAddr>()
+                .map_err(|e| ConfigError::Invalid(path.into(), format!("health_addr {a:?}: {e}")))
+        })
+        .transpose()?;
 
     Ok(Config {
         token,
@@ -145,6 +165,7 @@ pub fn load(path: &Path, env_token: Option<String>) -> Result<Config, ConfigErro
         global_admins: file.global_admins.unwrap_or_default(),
         language_admins: file.language_admins.unwrap_or_default(),
         per_game_memory_mb: file.per_game_memory_mb.unwrap_or(16),
+        health_addr,
         path: path.exists().then(|| path.to_path_buf()),
     })
 }
@@ -192,7 +213,7 @@ mod tests {
     fn first_run_writes_a_commented_template_and_explains() {
         let dir = temp_dir();
         let path = dir.join(FILE_NAME);
-        let err = load(&path, None).unwrap_err();
+        let err = load(&path, None, None).unwrap_err();
         assert!(matches!(err, ConfigError::TemplateWritten(ref p) if p == &path));
         let written = std::fs::read_to_string(&path).unwrap();
         assert_eq!(written, TEMPLATE);
@@ -200,7 +221,7 @@ mod tests {
         // itself parses and still has no token.
         assert!(toml::from_str::<FileConfig>(&written).is_ok());
         assert!(err.to_string().contains("@BotFather"));
-        assert!(matches!(load(&path, None), Err(ConfigError::MissingToken(_))));
+        assert!(matches!(load(&path, None, None), Err(ConfigError::MissingToken(_))));
     }
 
     #[test]
@@ -208,7 +229,7 @@ mod tests {
         let dir = temp_dir();
         let path = dir.join(FILE_NAME);
         std::fs::write(&path, "database = \"sqlite://w.db\"\n").unwrap();
-        let c = load(&path, Some("123:env".into())).unwrap();
+        let c = load(&path, Some("123:env".into()), None).unwrap();
         assert_eq!(c.token, "123:env");
     }
 
@@ -216,7 +237,7 @@ mod tests {
     fn no_file_but_an_environment_token_runs_on_defaults() {
         let dir = temp_dir();
         let path = dir.join(FILE_NAME);
-        let c = load(&path, Some("123:env".into())).unwrap();
+        let c = load(&path, Some("123:env".into()), None).unwrap();
         assert_eq!(c.database, "sqlite://./werewolf.db");
         assert!(!path.exists(), "no template is written when the bot can run");
     }
@@ -226,8 +247,8 @@ mod tests {
         let dir = temp_dir();
         let path = dir.join(FILE_NAME);
         std::fs::write(&path, "token = \"123:file\"\n").unwrap();
-        assert_eq!(load(&path, Some("123:env".into())).unwrap().token, "123:env");
-        assert_eq!(load(&path, None).unwrap().token, "123:file");
+        assert_eq!(load(&path, Some("123:env".into()), None).unwrap().token, "123:env");
+        assert_eq!(load(&path, None, None).unwrap().token, "123:file");
     }
 
     #[test]
@@ -235,7 +256,7 @@ mod tests {
         let dir = temp_dir();
         let path = dir.join(FILE_NAME);
         std::fs::write(&path, "token = \"t\"\nlanguages_dir = \"langs\"\n").unwrap();
-        let c = load(&path, None).unwrap();
+        let c = load(&path, None, None).unwrap();
         assert_eq!(c.database, format!("sqlite://{}", dir.join("werewolf.db").display()));
         assert_eq!(c.languages_dir, dir.join("langs"));
     }
@@ -248,10 +269,34 @@ mod tests {
     }
 
     #[test]
+    fn the_health_endpoint_is_off_unless_configured() {
+        let dir = temp_dir();
+        let path = dir.join(FILE_NAME);
+        std::fs::write(&path, "token = \"t\"\n").unwrap();
+        assert_eq!(load(&path, None, None).unwrap().health_addr, None);
+        assert_eq!(load(&path, None, Some(" ".into())).unwrap().health_addr, None);
+
+        std::fs::write(&path, "token = \"t\"\nhealth_addr = \"127.0.0.1:8080\"\n").unwrap();
+        assert_eq!(
+            load(&path, None, None).unwrap().health_addr,
+            Some("127.0.0.1:8080".parse().unwrap())
+        );
+        assert_eq!(
+            load(&path, None, Some("[::1]:9000".into())).unwrap().health_addr,
+            Some("[::1]:9000".parse().unwrap()),
+            "the environment wins"
+        );
+        assert!(matches!(
+            load(&path, None, Some("localhost".into())),
+            Err(ConfigError::Invalid(..))
+        ));
+    }
+
+    #[test]
     fn typos_in_the_file_are_reported() {
         let dir = temp_dir();
         let path = dir.join(FILE_NAME);
         std::fs::write(&path, "tokn = \"t\"\n").unwrap();
-        assert!(matches!(load(&path, None), Err(ConfigError::Invalid(..))));
+        assert!(matches!(load(&path, None, None), Err(ConfigError::Invalid(..))));
     }
 }

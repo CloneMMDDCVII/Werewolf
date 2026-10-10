@@ -316,10 +316,13 @@ pub fn incoming(update: teloxide::types::Update, bot_username: &str) -> Option<I
 
 /// Long-polls Telegram until `stop` resolves, handing each update to
 /// `handle`. Network errors are logged and retried with backoff; the bot
-/// never exits because Telegram was briefly unreachable.
-pub async fn poll<F, S>(tg: &TeloxideTelegram, mut handle: F, stop: S)
+/// never exits because Telegram was briefly unreachable. `beat` is called
+/// after every `getUpdates`, with whether it succeeded, so the caller can
+/// tell a live loop from a hung one.
+pub async fn poll<F, B, S>(tg: &TeloxideTelegram, mut handle: F, mut beat: B, stop: S)
 where
     F: FnMut(Incoming),
+    B: FnMut(bool),
     S: std::future::Future<Output = ()>,
 {
     tokio::pin!(stop);
@@ -336,6 +339,7 @@ where
             r = request => r,
             _ = &mut stop => return,
         };
+        beat(result.is_ok());
         match result {
             Ok(updates) => {
                 backoff = Duration::from_secs(1);
