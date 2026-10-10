@@ -31,7 +31,7 @@ scope (explained in notes, not just skipped silently)
 | `start` | ✅ | `bot`: registers the player as reachable for PMs, takes a `join<group>` payload from the Join button, otherwise a welcome |
 | `help` | ✅ | `bot`: the legacy links, only for a bare `/help`. `/rolelist` dropped from it, as that command is ⛔ |
 | `setlang` | ✅ | `control::language_picker`: base then variant picker shared with the group `Lang` option, stored via `db::Players::set_language`. Spec: `control/features/language_picker.feature` |
-| `getlang` | 🟡 | `bot::menus`: `/getlang <file>` sends that file; bare `/getlang` offers bases then variants as buttons. The legacy "All" zip of every file is not offered |
+| `getlang` | ✅ | `bot::menus`: `/getlang <file>` sends that file; bare `/getlang` offers bases then variants as buttons, each menu led by "All", a zip of what it lists |
 | `ping` | ✅ | `bot`: sends, then edits in the round-trip time (`Ping2`) |
 | `achv` | ⛔ | Achievement system not planned for this port (no achievement modeling anywhere in `game-engine`) |
 | `chatid` / `changelog` / `runinfo` / `getstatus` / `version` | ⛔ | Bot infra/meta, no game logic |
@@ -52,7 +52,7 @@ SQL), run over storage by `moderation::Moderation` (`db::Store`).
 | `config` | `AdminCommands.cs:66-100`, `UpdateHandler.cs` 1026-1985 and 2169-2300, `Database/GroupConfig.cs` | ✅ | `control::group_config`: typed `GroupSettings` persisted per group through `db::Store` (JSON), the full menu (Timers, RoleConfig, Mechanics, GroupSettings with `Lang`) as Telegram-free `control::menu::Screen`s, role toggles with Validate, compact callback data. Spec: `control/features/group_config.feature`. Lobbies take max players, mode, max extend, allow extend, disabled roles and burning overkill from it (`Lobby::from_group_settings`). Games take the rest through `control::game_rules::game_start` (`GameRules`: timers, secret lynch with votes/voters, show roles on death, end-of-game roles, thief full; Random mode rolls them per game, see "Game mechanics"). Show IDs, shuffle player list and NSFW are display-only and read by the presenter from `GroupSettings`. Dropped: `Allow{Tanner,Fool,Cult,Thief,Arsonist}`, unreachable in the legacy menu and never read; the Random language variant, never published |
 | `setlink` / `remlink` | `AdminCommands.cs:273-322` | ✅ | `group_config::run_setlink_command`/`run_remlink_command`, same validation and hardcoded replies. Stored as `GroupSettings::link`; `linked_group_name` renders it for the "you joined" PM (`Werewolf.cs:741`). Unlike the legacy commands, a link set before the group was recorded is kept |
 | `validatelangs` | `AdminCommands.cs:161-218`, `LanguageHelper.cs:64-178` | ✅ | `i18n::admin`: `check_file` (language node, missing strings, placeholders, GIF caption length, `/join`, ads), `file_report`, `summary_report`, `bases` for the menu. Changes: every duplicated key is flagged (the C# only looked at two), ads are checked per file in the summary, checks see the raw value with markup, and the C#'s callback-length checks are gone because buttons carry a short `i18n::LanguageId` instead of names (`AdminButton` is the menus' callback codec) |
-| `uploadlang` | `AdminCommands.cs:102-129`, `LanguageHelper.cs:180-430` | ✅ | `i18n::admin`: `check_upload_name`, `check_upload` (clash with installed files, comparison with the file it replaces), `install` (the "New" button). Dropped: committing English.xml to git from the bot, the `Language` DB table, node reload broadcasts; the caller reloads its `Catalog`. |
+| `uploadlang` | `AdminCommands.cs:102-129`, `LanguageHelper.cs:180-430` | ✅ | `i18n::admin`: `check_upload_name`, `check_upload` (clash with installed files, comparison with the file it replaces), `install` (the "New" button). Dropped: committing English.xml to git from the bot, the `Language` DB table, node reload broadcasts; the caller reloads its `Catalog`. Wired in `bot::lang_admin` for `language_admins` and global admins; an install reloads the bot's languages for the next game |
 | `addach` / `remach` | `AdminCommands.cs:324-494` | ⛔ | Achievements are dropped |
 | `reviewgifs` / `approvegifs` / `disapprovegifs` / `fixgifs` | `AdminCommands.cs:583-900` | ⛔ | Donation gifs; donations return later as Telegram Stars |
 | `fi` | `AdminCommands.cs:671-684` | ⛔ | Bot run info, infra |
@@ -210,14 +210,18 @@ there, through the permission gate, with:
 - **Running games** (`bot::game`): what the group's settings say
   (`control::game_rules::game_start`, Random mode included) and roles
   dealt with their pool (`balance_with_pool`), roles and team lists by PM
-  as the engine writes them (`game_engine::role_info`), each phase's
+  as the engine writes them (`game_engine::role_info`), wolf and cult
+  prompts naming who to agree with, the Mayor's, Pacifist's and
+  Arsonist's single Reveal/Peace/Spark button, the player list posted as
+  each night, day and vote starts (shuffled and with IDs when the group
+  says so), each phase's
   questions sent together under the engine's announced timer (the
   Snow Wolf's freeze with the rest of the night; day abilities open for
   the whole day, then the vote), lynch votes announced as they land,
   buttons closed with `ChoiceAccepted` or `TimesUp`, every engine
   message, note and the end-of-game summary rendered from the group's
-  language, and every game, death and final role recorded through
-  `db::Games`.
+  language with the game's length, and every game, death and final
+  role recorded through `db::Games`.
 - **Restarts**: games cut off by a crash are announced to their groups
   on the next start and closed as interrupted.
 
@@ -227,7 +231,8 @@ on a paused clock.
 
 Known gaps:
 
-- `/getlang` doesn't offer the legacy "All" zip.
+- In-game night and role texts still to port are listed by owner in the
+  project's `notes/ui-audit.md`.
 
 ## Locale keys missing from English.xml
 

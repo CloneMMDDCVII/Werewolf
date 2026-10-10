@@ -18,8 +18,23 @@ const OTHER_GROUP: i64 = -200;
 const ADMIN: i64 = 1;
 /// The bot operator (`global_admins`).
 const DEV: i64 = 999;
+/// A translator (`language_admins`).
+const LANG_ADMIN: i64 = 998;
+
+const LANGUAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages");
+
+/// An empty languages folder of the test's own.
+fn languages_dir() -> std::path::PathBuf {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("werewolf-bot-test-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
 
 struct Bot {
+    languages: std::path::PathBuf,
     tg: Arc<FakeTelegram>,
     core: Arc<BotCore>,
     store: Store,
@@ -44,6 +59,7 @@ impl Bot {
     }
 
     async fn build(max_games: usize, store: Store, seed: u64) -> Bot {
+        let languages = languages_dir();
         let tg = Arc::new(FakeTelegram::default());
         tg.make_admin(GROUP, ADMIN);
         tg.make_admin(OTHER_GROUP, ADMIN);
@@ -53,11 +69,17 @@ impl Bot {
             store.clone(),
             Arc::new(LocalSpawner::new()),
             Box::new(MaxGames(max_games)),
-            CoreConfig { default_language: "English".into(), global_admins: vec![DEV], seed: Some(seed) },
+            CoreConfig {
+                default_language: "English".into(),
+                global_admins: vec![DEV],
+                language_admins: vec![LANG_ADMIN],
+                languages_dir: languages.clone(),
+                seed: Some(seed),
+            },
         )
         .await
         .unwrap();
-        Bot { tg, core, store, texts: Texts::embedded() }
+        Bot { languages, tg, core, store, texts: Texts::embedded() }
     }
 
     fn t(&self, key: &str, args: &[&str]) -> String {
@@ -650,7 +672,13 @@ async fn the_group_sees_the_player_list_each_phase_and_the_game_length() {
         let bot = Bot::new(10).await;
         bot.start_game(1..=7).await;
         // The first night's list follows its timer line.
-        tick(3).await;
+        let list_line = bold_prefix(&bot.t("PlayersAlive", &[]));
+        for _ in 0..60 {
+            if bot.tg.transcript(GROUP).contains(&list_line) {
+                break;
+            }
+            tick(1).await;
+        }
         let group = bot.tg.transcript(GROUP);
         let night = group.find(&bot.t("NightTime", &["<b>90</b>"])[..20]).expect(&group);
         let list = group.find(&bold_prefix(&bot.t("PlayersAlive", &[]))).expect(&group);
@@ -706,6 +734,63 @@ async fn the_join_link_is_for_group_members_only() {
         assert!(bot.is(&bot.tg.last(2).unwrap().text, "NotMember", &["<b>Wolf Pack</b>"]));
         bot.cmd(GROUP, ADMIN, "/players").await;
         assert!(!bot.tg.last(GROUP).unwrap().text.contains("Player2"));
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn language_admins_validate_installed_files() {
+    local!(async {
+        let bot = Bot::new(1).await;
+        for f in ["Deutsch.xml", "DeutschAmnesia.xml"] {
+            std::fs::copy(format!("{LANGUAGES}/{f}"), bot.languages.join(f)).unwrap();
+        }
+        bot.cmd(5, 5, "/validatelangs").await;
+        assert!(bot.tg.find_button(5, "Deutsch").is_none(), "only language admins");
+
+        bot.cmd(LANG_ADMIN, LANG_ADMIN, "/validatelangs").await;
+        bot.press(LANG_ADMIN, LANG_ADMIN, "Deutsch").await;
+        bot.press(LANG_ADMIN, LANG_ADMIN, "All").await;
+        let pm = bot.tg.transcript(LANG_ADMIN);
+        assert!(pm.contains("<b>Validation complete</b>"), "{pm}");
+        assert!(pm.contains("Most recently updated file:"), "{pm}");
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn language_admins_upload_and_install_a_file() {
+    local!(async {
+        let bot = Bot::new(1).await;
+        let reply = |doc: Option<bot::telegram::Document>| {
+            let mut c = Command::new(private_chat(LANG_ADMIN), user(LANG_ADMIN), "uploadlang", "");
+            c.replied_document = doc;
+            Incoming::Command(c)
+        };
+        bot.core.handle(reply(None)).await;
+        assert_eq!(bot.tg.last(LANG_ADMIN).unwrap().text, i18n::admin::MUST_REPLY);
+
+        let file_id = bot.tg.add_file(std::fs::read(format!("{LANGUAGES}/Deutsch.xml")).unwrap());
+        let doc = bot::telegram::Document { file_id, file_name: Some("Deutsch.xml".into()) };
+        bot.core.handle(reply(Some(doc))).await;
+        let pm = bot.tg.transcript(LANG_ADMIN);
+        assert!(pm.contains("NEW FILE"), "{pm}");
+        assert!(pm.contains("No old file, this is a new language"), "{pm}");
+        bot.press(LANG_ADMIN, LANG_ADMIN, "New").await;
+        assert!(bot.languages.join("Deutsch.xml").exists(), "{}", bot.tg.transcript(LANG_ADMIN));
+        assert!(bot.tg.transcript(LANG_ADMIN).contains("Languages reloaded."));
+
+        // The new language is offered right away.
+        bot.cmd(7, 7, "/getlang").await;
+        assert!(bot.tg.find_button(7, "Deutsch").is_some());
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn getlang_all_sends_one_zip() {
+    local!(async {
+        let bot = Bot::new(1).await;
+        bot.cmd(7, 7, "/getlang").await;
+        bot.press(7, 7, "All").await;
+        assert!(bot.tg.last(7).unwrap().text.starts_with("[file languages.zip,"), "{}", bot.tg.transcript(7));
     })
 }
 

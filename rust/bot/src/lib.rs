@@ -14,6 +14,7 @@ pub mod core;
 pub mod fake;
 pub mod game;
 pub mod join_timer;
+pub mod lang_admin;
 pub mod menus;
 pub mod spawn;
 pub mod telegram;

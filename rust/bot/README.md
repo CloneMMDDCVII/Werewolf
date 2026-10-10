@@ -28,6 +28,7 @@ setting. The ones you may want to change:
 | `database` | `sqlite://werewolf.db` | A file next to the config. Use `postgres://user:pass@host/db` for a Postgres server. |
 | `languages_dir` | `Languages` | The community language files. English is built in. |
 | `global_admins` | none | Telegram user ids allowed to run bot-wide admin commands (`/killgame`, bans). |
+| `language_admins` | none | Telegram user ids allowed to check and install language files (`/validatelangs`, `/uploadlang`). |
 
 Use `--config path/to/werewolf.toml` to keep the config elsewhere (relative
 paths in it are then resolved from that file's folder). Set `RUST_LOG=debug`

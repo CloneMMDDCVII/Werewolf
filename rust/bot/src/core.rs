@@ -52,6 +52,10 @@ impl Admission for MaxGames {
 pub struct CoreConfig {
     pub default_language: String,
     pub global_admins: Vec<i64>,
+    pub language_admins: Vec<i64>,
+    /// Where language files are installed (`/uploadlang`) and reloaded
+    /// from.
+    pub languages_dir: std::path::PathBuf,
     /// Fixed seed for role dealing and game randomness (tests); `None`
     /// draws a fresh one per game.
     pub seed: Option<u64>,
@@ -78,7 +82,9 @@ enum Slot {
 
 pub struct BotCore {
     pub(crate) telegram: Arc<dyn Telegram>,
-    pub(crate) texts: Arc<Texts>,
+    /// Swapped whole when a language admin installs a file; running games
+    /// keep the copy they started with.
+    texts: std::sync::RwLock<Arc<Texts>>,
     pub(crate) store: Store,
     moderation: tokio::sync::Mutex<Moderation>,
     spawner: Arc<dyn GameSpawner>,
@@ -88,6 +94,9 @@ pub struct BotCore {
     accepting: AtomicBool,
     next_seq: AtomicU64,
     slot_freed: Notify,
+    /// A language admin's checked `/uploadlang` file, until they press
+    /// "New" or "Old".
+    pub(crate) uploads: Mutex<HashMap<i64, (i18n::LanguageId, std::path::PathBuf)>>,
 }
 
 impl BotCore {
@@ -102,7 +111,7 @@ impl BotCore {
         let moderation = Moderation::load(store.clone(), Timestamp(unix_now())).await?;
         Ok(Arc::new(BotCore {
             telegram,
-            texts,
+            texts: std::sync::RwLock::new(texts),
             store,
             moderation: tokio::sync::Mutex::new(moderation),
             spawner,
@@ -112,7 +121,16 @@ impl BotCore {
             accepting: AtomicBool::new(true),
             next_seq: AtomicU64::new(1),
             slot_freed: Notify::new(),
+            uploads: Mutex::new(HashMap::new()),
         }))
+    }
+
+    pub(crate) fn texts(&self) -> Arc<Texts> {
+        self.texts.read().unwrap().clone()
+    }
+
+    pub(crate) fn set_texts(&self, texts: Arc<Texts>) {
+        *self.texts.write().unwrap() = texts;
     }
 
     pub fn store(&self) -> &Store {
@@ -132,7 +150,7 @@ impl BotCore {
         for g in games {
             let lang = self.settings(g.group_id).await.language;
             // Bot.cs:493, what the C# said when a node died mid-game.
-            let text = self.texts.key(&lang, "NodeShutsDown", &[]);
+            let text = self.texts().key(&lang, "NodeShutsDown", &[]);
             let _ = self.telegram.send(g.group_id, &text, None).await;
             if let Err(e) = self.store.games().mark_interrupted(g.id, unix_now()).await {
                 log::error!("could not close interrupted game {}: {e}", g.id.0);
@@ -184,7 +202,7 @@ impl BotCore {
         self.slot_freed.notify_waiters();
         for (group, handle) in slots {
             let lang = self.settings(group).await.language;
-            let text = self.texts.get(&lang, "", "The bot is shutting down, so this game has been stopped.", &[]);
+            let text = self.texts().get(&lang, "", "The bot is shutting down, so this game has been stopped.", &[]);
             let _ = self.telegram.send(group, &text, None).await;
             if let Some(h) = handle {
                 h.kill();
@@ -225,7 +243,7 @@ impl BotCore {
 
     fn join_button(&self, group: i64, lang: &str) -> Vec<Vec<Button>> {
         vec![vec![Button::Url {
-            text: self.texts.key(lang, "JoinButton", &[]),
+            text: self.texts().key(lang, "JoinButton", &[]),
             url: format!("https://t.me/{}?start=join{group}", self.telegram.bot_username()),
         }]]
     }
@@ -248,7 +266,7 @@ impl BotCore {
             sender_is_banned: self.moderation.lock().await.is_banned(cmd.from.id, now),
             sender_is_dev: self.is_global_admin(cmd.from.id),
             sender_is_global_admin: self.is_global_admin(cmd.from.id),
-            sender_is_lang_admin: false,
+            sender_is_lang_admin: self.config.language_admins.contains(&cmd.from.id),
             sender_is_group_admin: group_admin,
         };
         let lang = if cmd.chat.is_group() {
@@ -261,7 +279,7 @@ impl BotCore {
             GateDecision::Ignore => return,
             GateDecision::Refuse(refusal) => {
                 let text = match (refusal.locale_key(), refusal) {
-                    (Some(key), _) => self.texts.key(&lang, key, &[]),
+                    (Some(key), _) => self.texts().key(&lang, key, &[]),
                     (None, moderation::Refusal::BlockedChat(chat)) => chat.notice().to_string(),
                     (None, _) => return,
                 };
@@ -289,6 +307,8 @@ impl BotCore {
             "smite" => self.smite(&cmd).await,
             "getban" | "permban" | "remban" | "getidles" | "restore" => self.moderation_command(&cmd, &lang).await,
             "config" | "setlang" | "setlink" | "remlink" | "getlang" => self.menu_command(&cmd, &lang).await,
+            "validatelangs" => self.validatelangs(&cmd).await,
+            "uploadlang" => self.uploadlang(&cmd).await,
             _ => {}
         }
     }
@@ -306,7 +326,7 @@ impl BotCore {
                 });
             let delivered = handle.is_some_and(|h| h.click(Click { callback_id: id.clone(), user: from.id, qid, choice }));
             if !delivered {
-                let text = self.texts.get(&self.config.default_language, "", "That game is over.", &[]);
+                let text = self.texts().get(&self.config.default_language, "", "That game is over.", &[]);
                 let _ = self.telegram.answer_callback(&id, Some(&text)).await;
                 if let Some(m) = message {
                     let _ = self.telegram.clear_keyboard(m).await;
@@ -315,6 +335,9 @@ impl BotCore {
             return;
         }
         if self.menu_callback(&id, &from, message, &data).await {
+            return;
+        }
+        if self.lang_admin_callback(&id, &from, message, &data).await {
             return;
         }
         if let Some(rest) = data.strip_prefix("restore|") {
@@ -360,14 +383,14 @@ impl BotCore {
             if let Ok(false) = self.telegram.is_group_member(group, cmd.from.id).await {
                 let settings = self.settings(group).await;
                 let name = self.lobby_of(group).map(|c| c.lock().unwrap().group_name.clone()).unwrap_or_default();
-                self.say(cmd.from.id, &self.texts.key(&settings.language, "NotMember", &[&bold(&escape(&name))])).await;
+                self.say(cmd.from.id, &self.texts().key(&settings.language, "NotMember", &[&bold(&escape(&name))])).await;
                 return;
             }
             self.join(group, &cmd.from).await;
             return;
         }
         let lang = &self.config.default_language;
-        let text = self.texts.get(
+        let text = self.texts().get(
             lang,
             "",
             "Hi {0}! I'm the Werewolf moderator. Add me to a group and send /startgame there to play. \
@@ -395,7 +418,7 @@ impl BotCore {
         let took = format!("{:.3}s", started.elapsed().as_secs_f64());
         if let Ok(msg) = sent {
             let lang = &self.config.default_language;
-            let _ = self.telegram.edit(msg, &self.texts.key(lang, "Ping2", &[&bold(&took)]), None).await;
+            let _ = self.telegram.edit(msg, &self.texts().key(lang, "Ping2", &[&bold(&took)]), None).await;
         }
     }
 
@@ -406,26 +429,26 @@ impl BotCore {
         let settings = self.settings(group).await;
         let lang = settings.language.clone();
         if !self.accepting.load(Ordering::SeqCst) {
-            let text = self.texts.get(&lang, "", "I'm restarting, so I can't start a new game right now. Try again in a minute.", &[]);
+            let text = self.texts().get(&lang, "", "I'm restarting, so I can't start a new game right now. Try again in a minute.", &[]);
             self.say(group, &text).await;
             return;
         }
         let existing = self.slots.lock().unwrap().get(&group).map(|s| matches!(s, Slot::Joining(_)));
         match existing {
             Some(true) => {
-                let text = self.texts.get(&lang, "", "A game is already being joined here. Press Join to play!", &[]);
+                let text = self.texts().get(&lang, "", "A game is already being joined here. Press Join to play!", &[]);
                 let _ = self.telegram.send(group, &text, Some(self.join_button(group, &lang))).await;
                 return;
             }
             Some(false) => {
-                let text = self.texts.get(&lang, "", "A game is already running here. Wait for it to finish.", &[]);
+                let text = self.texts().get(&lang, "", "A game is already running here. Wait for it to finish.", &[]);
                 self.say(group, &text).await;
                 return;
             }
             None => {}
         }
         if !self.admission.admit(self.running_games()) {
-            let text = self.texts.key(&lang, "NoNodes", &[]);
+            let text = self.texts().key(&lang, "NoNodes", &[]);
             self.say(group, &text).await;
             return;
         }
@@ -449,7 +472,7 @@ impl BotCore {
         }
 
         let key = if mode == GameMode::Chaos { "PlayerStartedChaosGame" } else { "PlayerStartedGame" };
-        let text = self.texts.key(&lang, key, &[&escape(&cmd.from.name)]);
+        let text = self.texts().key(&lang, key, &[&escape(&cmd.from.name)]);
         if let Ok(m) = self.telegram.send(group, &text, Some(self.join_button(group, &lang))).await {
             ctl.lock().unwrap().join_messages.push(m);
         }
@@ -487,9 +510,9 @@ impl BotCore {
         if !self.reachable(cmd.from.id).await {
             let lang = self.settings(group).await.language;
             let link = format!("@{}", self.telegram.bot_username());
-            let text = self.texts.key(&lang, "PMTheBot", &[&escape(&cmd.from.name), &link]);
+            let text = self.texts().key(&lang, "PMTheBot", &[&escape(&cmd.from.name), &link]);
             let button = vec![vec![Button::Url {
-                text: self.texts.key(&lang, "StartMe", &[]),
+                text: self.texts().key(&lang, "StartMe", &[]),
                 url: format!("https://t.me/{}?start=join{group}", self.telegram.bot_username()),
             }]];
             let _ = self.telegram.send(group, &text, Some(button)).await;
@@ -508,12 +531,12 @@ impl BotCore {
         };
         let lang = self.settings(group).await.language;
         let Some(ctl) = ctl else {
-            self.say(user.id, &self.texts.key(&lang, "NoGame", &[])).await;
+            self.say(user.id, &self.texts().key(&lang, "NoGame", &[])).await;
             return;
         };
         if let Some((other, name)) = self.group_of(user.id) {
             if other != group {
-                self.say(user.id, &self.texts.key(&lang, "AlreadyInGame", &[&escape(&name)])).await;
+                self.say(user.id, &self.texts().key(&lang, "AlreadyInGame", &[&escape(&name)])).await;
                 return;
             }
         }
@@ -536,19 +559,19 @@ impl BotCore {
                     Some(_) => linked_group_name(&group_name, link.as_deref()),
                     None => escape(&group_name),
                 };
-                self.texts.key(&lang, "YouJoined", &[&group])
+                self.texts().key(&lang, "YouJoined", &[&group])
             }
             Err(JoinError::AlreadyJoined) => {
-                self.texts.get(&lang, "", "You've already joined the game in {0}.", &[&escape(&group_name)])
+                self.texts().get(&lang, "", "You've already joined the game in {0}.", &[&escape(&group_name)])
             }
-            Err(JoinError::InvalidName) => self.texts.key(&lang, "ChangeNameToJoin", &[&escape(&user.name)]),
-            Err(JoinError::NameTaken) => self.texts.key(
+            Err(JoinError::InvalidName) => self.texts().key(&lang, "ChangeNameToJoin", &[&escape(&user.name)]),
+            Err(JoinError::NameTaken) => self.texts().key(
                 &lang,
                 "NameExists",
                 &[&escape(&user.name), &escape(user.username.as_deref().unwrap_or(&user.name))],
             ),
-            Err(JoinError::Full) => self.texts.key(&lang, "PlayerLimitReached", &[]),
-            Err(JoinError::NotJoining) => self.texts.key(&lang, "NoGame", &[]),
+            Err(JoinError::Full) => self.texts().key(&lang, "PlayerLimitReached", &[]),
+            Err(JoinError::NotJoining) => self.texts().key(&lang, "NoGame", &[]),
         };
         self.say(user.id, &text).await;
     }
@@ -583,15 +606,15 @@ impl BotCore {
                         } else {
                             format!("{} ", announce.iter().map(|(_, n)| escape(n)).collect::<Vec<_>>().join(", "))
                         };
-                        (self.texts.key(&lang, "HaveJoined", &[&names]), false)
+                        (self.texts().key(&lang, "HaveJoined", &[&names]), false)
                     }
-                    TimerEvent::Reminder { seconds_left: 60 } => (self.texts.key(&lang, "MinuteLeftToJoin", &[]), true),
+                    TimerEvent::Reminder { seconds_left: 60 } => (self.texts().key(&lang, "MinuteLeftToJoin", &[]), true),
                     TimerEvent::Reminder { seconds_left } => {
-                        (self.texts.key(&lang, "SecondsLeftToJoin", &[&bold(&seconds_left.to_string())]), true)
+                        (self.texts().key(&lang, "SecondsLeftToJoin", &[&bold(&seconds_left.to_string())]), true)
                     }
                     TimerEvent::Extended { by, seconds_left } => {
                         let key = if *by > 0 { "SecondsAdded" } else { "SecondsRemoved" };
-                        (self.texts.key(&lang, key, &[&bold(&by.abs().to_string()), &bold(&mm_ss(*seconds_left))]), true)
+                        (self.texts().key(&lang, key, &[&bold(&by.abs().to_string()), &bold(&mm_ss(*seconds_left))]), true)
                     }
                     TimerEvent::Closed => continue,
                 };
@@ -621,19 +644,19 @@ impl BotCore {
         let lang = settings.language.clone();
         match outcome {
             StartOutcome::Aborted(AbortReason::NotEnoughPlayers) => {
-                self.say(group, &self.texts.key(&lang, "NotEnoughPlayers", &[])).await;
+                self.say(group, &self.texts().key(&lang, "NotEnoughPlayers", &[])).await;
                 self.free_slot(group);
             }
             StartOutcome::Aborted(AbortReason::Killed) => self.free_slot(group),
             StartOutcome::Started => {
-                self.say(group, &self.texts.key(&lang, "StartingGameWait", &[])).await;
+                self.say(group, &self.texts().key(&lang, "StartingGameWait", &[])).await;
                 let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
                 let (handle, clicks) = GameHandle::new(seq, group);
                 self.slots.lock().unwrap().insert(group, Slot::Running(handle.clone()));
                 let core = self.clone();
                 let setup = GameSetup {
                     telegram: self.telegram.clone(),
-                    texts: self.texts.clone(),
+                    texts: self.texts(),
                     store: self.store.clone(),
                     settings,
                     group_id: group,
@@ -685,26 +708,26 @@ impl BotCore {
             };
             match result {
                 Ok(()) => {
-                    self.say(group, &self.texts.key(lang, "Flee", &[&name])).await;
-                    self.say(group, &self.texts.key(lang, "CountPlayersRemain", &[&bold(&remaining.to_string())])).await;
+                    self.say(group, &self.texts().key(lang, "Flee", &[&name])).await;
+                    self.say(group, &self.texts().key(lang, "CountPlayersRemain", &[&bold(&remaining.to_string())])).await;
                 }
                 Err(LeaveError::NotInGame) | Err(LeaveError::NotJoining) => {
-                    self.say(group, &self.texts.key(lang, "NotPlaying", &[])).await;
+                    self.say(group, &self.texts().key(lang, "NotPlaying", &[])).await;
                 }
             }
         } else if let Some(game) = self.game_of(group) {
             if !game.is_playing(cmd.from.id) {
-                self.say(group, &self.texts.key(lang, "NotPlaying", &[])).await;
+                self.say(group, &self.texts().key(lang, "NotPlaying", &[])).await;
             } else if !settings.flee_allowed_while_running() {
-                self.say(group, &self.texts.key(lang, "FleeDisabled", &[])).await;
+                self.say(group, &self.texts().key(lang, "FleeDisabled", &[])).await;
             } else if !game.is_alive(cmd.from.id) {
-                self.say(group, &self.texts.key(lang, "DeadFlee", &[])).await;
+                self.say(group, &self.texts().key(lang, "DeadFlee", &[])).await;
             } else {
                 game.flee(cmd.from.id);
-                self.say(group, &self.texts.key(lang, "Flee", &[&name])).await;
+                self.say(group, &self.texts().key(lang, "Flee", &[&name])).await;
             }
         } else {
-            self.say(group, &self.texts.key(lang, "NoGame", &[])).await;
+            self.say(group, &self.texts().key(lang, "NoGame", &[])).await;
         }
     }
 
@@ -713,7 +736,7 @@ impl BotCore {
             Some(ctl) => ctl.lock().unwrap().timer.force_start(),
             None => {
                 let lang = self.settings(cmd.chat.id).await.language;
-                self.say(cmd.chat.id, &self.texts.key(&lang, "NoGame", &[])).await;
+                self.say(cmd.chat.id, &self.texts().key(&lang, "NoGame", &[])).await;
             }
         }
     }
@@ -724,7 +747,7 @@ impl BotCore {
         let settings = self.settings(group).await;
         let lang = &settings.language;
         let Some(ctl) = self.lobby_of(group) else {
-            self.say(group, &self.texts.key(lang, "NoGame", &[])).await;
+            self.say(group, &self.texts().key(lang, "NoGame", &[])).await;
             return;
         };
         let is_admin = self.is_global_admin(cmd.from.id)
@@ -740,12 +763,12 @@ impl BotCore {
         };
         let error = match result {
             Ok(_) => return, // the timer announces the new time on its next tick
-            Err(ExtendError::NotInGame) => self.texts.key(lang, "NotPlaying", &[]),
+            Err(ExtendError::NotInGame) => self.texts().key(lang, "NotPlaying", &[]),
             Err(ExtendError::NegativeRequiresAdmin) | Err(ExtendError::ExtendDisabled) => {
-                self.texts.key(lang, "GroupAdminOnly", &[])
+                self.texts().key(lang, "GroupAdminOnly", &[])
             }
-            Err(ExtendError::AlreadyExtended) => self.texts.key(lang, "CantExtend", &[]),
-            Err(ExtendError::NotJoining) => self.texts.key(lang, "NoGame", &[]),
+            Err(ExtendError::AlreadyExtended) => self.texts().key(lang, "CantExtend", &[]),
+            Err(ExtendError::NotJoining) => self.texts().key(lang, "NoGame", &[]),
         };
         self.say(group, &error).await;
     }
@@ -755,18 +778,18 @@ impl BotCore {
         let lang = self.settings(group).await.language;
         let text = if let Some(ctl) = self.lobby_of(group) {
             let names: Vec<String> = ctl.lock().unwrap().lobby.players().iter().map(|p| escape(&p.name)).collect();
-            format!("{}: {}\n{}", bold(&self.texts.get(&lang, "", "Players", &[])), names.len(), names.join("\n"))
+            format!("{}: {}\n{}", bold(&self.texts().get(&lang, "", "Players", &[])), names.len(), names.join("\n"))
         } else if let Some(game) = self.game_of(group) {
-            match game.players_reply(&self.texts, &lang) {
+            match game.players_reply(&self.texts(), &lang) {
                 PlayersReply::Throttled => return,
                 PlayersReply::LatestList(list) => {
-                    let _ = self.telegram.send_reply(group, &self.texts.key(&lang, "LatestList", &[]), list.id).await;
+                    let _ = self.telegram.send_reply(group, &self.texts().key(&lang, "LatestList", &[]), list.id).await;
                     return;
                 }
                 PlayersReply::List(text) => text,
             }
         } else {
-            self.texts.key(&lang, "NoGame", &[])
+            self.texts().key(&lang, "NoGame", &[])
         };
         self.say(group, &text).await;
     }
@@ -781,11 +804,11 @@ impl BotCore {
                 let _ = self.telegram.clear_keyboard(m).await;
             }
             self.free_slot(group);
-            self.say(group, &self.texts.get(&lang, "", "The game has been cancelled.", &[])).await;
+            self.say(group, &self.texts().get(&lang, "", "The game has been cancelled.", &[])).await;
         } else if let Some(game) = self.game_of(group) {
             game.kill();
         } else {
-            self.say(group, &self.texts.key(&lang, "NoGame", &[])).await;
+            self.say(group, &self.texts().key(&lang, "NoGame", &[])).await;
         }
     }
 
@@ -825,7 +848,7 @@ impl BotCore {
                     name
                 };
                 if let Some(name) = name {
-                    self.say(group, &self.texts.key(&lang, "Flee", &[&escape(&name)])).await;
+                    self.say(group, &self.texts().key(&lang, "Flee", &[&escape(&name)])).await;
                 }
             } else if let Some(game) = self.game_of(group) {
                 if game.is_initializing() {
@@ -836,7 +859,7 @@ impl BotCore {
                 if game.is_alive(target) {
                     game.flee(target);
                     let name = self.store.players().get(target).await.ok().flatten().map(|p| p.name).unwrap_or_default();
-                    self.say(group, &self.texts.key(&lang, "Flee", &[&escape(&name)])).await;
+                    self.say(group, &self.texts().key(&lang, "Flee", &[&escape(&name)])).await;
                 }
             }
         }
@@ -870,15 +893,15 @@ impl BotCore {
                     }
                 }
                 "getidles" => {
-                    let report = moderation.getidles(&message, cmd.chat.id, now, self.texts.pack(lang)).await?;
+                    let report = moderation.getidles(&message, cmd.chat.id, now, self.texts().pack(lang)).await?;
                     self.say(cmd.chat.id, &report).await;
                 }
                 "restore" => {
                     let check = moderation.restore_check(Some(&cmd.args).filter(|a| !a.is_empty()).map(|s| s.as_str()), now).await?;
                     let keyboard = match &check {
                         RestoreCheck::Ready { old, new, .. } => Some(vec![vec![
-                            Button::Callback { text: self.texts.key(lang, "Yes", &[]), data: format!("restore|{old}|{new}") },
-                            Button::Callback { text: self.texts.key(lang, "No", &[]), data: "restore|no".into() },
+                            Button::Callback { text: self.texts().key(lang, "Yes", &[]), data: format!("restore|{old}|{new}") },
+                            Button::Callback { text: self.texts().key(lang, "No", &[]), data: "restore|no".into() },
                         ]]),
                         _ => None,
                     };

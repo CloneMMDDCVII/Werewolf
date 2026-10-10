@@ -83,7 +83,13 @@ async fn main() -> ExitCode {
         store.clone(),
         Arc::new(PoolSpawner::new()),
         Box::new(MemoryAdmission::new(config.per_game_memory_mb * 1024 * 1024)),
-        CoreConfig { default_language: config.default_language.clone(), global_admins: config.global_admins.clone(), seed: None },
+        CoreConfig {
+            default_language: config.default_language.clone(),
+            global_admins: config.global_admins.clone(),
+            language_admins: config.language_admins.clone(),
+            languages_dir: config.languages_dir.clone(),
+            seed: None,
+        },
     )
     .await
     {

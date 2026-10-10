@@ -32,6 +32,10 @@ pub const TEMPLATE: &str = r#"# Werewolf for Telegram: bot configuration.
 # Telegram user ids allowed to run admin commands in any group.
 # global_admins = [123456789]
 
+# Telegram user ids allowed to check and install language files
+# (/validatelangs, /uploadlang). Global admins can too.
+# language_admins = [123456789]
+
 # Rough memory one running game needs, used to refuse new games before the
 # machine runs out of memory.
 # per_game_memory_mb = 16
@@ -44,6 +48,7 @@ pub struct Config {
     pub languages_dir: PathBuf,
     pub default_language: String,
     pub global_admins: Vec<i64>,
+    pub language_admins: Vec<i64>,
     pub per_game_memory_mb: u64,
     /// The file this came from, if any.
     pub path: Option<PathBuf>,
@@ -57,6 +62,7 @@ struct FileConfig {
     languages_dir: Option<PathBuf>,
     default_language: Option<String>,
     global_admins: Option<Vec<i64>>,
+    language_admins: Option<Vec<i64>>,
     per_game_memory_mb: Option<u64>,
 }
 
@@ -137,6 +143,7 @@ pub fn load(path: &Path, env_token: Option<String>) -> Result<Config, ConfigErro
         languages_dir: resolve(&base, file.languages_dir.unwrap_or_else(|| PathBuf::from("Languages"))),
         default_language: file.default_language.unwrap_or_else(|| "English".into()),
         global_admins: file.global_admins.unwrap_or_default(),
+        language_admins: file.language_admins.unwrap_or_default(),
         per_game_memory_mb: file.per_game_memory_mb.unwrap_or(16),
         path: path.exists().then(|| path.to_path_buf()),
     })

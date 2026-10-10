@@ -32,7 +32,7 @@ pub fn policy_for(trigger: &str) -> Option<CommandPolicy> {
 impl BotCore {
     fn render_text(&self, lang: &str, text: &Text) -> String {
         match text {
-            Text::Locale(key) => self.texts.key(lang, key, &[]),
+            Text::Locale(key) => self.texts().key(lang, key, &[]),
             Text::Raw(raw) => raw.clone(),
         }
     }
@@ -40,7 +40,7 @@ impl BotCore {
     pub(crate) fn render_message(&self, lang: &str, message: &Message) -> String {
         let args: Vec<String> = message.args.iter().map(|a| self.render_text(lang, a)).collect();
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.texts.key(lang, &message.key, &args)
+        self.texts().key(lang, &message.key, &args)
     }
 
     fn render_keyboard(&self, lang: &str, screen: &Screen) -> Option<Keyboard> {
@@ -121,7 +121,7 @@ impl BotCore {
                     username: cmd.from.username.clone(),
                 };
                 let player_lang = player_language(&self.store, cmd.from.id).await.unwrap_or_else(|_| lang.to_string());
-                let outcome = run_setlang_command(&self.store, &self.texts.choices(), &user, !cmd.chat.is_group(), now).await;
+                let outcome = run_setlang_command(&self.store, &self.texts().choices(), &user, !cmd.chat.is_group(), now).await;
                 if let Ok(o) = outcome {
                     self.play_out(cmd, &player_lang, o).await;
                 }
@@ -165,7 +165,7 @@ impl BotCore {
                     }
                 };
                 let actor = Actor { can_configure };
-                (run_language_callback(&self.store, &self.texts.choices(), a, actor, now).await, lang)
+                (run_language_callback(&self.store, &self.texts().choices(), a, actor, now).await, lang)
             }
         };
         let outcome = match outcome {
@@ -197,8 +197,8 @@ impl BotCore {
     }
 
     /// `/getlang [file]`: sends that language file, or offers the bases
-    /// and then the variants as buttons. The legacy "All" (a zip of every
-    /// file) is not offered.
+    /// and then the variants as buttons, each menu led by "All", a zip of
+    /// every file it lists (GeneralCommands.cs:470, LanguageHelper.cs:430-500).
     async fn getlang(&self, cmd: &Command, lang: &str) {
         let name = cmd.args.trim().trim_end_matches(".xml");
         if !name.is_empty() {
@@ -209,14 +209,15 @@ impl BotCore {
             self.send_language_file(cmd.chat.id, name).await;
             return;
         }
-        let choices = self.texts.choices();
+        let choices = self.texts().choices();
         let buttons: Vec<Button> = choices
             .bases()
             .into_iter()
             .map(|b| Button::Callback { text: b.to_string(), data: format!("gl|{}|b|{}", cmd.chat.id, LanguageId::of(b)) })
             .collect();
-        let rows = buttons.chunks(2).map(|c| c.to_vec()).collect();
-        let _ = self.telegram.send(cmd.chat.id, &self.texts.key(lang, "GetLang", &[]), Some(rows)).await;
+        let mut rows: Keyboard = vec![vec![Button::Callback { text: "All".into(), data: format!("gl|{}|all|", cmd.chat.id) }]];
+        rows.extend(buttons.chunks(2).map(|c| c.to_vec()));
+        let _ = self.telegram.send(cmd.chat.id, &self.texts().key(lang, "GetLang", &[]), Some(rows)).await;
     }
 
     async fn getlang_callback(&self, id: &str, _from: &User, rest: &str) {
@@ -226,7 +227,12 @@ impl BotCore {
         else {
             return;
         };
-        let choices = self.texts.choices();
+        let choices = self.texts().choices();
+        if step == "all" {
+            let files: Vec<String> = self.texts().languages().into_iter().map(str::to_string).collect();
+            self.send_language_zip(chat, "languages.zip", &files).await;
+            return;
+        }
         let Ok(id) = value.parse::<LanguageId>() else {
             return;
         };
@@ -237,16 +243,21 @@ impl BotCore {
                     [] => {}
                     [only] => self.send_language_file(chat, &only.file.clone()).await,
                     many => {
-                        let rows = many
-                            .iter()
-                            .map(|f| {
-                                let text = if f.variant.is_empty() { f.file.clone() } else { f.variant.clone() };
-                                vec![Button::Callback { text, data: format!("gl|{chat}|f|{}", LanguageId::of(&f.file)) }]
-                            })
-                            .collect();
-                        let _ = self.telegram.send(chat, &self.texts.key("English", "WhatVariant", &[base]), Some(rows)).await;
+                        let mut rows: Keyboard =
+                            vec![vec![Button::Callback { text: "All".into(), data: format!("gl|{chat}|v|{id}") }]];
+                        rows.extend(many.iter().map(|f| {
+                            let text = if f.variant.is_empty() { f.file.clone() } else { f.variant.clone() };
+                            vec![Button::Callback { text, data: format!("gl|{chat}|f|{}", LanguageId::of(&f.file)) }]
+                        }));
+                        let _ = self.telegram.send(chat, &self.texts().key("English", "WhatVariant", &[base]), Some(rows)).await;
                     }
                 }
+            }
+            "v" => {
+                let Some(base) = choices.base_by_id(id) else { return };
+                let files: Vec<String> = choices.variants(base).iter().map(|f| f.file.clone()).collect();
+                let zip_name: String = base.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+                self.send_language_zip(chat, &format!("{zip_name}.zip"), &files).await;
             }
             "f" => {
                 if let Some(file) = choices.file_by_id(id).map(|f| f.file.clone()) {
@@ -257,8 +268,21 @@ impl BotCore {
         }
     }
 
+    async fn send_language_zip(&self, chat: i64, zip_name: &str, files: &[String]) {
+        let texts = self.texts();
+        let zipped = zip_files(files.iter().filter_map(|f| Some((format!("{f}.xml"), texts.file_bytes(f)?))));
+        match zipped {
+            Ok(bytes) => {
+                if let Err(e) = self.telegram.send_document(chat, zip_name, bytes).await {
+                    log::warn!("getlang: {e}");
+                }
+            }
+            Err(e) => log::error!("getlang: could not zip language files: {e}"),
+        }
+    }
+
     async fn send_language_file(&self, chat: i64, name: &str) {
-        match self.texts.file_bytes(name) {
+        match self.texts().file_bytes(name) {
             Some(bytes) => {
                 if let Err(e) = self.telegram.send_document(chat, &format!("{name}.xml"), bytes).await {
                     log::warn!("getlang: {e}");
@@ -269,4 +293,16 @@ impl BotCore {
             }
         }
     }
+}
+
+/// A deflated zip of `(name, contents)` pairs.
+fn zip_files(files: impl Iterator<Item = (String, Vec<u8>)>) -> zip::result::ZipResult<Vec<u8>> {
+    use std::io::Write;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    for (name, bytes) in files {
+        zip.start_file(name, options)?;
+        zip.write_all(&bytes)?;
+    }
+    Ok(zip.finish()?.into_inner())
 }
