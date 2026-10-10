@@ -185,3 +185,68 @@ fn graves_are_listed_with_and() {
     let text = render(&message, &lookup, &|id| format!("P{}", id.0));
     assert_eq!(text, "You dig for P2 and P3.");
 }
+
+#[tokio::test]
+async fn the_arsonist_is_shown_the_houses_already_doused() {
+    use game_engine::orchestrator::{Answer, OnAnswer, Phase, Question};
+    /// Douses P2, then P3; records every night question.
+    #[derive(Default)]
+    struct Douser {
+        nights: Vec<Vec<Question>>,
+    }
+    #[async_trait(?Send)]
+    impl Presenter for Douser {
+        async fn ask_targets(&mut self, _: PlayerId, _: Prompt, _: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+            None
+        }
+        async fn ask_batch(&mut self, phase: Phase, questions: Vec<Question>, _: &mut dyn OnAnswer) -> Vec<Answer> {
+            let night = self.nights.len();
+            let answers = questions
+                .iter()
+                .map(|q| match q {
+                    Question::Targets { prompt: Prompt::ArsonistDouse, .. } if phase == Phase::Night => {
+                        Answer::Targets(Some(vec![if night == 0 { P2 } else { P3 }]))
+                    }
+                    Question::Targets { .. } => Answer::Targets(None),
+                    Question::Toggle { .. } => Answer::Toggle(false),
+                })
+                .collect();
+            if phase == Phase::Night {
+                self.nights.push(questions);
+            }
+            answers
+        }
+    }
+    let players = roster(&[Role::Arsonist, Role::Villager, Role::Villager, Role::Wolf, Role::Villager, Role::Villager]);
+    let mut douser = Douser::default();
+    let rules = GameRules::default();
+    run_game_with_rules(&players, ALL_ROLES, &rules, &mut douser, &mut SeededRngSource::new(0), 2).await;
+    let arsonist = |night: usize| -> Vec<Question> { douser.nights[night].iter().filter(|q| q.player() == P1).cloned().collect() };
+
+    let first = arsonist(0);
+    assert_eq!(first.len(), 1, "no spark before anything is doused: {first:?}");
+    assert!(matches!(&first[0], Question::Targets { text: Some(m), .. } if m.key == "AskArsonistNoDoused"));
+
+    let second = arsonist(1);
+    let Question::Targets { options, text: Some(text), .. } = &second[0] else { panic!("{second:?}") };
+    assert!(!options.contains(&P2), "a doused house isn't offered again");
+    assert_eq!(text.key, "AskArsonist");
+    assert_eq!(text.then.as_deref(), Some(&Message::new("AlreadyDousedList", vec![MessageArg::PlayersAnd(vec![P2])])));
+    assert!(second.iter().any(|q| q.prompt() == Prompt::ArsonistSpark), "spark is offered once a house is doused");
+}
+
+#[tokio::test]
+async fn the_seer_reads_before_the_morning_and_not_once_eaten() {
+    let players = roster(&[Role::Seer, Role::Wolf, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let reading = |e: &NarrationEvent| matches!(e, NarrationEvent::Private { to, note: Note::SeerSees { .. } } if *to == P1);
+
+    let mut night = Night::new(&[(Prompt::SeerCheck, P2), (Prompt::WolfEat, P3)]);
+    play(&players, &mut night, 0, 1).await;
+    let read_at = night.narrated.iter().position(reading).expect("the seer read");
+    let death_at = night.narrated.iter().position(|e| matches!(e, NarrationEvent::Death { .. })).expect("P3 died");
+    assert!(read_at < death_at, "the reading comes before the death notices");
+
+    let mut night = Night::new(&[(Prompt::SeerCheck, P2), (Prompt::WolfEat, P1)]);
+    play(&players, &mut night, 0, 1).await;
+    assert!(!night.narrated.iter().any(reading), "a seer eaten before their turn learns nothing");
+}

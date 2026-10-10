@@ -21,7 +21,7 @@ use crate::orchestrator::{
     resolve_lynch_vote, resolve_night_with_freeze, resolve_spumpkin_detonation, AlivePlayer, NarrationEvent,
     Presenter, Prompt,
 };
-use crate::reveals::{resolve_detective, resolve_night_readings, AugurMemory};
+use crate::reveals::resolve_detective;
 use crate::rng::RngSource;
 use crate::roles::{behavior_for, DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::{is_wolf_muscle, KillEvent, WinOutcome};
@@ -149,7 +149,6 @@ pub async fn run_game_with_rules(
     // Whoever the Snow Wolf froze last night, who can't be frozen again
     // tonight (Werewolf.cs:5276).
     let mut frozen_last_night: Option<PlayerId> = None;
-    let mut augur = AugurMemory::default();
 
     // Everyone is told their role, with their team (Werewolf.cs:622, 1612-1641).
     for p in &alive {
@@ -185,7 +184,6 @@ pub async fn run_game_with_rules(
             let mut dug_graves = buried.len() as u32;
             deaths_counted_for_graves = deaths.len();
 
-            let start_of_night = alive.clone();
             let night_seconds = rules.night_seconds(round, &alive);
             presenter.narrate(NarrationEvent::Announce(Announcement::NightTime { seconds: night_seconds })).await;
             // Told as the night's questions go out (Werewolf.cs:5295-5310).
@@ -212,7 +210,7 @@ pub async fn run_game_with_rules(
             // The Snow Wolf's freeze goes out with everyone else's night question.
             let freeze_ask = freeze_question(&alive, frozen_last_night, silver_spread_tonight);
             let (mut tagged_actions, _, freeze) =
-                resolve_night_with_freeze(&alive, &mut states, freeze_ask, presenter, &skip).await;
+                resolve_night_with_freeze(&alive, &mut states, freeze_ask, presenter, &skip, &memory.doused).await;
             if round == 1 {
                 narrate_all(pick_missing_role_models(&alive, &mut states, rng), presenter).await;
             }
@@ -244,6 +242,7 @@ pub async fn run_game_with_rules(
                 dug_graves,
                 thief_full: rules.thief_full,
                 reveal,
+                role_pool,
             };
             let night = resolve_night_sequence(&input, &mut alive, &mut states, &mut memory, rng);
             narrate_all(night.events, presenter).await;
@@ -267,19 +266,9 @@ pub async fn run_game_with_rules(
                 &mut deaths,
                 reveal,
                 presenter,
+                &[],
             )
             .await;
-
-            let readings = resolve_night_readings(
-                &tagged_actions,
-                &start_of_night,
-                &alive,
-                freeze_outcome.frozen,
-                role_pool,
-                &mut augur,
-                rng,
-            );
-            narrate_all(readings, presenter).await;
 
             if let Some(outcome) =
                 check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
@@ -300,11 +289,22 @@ pub async fn run_game_with_rules(
         let (day_actions, lynch) = resolve_day(&alive, &mut states, rules, presenter, rng).await;
         let veto = last_day_veto(&day_actions);
         let lynch_target_role = lynch.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
-        let shot_elder = demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
+        demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
         silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
         sandman_sleeps_tonight = day_actions.contains(&DayAction::Sleep);
         let mut day_deaths = apply_day_results(&day_actions, lynch.target(), lynch_target_role, &mut states);
         day_deaths.extend(resolve_spumpkin_detonation(&day_actions, rng));
+        // A Spumpkin who blows up the Wise Elder dies a Villager
+        // (Werewolf.cs:2912-2916), after the detonation's own line.
+        let detonated_elder = day_actions.iter().find_map(|a| match *a {
+            DayAction::Detonate { spumpkin, target }
+                if day_deaths.contains(&(spumpkin, KillMethod::Shoot))
+                    && alive.iter().any(|p| p.id == target && p.role == Role::WiseElder) =>
+            {
+                Some((spumpkin, target))
+            }
+            _ => None,
+        });
         let shot_today: Vec<PlayerId> =
             day_deaths.iter().filter(|&&(_, m)| m != KillMethod::Lynch).map(|&(id, _)| id).collect();
         let snoops = resolve_detective(&day_actions, &alive, &shot_today, rng);
@@ -325,6 +325,14 @@ pub async fn run_game_with_rules(
                 _ => None,
             })
             .collect();
+        // A Gunner's shot was told as it happened (see `resolve_day`).
+        let gunned: Vec<PlayerId> = day_actions
+            .iter()
+            .filter_map(|a| match *a {
+                DayAction::Shoot { target, .. } => Some(target),
+                _ => None,
+            })
+            .collect();
         wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
             &day_deaths,
             &shooters,
@@ -335,11 +343,16 @@ pub async fn run_game_with_rules(
             &mut deaths,
             reveal,
             presenter,
+            &gunned,
         )
         .await;
-        if let Some((gunner, elder)) = shot_elder {
-            // After the shot's own line (Werewolf.cs:2889-2890).
-            presenter.narrate(NarrationEvent::Announce(Announcement::GunnerShotWiseElder { gunner, elder })).await;
+        if let Some((spumpkin, elder)) = detonated_elder {
+            presenter.narrate(NarrationEvent::Announce(Announcement::DetonatedWiseElder { spumpkin, elder })).await;
+            presenter.narrate(NarrationEvent::Transform { player: spumpkin, from: Role::Spumpkin, to: Role::Villager }).await;
+            // `kills` runs parallel to `deaths`.
+            if let Some(i) = deaths.iter().position(|&(id, _)| id == spumpkin) {
+                kills[i].victim_role = Role::Villager;
+            }
         }
 
         if let Some(outcome) =
@@ -370,6 +383,7 @@ pub async fn run_game_with_rules(
                 &mut deaths,
                 reveal,
                 presenter,
+                &[],
             )
             .await;
 
@@ -518,13 +532,16 @@ async fn process_deaths_and_hunter_shots(
     deaths: &mut Vec<(PlayerId, KillMethod)>,
     reveal: bool,
     presenter: &mut dyn Presenter,
+    announced: &[PlayerId],
 ) -> bool {
     let mut wolf_cub_died = false;
     let mut batch = new_deaths.to_vec();
     let mut by = by.to_vec();
+    let mut announced = announced.to_vec();
     while !batch.is_empty() {
         let (processed, died_with_roles) =
-            process_deaths(&batch, &by, alive, states, lovers, kills, deaths, reveal, presenter).await;
+            process_deaths(&batch, &by, alive, states, lovers, kills, deaths, reveal, presenter, &announced).await;
+        announced.clear();
         wolf_cub_died |= died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
         // Werewolf.cs:5473: a Hunter who shot the Wise Elder, right after
         // the shot is announced.
@@ -592,6 +609,7 @@ async fn narrate_deaths(
     deaths: &[(PlayerId, KillMethod)],
     reveal_role: bool,
     presenter: &mut dyn Presenter,
+    announced: &[PlayerId],
 ) {
     let pack_size = still_alive.iter().filter(|p| is_wolf_muscle(p.role)).count();
     // With roles shown, everyone the Arsonist burned shares one line
@@ -604,6 +622,9 @@ async fn narrate_deaths(
         .collect();
     let mut burn_line_sent = false;
     for (&(victim, method), &(_, role)) in new_deaths.iter().zip(died_with_roles) {
+        if announced.contains(&victim) {
+            continue; // told the moment it happened (a Gunner's shot)
+        }
         if reveal_role && method == KillMethod::Burn {
             let message = (!burn_line_sent).then(|| Message::new("Burning", vec![MessageArg::Reveals(burned.clone())]));
             burn_line_sent = true;
@@ -673,13 +694,14 @@ async fn process_deaths(
     deaths: &mut Vec<(PlayerId, KillMethod)>,
     reveal_role: bool,
     presenter: &mut dyn Presenter,
+    announced: &[PlayerId],
 ) -> (Vec<(PlayerId, KillMethod)>, Vec<(PlayerId, Role)>) {
     let lover_chain = resolve_lover_deaths(new_deaths, lovers, alive);
     let mut all_deaths = new_deaths.to_vec();
     all_deaths.extend(lover_chain);
 
     let died_with_roles = record_deaths(alive, &all_deaths, kills, deaths);
-    narrate_deaths(&all_deaths, &died_with_roles, by, alive, lovers, deaths, reveal_role, presenter).await;
+    narrate_deaths(&all_deaths, &died_with_roles, by, alive, lovers, deaths, reveal_role, presenter, announced).await;
     alive.retain(|p| !all_deaths.iter().any(|&(v, _)| v == p.id));
     for event in apply_transforms(alive, states, &died_with_roles) {
         let tells = tells_for_transform(&event, alive, states, &died_with_roles);
@@ -718,7 +740,7 @@ async fn apply_fled_players(
         .map(|id| (id, KillMethod::Flee))
         .collect();
     if !fled_deaths.is_empty() {
-        process_deaths(&fled_deaths, &[], alive, states, lovers, kills, deaths, reveal_role, presenter).await;
+        process_deaths(&fled_deaths, &[], alive, states, lovers, kills, deaths, reveal_role, presenter, &[]).await;
     }
 }
 
@@ -756,14 +778,15 @@ async fn demote_gunner_if_shot_a_wise_elder(
     day_actions: &[DayAction],
     alive: &mut [AlivePlayer],
     presenter: &mut dyn Presenter,
-) -> Option<(PlayerId, PlayerId)> {
-    let (shooter, elder) = day_actions.iter().find_map(|a| match a {
+) {
+    let shooter = day_actions.iter().find_map(|a| match a {
         DayAction::Shoot { shooter, target } => {
             let target_role = alive.iter().find(|p| p.id == *target).map(|p| p.role);
-            (target_role == Some(Role::WiseElder)).then_some((*shooter, *target))
+            (target_role == Some(Role::WiseElder)).then_some(*shooter)
         }
         _ => None,
-    })?;
+    });
+    let Some(shooter) = shooter else { return };
     if let Some(gunner) = alive.iter_mut().find(|p| p.id == shooter) {
         let from = gunner.role;
         presenter
@@ -775,7 +798,6 @@ async fn demote_gunner_if_shot_a_wise_elder(
             .await;
         gunner.role = Role::Villager;
     }
-    Some((shooter, elder))
 }
 
 /// Turns every player bitten last night (Werewolf.cs:2988-2998,

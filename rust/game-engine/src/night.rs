@@ -15,6 +15,7 @@ use crate::messages::{DiggerVisitor, NightNote, Note};
 use crate::orchestrator::{grave_digger_fall_chance_percent, AlivePlayer, NarrationEvent};
 use crate::rng::RngSource;
 use crate::roles::{NightAction, PlayerId, RoleState};
+use crate::reveals::{resolve_night_readings, AugurMemory};
 use crate::role_info::{transform_tells, Cause};
 use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
@@ -86,6 +87,8 @@ pub struct NightMemory {
     /// The night each convert joined the cult; founders count as night 0
     /// (Werewolf.cs:1993, `DayCult`).
     pub cult_joined: HashMap<PlayerId, u32>,
+    /// The roles the Augur has been shown.
+    pub augur: AugurMemory,
 }
 
 /// Tonight's choices and the facts the regions need.
@@ -103,6 +106,9 @@ pub struct NightInput<'a> {
     /// `ShowRolesDeath`, which decides whether the Chemist pays for killing
     /// the Wise Elder (Werewolf.cs:4278).
     pub reveal: bool,
+    /// The pool the roles were dealt from, for the Augur (see
+    /// `balancing::balance_with_pool`).
+    pub role_pool: &'a [Role],
 }
 
 /// One death. `by` is who killed them, or for a Harlot who visited a
@@ -159,8 +165,10 @@ pub fn resolve_night_sequence(
         }
         _ => None,
     });
+    let start = alive.to_vec();
     let mut night = Night {
         input,
+        start,
         alive,
         states,
         memory,
@@ -180,6 +188,7 @@ pub fn resolve_night_sequence(
     night.cult();
     night.chemist();
     night.harlot();
+    night.seers();
     night.guardian_angel();
     night.thief();
     night.witch();
@@ -190,6 +199,8 @@ pub fn resolve_night_sequence(
 
 struct Night<'a, 'b> {
     input: &'b NightInput<'b>,
+    /// Everyone alive as the night began, with the roles they had then.
+    start: Vec<AlivePlayer>,
     alive: &'a mut [AlivePlayer],
     states: &'a mut HashMap<PlayerId, RoleState>,
     memory: &'a mut NightMemory,
@@ -962,6 +973,24 @@ impl Night<'_, '_> {
         }
     }
 
+    /// The Seer, Sorcerer, Fool, Oracle and Augur, after the Harlot and
+    /// before the Guardian Angel (Werewolf.cs, `NightCycle`), so a reader
+    /// killed earlier tonight learns nothing and the readings arrive
+    /// before the morning's death notices.
+    fn seers(&mut self) {
+        let survivors: Vec<AlivePlayer> = self.alive.iter().filter(|p| !self.is_dead(p.id)).copied().collect();
+        let readings = resolve_night_readings(
+            self.input.actions,
+            &self.start,
+            &survivors,
+            self.input.frozen,
+            self.input.role_pool,
+            &mut self.memory.augur,
+            self.rng,
+        );
+        self.outcome.events.extend(readings);
+    }
+
     /// Werewolf.cs:4276-4281: with roles shown, a Chemist who killed the
     /// Wise Elder loses their role (the death line says so).
     fn chemist_killed_wise_elder(&mut self) {
@@ -1035,6 +1064,7 @@ mod tests {
                 dug_graves: self.dug,
                 thief_full: self.thief_full,
                 reveal: true,
+                role_pool: &[],
             };
             resolve_night_sequence(&input, &mut self.alive, &mut self.states, &mut self.memory, rng)
         }

@@ -320,6 +320,7 @@ pub async fn play(setup: GameSetup) {
         pending_lynch_time: None,
         summary: None,
         next_qid: 1,
+        started: Instant::now(),
     };
 
     let outcome = run_game_with_rules(&players, &pool, &start.rules, &mut presenter, &mut rng, MAX_ROUNDS).await;
@@ -411,6 +412,8 @@ pub struct TelegramPresenter {
     /// hears it when the vote actually opens, after the day's discussion
     /// (Werewolf.cs:2835, then `LynchCycle`).
     pending_lynch_time: Option<String>,
+    /// When the game started, for the summary's playing time.
+    started: Instant,
     summary: Option<GameSummary>,
     next_qid: u32,
 }
@@ -513,18 +516,22 @@ impl TelegramPresenter {
     async fn open(&mut self, index: usize, q: Question) -> Open {
         let qid = self.next_qid;
         self.next_qid += 1;
-        let (player, prompt, shape) = match q {
-            Question::Targets { player, prompt, options, count } => {
+        let (player, prompt, shape, text) = match q {
+            Question::Targets { player, prompt, options, count, text } => {
                 // The legacy menus never offered yourself, except Cupid's
                 // (self-love is allowed).
                 let options =
                     options.into_iter().filter(|o| *o != player || prompt == Prompt::CupidLink).collect();
-                (player, prompt, Shape::Targets { options, count, picked: vec![] })
+                (player, prompt, Shape::Targets { options, count, picked: vec![] }, text)
             }
-            Question::Toggle { player, prompt } => (player, prompt, Shape::Toggle),
+            Question::Toggle { player, prompt } => (player, prompt, Shape::Toggle, None),
         };
         let keyboard = self.keyboard(qid, &shape);
-        let msg = self.pm(player, &self.question_text(prompt), Some(keyboard)).await;
+        let text = match text {
+            Some(message) => self.render(&message),
+            None => self.question_text(prompt),
+        };
+        let msg = self.pm(player, &text, Some(keyboard)).await;
         let mut open = Open { index, qid, player, prompt, msg, shape, answer: None };
         if msg.is_none() {
             open.answer = Some(open.no_answer());
@@ -550,7 +557,8 @@ impl TelegramPresenter {
         let mut follow_up = false;
         match (&mut q.shape, click.choice) {
             (Shape::Targets { .. }, Choice::Skip) => {
-                q.answer = Some(Answer::Targets(None));
+                // An empty pick: skipped, as opposed to never answered.
+                q.answer = Some(Answer::Targets(Some(vec![])));
                 chosen_label = Some(self.t("Skip", &[]));
             }
             (Shape::Targets { options, count, picked }, Choice::Pick(i)) => {
@@ -620,16 +628,14 @@ impl TelegramPresenter {
     }
 
     /// Ends the open questions `which` picks: they count as "no answer",
-    /// and their message says why (time is up, or a Pacifist's peace
-    /// closed the vote: `LynchPeaceTimeout`, Werewolf.cs:2582).
+    /// and their message says why (time is up, or what closed them, such
+    /// as a Pacifist's peace: `LynchPeaceTimeout`, Werewolf.cs:2582).
     async fn close(&mut self, open: &mut [Open], which: impl Fn(&Open) -> bool, on_answer: &dyn OnAnswer) {
-        let times_up = self.t("TimesUp", &[]);
-        let peace = self.t("LynchPeaceTimeout", &[]);
         for q in open.iter_mut().filter(|q| q.answer.is_none() && which(q)) {
             q.answer = Some(q.no_answer());
             if let Some(msg) = q.msg {
-                let text = if on_answer.closed(q.index) { &peace } else { &times_up };
-                let _ = self.telegram.edit(msg, text, None).await;
+                let key = if on_answer.closed(q.index) { on_answer.closed_key(q.index) } else { "TimesUp" };
+                let _ = self.telegram.edit(msg, &self.t(key, &[]), None).await;
             }
         }
     }
@@ -681,7 +687,7 @@ impl TelegramPresenter {
 #[async_trait(?Send)]
 impl Presenter for TelegramPresenter {
     async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], count: usize) -> Option<Vec<PlayerId>> {
-        match self.ask_one(Question::Targets { player, prompt, options: options.to_vec(), count }).await {
+        match self.ask_one(Question::Targets { player, prompt, options: options.to_vec(), count, text: None }).await {
             Answer::Targets(t) => t,
             Answer::Toggle(_) => None,
         }
@@ -814,7 +820,9 @@ impl Presenter for TelegramPresenter {
             }
             NarrationEvent::GameSummary(summary) => {
                 let text = summary.render(&|key| self.texts.lookup(&self.lang, key), &|id| self.name(id));
-                self.group(&text).await;
+                // The playing time ends the summary (Werewolf.cs:4919-4923).
+                let played = self.t("EndTime", &[&hh_mm_ss(self.started.elapsed())]);
+                self.group(&format!("{text}\n{played}")).await;
                 self.summary = Some(summary);
             }
         }
@@ -829,9 +837,21 @@ impl Presenter for TelegramPresenter {
     }
 }
 
+/// `hh:mm:ss`, as the legacy summary shows its playing time.
+fn hh_mm_ss(played: Duration) -> String {
+    let secs = played.as_secs();
+    format!("{:02}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playing_time_reads_like_the_legacy_summary() {
+        assert_eq!(hh_mm_ss(Duration::from_secs(3 * 3600 + 7 * 60 + 9)), "03:07:09");
+        assert_eq!(hh_mm_ss(Duration::from_secs(59)), "00:00:59");
+    }
 
     #[test]
     fn callback_data_round_trips_and_fits_telegrams_limit() {

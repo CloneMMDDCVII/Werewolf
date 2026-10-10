@@ -1,10 +1,8 @@
 # Scope: day abilities take effect the moment they're used (approved by
 # delegation). Legacy: Werewolf.cs:899-973 (the day callbacks, each of
 # which announces on the spot), 2548-2610 (the lynch loop and the
-# Pacifist's peace closing the lynch menus).
-#
-# Out of scope here: the Gunner's shot killing at once (the victim
-# still votes until the day resolves), which needs deaths mid-batch.
+# Pacifist's peace closing the lynch menus),
+# 2860-2898 (the Gunner's shot, which kills at once).
 
 Feature: Day abilities are announced when used
 
@@ -48,3 +46,20 @@ Feature: The Pacifist's peace stops the vote
     Given the Pacifist made peace
     When the Troublemaker then makes trouble
     Then the lynch vote goes ahead, twice
+
+Feature: The Gunner's shot kills at once
+
+  Scenario: The shot is announced and the victim is out of the day
+    Given the day's questions are out
+    When the Gunner shoots a player
+    Then the shot's death line is told at once (Werewolf.cs:2873-2898)
+    And the victim's open questions close, and they can't vote
+    And nobody can vote for them, and votes already cast by or for them are dropped
+
+  Scenario: Shooting the Wise Elder
+    When the Gunner shoots the Wise Elder
+    Then "GunnerShotWiseElder" follows the shot's line at once
+
+  Scenario: What still waits for the end of the day
+    Given the Gunner shot someone
+    Then their lover's grief, a shot Hunter's last shot and any role changes come once the day's questions close

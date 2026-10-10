@@ -24,12 +24,14 @@ enum Log {
 struct Day {
     target: PlayerId,
     yes: Vec<Prompt>,
+    /// Whom a Gunner shoots, if anyone.
+    shoot: Option<PlayerId>,
     log: Vec<Log>,
 }
 
 impl Day {
     fn new(target: PlayerId, yes: &[Prompt]) -> Self {
-        Day { target, yes: yes.to_vec(), log: vec![] }
+        Day { target, yes: yes.to_vec(), shoot: None, log: vec![] }
     }
 
     fn position(&self, entry: &Log) -> usize {
@@ -55,6 +57,9 @@ impl Day {
 impl Presenter for Day {
     async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
         self.log.push(Log::Asked(player, prompt));
+        if let Prompt::GunnerShoot { .. } = prompt {
+            return self.shoot.map(|s| vec![s]);
+        }
         if prompt != Prompt::LynchVote {
             return None;
         }
@@ -172,4 +177,48 @@ async fn a_game_with_peace_lynches_nobody_and_says_so() {
     let lynched = presenter.log.iter().any(|l| matches!(l, Log::Said(NarrationEvent::Death { method: KillMethod::Lynch, .. })));
     assert!(!lynched);
     assert_eq!(presenter.said(Announcement::NoLynchVotes), 0, "peace isn't a vote that found nobody");
+}
+
+/// Like `Day`, but the Gunner shoots `shot`.
+fn gunner_day(target: PlayerId, shot: PlayerId) -> Day {
+    let mut day = Day::new(target, &[]);
+    day.shoot = Some(shot);
+    day
+}
+
+#[tokio::test]
+async fn the_gunners_shot_kills_at_once() {
+    // P2, the Gunner, shoots P4 before P3 and P4 have voted.
+    let players = roster(&[Role::Villager, Role::Gunner, Role::Villager, Role::Villager, Role::Wolf]);
+    let mut presenter = gunner_day(P4, P4);
+    let (actions, lynch) = day(&players, &mut presenter).await;
+    let shot_at = presenter.position(&Log::Asked(P2, Prompt::GunnerShoot { bullets: 2 }));
+    assert!(
+        matches!(&presenter.log[shot_at + 1], Log::Said(NarrationEvent::Death { victim, method: KillMethod::Shoot, message: Some(_), .. }) if *victim == P4),
+        "the shot is told right away: {:#?}",
+        presenter.log
+    );
+    assert_eq!(presenter.votes_asked(), vec![P1, P2, P3, P5], "the dead don't vote");
+    // Everyone voted for P4: the votes cast before the shot are dropped,
+    // and those after it don't count.
+    assert_eq!(lynch, LynchResult::NoVotes);
+    assert!(actions.contains(&DayAction::Shoot { shooter: P2, target: P4 }));
+}
+
+#[tokio::test]
+async fn a_shot_is_told_once_in_a_whole_game() {
+    let players = roster(&[Role::Villager, Role::Gunner, Role::Villager, Role::Villager, Role::Villager, Role::Wolf]);
+    let mut presenter = gunner_day(PlayerId(6), P4);
+    run_game_with_rules(&players, ALL_ROLES, &GameRules::default(), &mut presenter, &mut SeededRngSource::new(0), 1).await;
+    let told = presenter.log.iter().filter(|l| matches!(l, Log::Said(NarrationEvent::Death { victim, .. }) if *victim == P4)).count();
+    assert_eq!(told, 1);
+}
+
+#[tokio::test]
+async fn shooting_the_wise_elder_is_told_right_after_the_shot() {
+    let players = roster(&[Role::Villager, Role::Gunner, Role::Villager, Role::WiseElder, Role::Wolf]);
+    let mut presenter = gunner_day(P5, P4);
+    day(&players, &mut presenter).await;
+    let death = presenter.log.iter().position(|l| matches!(l, Log::Said(NarrationEvent::Death { victim, .. }) if *victim == P4)).unwrap();
+    assert_eq!(presenter.log[death + 1], Log::Said(NarrationEvent::Announce(Announcement::GunnerShotWiseElder { gunner: P2, elder: P4 })));
 }

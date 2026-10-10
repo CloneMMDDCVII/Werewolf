@@ -69,6 +69,8 @@ pub enum MessageArg {
 /// no display-name entry falls back to its enum name. Literal `\n` in a
 /// template becomes a newline, as the legacy `GetLocaleString` does.
 pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: &dyn Fn(PlayerId) -> String) -> String {
+    let lookup = |key: &str| lookup(key).or_else(|| fallback_text(key).map(str::to_string));
+    let lookup: &dyn Fn(&str) -> Option<String> = &lookup;
     let role_name = |role: Role| lookup(role.locale_key()).unwrap_or_else(|| format!("{role:?}"));
     let mut text = lookup(message.key).unwrap_or_else(|| format!("({})", message.key)).replace("\\n", "\n");
     for (i, arg) in message.args.iter().enumerate() {
@@ -108,6 +110,26 @@ pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: 
         Some(next) => format!("{text} {}", render(next, lookup, name)),
         None => text,
     }
+}
+
+/// English text for the keys the engine uses that English.xml doesn't
+/// have. The translation files are left as they are; rust/COMMANDS.md
+/// lists these keys so they can be added upstream, after which the
+/// file's text wins.
+pub const FALLBACK_TEXTS: &[(&str, &str)] = &[
+    ("Detonation", "{0} 🎃 detonated next to {1}, and neither of them survived. {2}"),
+    ("DetonatedWiseElder", "By blowing up {1}, the wise elder, {0} lost their way and died a simple villager."),
+    (
+        "RoleInfoSpumpkin",
+        "You are the Spumpkin 🎃. Each day you may try to detonate next to a player: if it works, you both die.",
+    ),
+    ("RoleInfoWitch", "You are the Witch. Once per game you can heal the wolves' victim, and once you can poison a player."),
+    ("RoleInfoChef", "You are the Chef."),
+    ("RoleInfoBarkeep", "You are the Barkeep."),
+];
+
+pub fn fallback_text(key: &str) -> Option<&'static str> {
+    FALLBACK_TEXTS.iter().find(|(k, _)| *k == key).map(|&(_, text)| text)
 }
 
 /// Something told privately to one player.
@@ -317,10 +339,15 @@ pub enum Announcement {
     /// Werewolf.cs:5462, a dying Hunter who shoots nobody. `lynched` is
     /// how the Hunter died.
     HunterSkipChoice { hunter: PlayerId, lynched: bool },
+    /// A dying Hunter who let the timer run out (Werewolf.cs:5455).
+    HunterNoChoice { hunter: PlayerId, lynched: bool },
     /// Werewolf.cs:5473, a dying Hunter who shot the Wise Elder.
     HunterKilledWiseElder { hunter: PlayerId, elder: PlayerId },
     /// Werewolf.cs:2890, a Gunner who shot the Wise Elder.
     GunnerShotWiseElder { gunner: PlayerId, elder: PlayerId },
+    /// Werewolf.cs:2915, a Spumpkin who blew up the Wise Elder (not in
+    /// English.xml; see `FALLBACK_TEXTS`).
+    DetonatedWiseElder { spumpkin: PlayerId, elder: PlayerId },
     /// Last-two endings (Werewolf.cs:4544-4578, 4840-4894).
     HunterKillsWolfEnd { hunter: PlayerId, wolf: PlayerId },
     WolfKillsHunterEnd { hunter: PlayerId, wolf: PlayerId },
@@ -457,8 +484,11 @@ impl Announcement {
             Announcement::PrinceLynched { .. } => "PrinceLynched",
             Announcement::HunterSkipChoice { lynched: true, .. } => "HunterSkipChoiceLynched",
             Announcement::HunterSkipChoice { lynched: false, .. } => "HunterSkipChoiceShot",
+            Announcement::HunterNoChoice { lynched: true, .. } => "HunterNoChoiceLynched",
+            Announcement::HunterNoChoice { lynched: false, .. } => "HunterNoChoiceShot",
             Announcement::HunterKilledWiseElder { .. } => "HunterKilledWiseElder",
             Announcement::GunnerShotWiseElder { .. } => "GunnerShotWiseElder",
+            Announcement::DetonatedWiseElder { .. } => "DetonatedWiseElder",
             Announcement::HunterKillsWolfEnd { .. } => "HunterKillsWolfEnd",
             Announcement::WolfKillsHunterEnd { .. } => "WolfKillsHunterEnd",
             Announcement::SKHunterEnd { .. } => "SKHunterEnd",
@@ -486,9 +516,11 @@ impl Announcement {
             | Announcement::BlacksmithSpreadSilver { blacksmith: one }
             | Announcement::PrinceLynched { prince: one }
             | Announcement::HunterSkipChoice { hunter: one, .. }
+            | Announcement::HunterNoChoice { hunter: one, .. }
             | Announcement::SandmanSleepAll { sandman: one } => vec![Player(*one)],
             Announcement::HunterKilledWiseElder { hunter: a, elder: b }
             | Announcement::GunnerShotWiseElder { gunner: a, elder: b }
+            | Announcement::DetonatedWiseElder { spumpkin: a, elder: b }
             | Announcement::HunterKillsWolfEnd { hunter: a, wolf: b }
             | Announcement::WolfKillsHunterEnd { hunter: a, wolf: b }
             | Announcement::SKHunterEnd { serial_killer: a, hunter: b }
@@ -602,6 +634,8 @@ pub fn all_message_keys() -> Vec<&'static str> {
             Announcement::PrinceLynched { prince: p },
             Announcement::HunterSkipChoice { hunter: p, lynched: true },
             Announcement::HunterSkipChoice { hunter: p, lynched: false },
+            Announcement::HunterNoChoice { hunter: p, lynched: true },
+            Announcement::HunterNoChoice { hunter: p, lynched: false },
             Announcement::HunterKilledWiseElder { hunter: p, elder: p },
             Announcement::GunnerShotWiseElder { gunner: p, elder: p },
             Announcement::HunterKillsWolfEnd { hunter: p, wolf: p },

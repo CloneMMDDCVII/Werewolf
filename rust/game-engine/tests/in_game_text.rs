@@ -14,12 +14,14 @@ struct Day {
     lynch: PlayerId,
     yes: Vec<Prompt>,
     targets: Vec<(Prompt, PlayerId)>,
+    /// Prompts answered with Skip.
+    skip: Vec<Prompt>,
     narrated: Vec<NarrationEvent>,
 }
 
 impl Day {
     fn new(lynch: PlayerId) -> Self {
-        Day { lynch, yes: vec![], targets: vec![], narrated: vec![] }
+        Day { lynch, yes: vec![], targets: vec![], skip: vec![], narrated: vec![] }
     }
 
     fn announcements(&self) -> Vec<Announcement> {
@@ -46,6 +48,9 @@ impl Day {
 #[async_trait(?Send)]
 impl Presenter for Day {
     async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+        if self.skip.contains(&prompt) {
+            return Some(vec![]);
+        }
         let pick = match prompt {
             Prompt::LynchVote if player != self.lynch => Some(self.lynch),
             Prompt::LynchVote => options.iter().copied().find(|&o| o != self.lynch),
@@ -92,11 +97,22 @@ async fn the_prince_survives_their_first_lynch_and_says_so() {
 }
 
 #[tokio::test]
-async fn a_lynched_hunter_who_shoots_nobody_says_so() {
+async fn a_lynched_hunter_who_skips_says_so() {
+    let players = roster(&[Role::Wolf, Role::Hunter, Role::Villager, Role::Villager, Role::Villager]);
+    let mut day = Day::new(P2);
+    day.skip = vec![Prompt::HunterFinalShotLynched];
+    run_game(&players, &mut day, &mut SeededRngSource::new(0), 1).await;
+    assert!(day.announcements().contains(&Announcement::HunterSkipChoice { hunter: P2, lynched: true }));
+}
+
+#[tokio::test]
+async fn a_lynched_hunter_who_runs_out_of_time_is_told_apart_from_a_skip() {
     let players = roster(&[Role::Wolf, Role::Hunter, Role::Villager, Role::Villager, Role::Villager]);
     let mut day = Day::new(P2);
     run_game(&players, &mut day, &mut SeededRngSource::new(0), 1).await;
-    assert!(day.announcements().contains(&Announcement::HunterSkipChoice { hunter: P2, lynched: true }));
+    let said = day.announcements();
+    assert!(said.contains(&Announcement::HunterNoChoice { hunter: P2, lynched: true }));
+    assert!(!said.iter().any(|a| matches!(a, Announcement::HunterSkipChoice { .. })));
 }
 
 #[tokio::test]
@@ -127,4 +143,23 @@ async fn the_serial_killer_overpowers_the_last_villager_and_the_summary_shows_it
         })
         .unwrap();
     assert_eq!(summary.entries.iter().filter(|e| e.alive).count(), 1);
+}
+
+#[tokio::test]
+async fn a_spumpkin_who_blows_up_the_wise_elder_dies_a_villager() {
+    let players = roster(&[Role::Spumpkin, Role::WiseElder, Role::Wolf, Role::Villager, Role::Villager, Role::Villager]);
+    for seed in 0..40 {
+        let mut day = Day::new(PlayerId(6));
+        day.targets = vec![(Prompt::SpumpkinDetonate, P2)];
+        run_game(&players, &mut day, &mut SeededRngSource::new(seed), 1).await;
+        let blew_up = day.narrated.iter().any(|e| matches!(e, NarrationEvent::Death { victim, .. } if *victim == P2));
+        if !blew_up {
+            continue; // the 60% miss
+        }
+        assert_eq!(day.death_line(P2).key, "Detonation");
+        assert!(day.narrated.contains(&NarrationEvent::Transform { player: PlayerId(1), from: Role::Spumpkin, to: Role::Villager }));
+        assert!(day.announcements().contains(&Announcement::DetonatedWiseElder { spumpkin: PlayerId(1), elder: P2 }));
+        return;
+    }
+    panic!("no seed made the Spumpkin's detonation work");
 }

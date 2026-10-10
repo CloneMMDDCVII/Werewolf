@@ -47,3 +47,15 @@ fn every_mapped_locale_key_actually_exists_in_english_xml() {
         total - covered
     );
 }
+
+/// The engine's fallback texts are only for keys English.xml lacks
+/// (rust/COMMANDS.md lists them). Once a key is added upstream, its
+/// fallback should go, so the file's text and translations are used.
+#[test]
+fn fallback_texts_cover_only_keys_missing_from_english_xml() {
+    let pack = LanguagePack::load(LANGUAGE_PACK_PATH).expect("English.xml should load");
+    let all_keys: HashSet<&str> = pack.keys().collect();
+    let present: Vec<&str> =
+        game_engine::messages::FALLBACK_TEXTS.iter().map(|&(k, _)| k).filter(|k| all_keys.contains(k)).collect();
+    assert!(present.is_empty(), "English.xml has these now; drop their fallbacks: {present:?}");
+}

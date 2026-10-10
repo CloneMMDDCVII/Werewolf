@@ -185,6 +185,7 @@ async fn a_full_game_plays_to_the_end_and_is_recorded() {
         let group = bot.tg.transcript(GROUP);
         assert!(bot.is(&group, "StartingGameWait", &[]));
         assert!(bot.is(&group, "PlayersAlive", &[]), "the end-of-game summary: {group}");
+        assert!(bot.is(&group, "EndTime", &[]), "the summary ends with the playing time: {group}");
         assert!(bot.store.games().unfinished().await.unwrap().is_empty());
         match bot.store.games().result(GameId(1)).await.unwrap() {
             Some(GameResult::Won(_)) | Some(GameResult::Unresolved(_)) => {}

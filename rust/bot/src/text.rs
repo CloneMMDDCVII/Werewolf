@@ -90,14 +90,8 @@ impl Texts {
 
     /// An engine message (`game_engine::messages::Message`) as text, with
     /// `name` giving each player's (already escaped) display name.
-    /// A role with no description in the language files (the Witch, say)
-    /// is described as "You are the Witch." rather than shown as a key.
     pub fn render(&self, lang: &str, message: &Message, name: &dyn Fn(PlayerId) -> String) -> String {
-        let lookup = |key: &str| {
-            self.lookup(lang, key)
-                .or_else(|| key.strip_prefix("RoleInfo").map(|role| format!("You are the {}.", split_camel(role))))
-        };
-        strip_placeholders(&render(message, &lookup, name)).trim().to_string()
+        strip_placeholders(&render(message, &|key| self.lookup(lang, key), name)).trim().to_string()
     }
 
     /// Every loaded language, for the `/setlang` and `/config` pickers.
@@ -250,7 +244,8 @@ mod tests {
         assert_eq!(t.role_name("English", Role::Seer), "the Seer 👳");
         let info = |role| t.render("English", &role_info(role, &[], false), &|_| String::new());
         assert!(info(Role::Seer).contains("seer"));
-        assert_eq!(info(Role::Witch), "You are the Witch.");
+        // Not in English.xml: the engine's fallback text.
+        assert!(info(Role::Witch).starts_with("You are the Witch."));
     }
 
     #[test]

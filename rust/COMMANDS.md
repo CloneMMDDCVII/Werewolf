@@ -161,17 +161,26 @@ Mechanics the briefing listed as unported, scoped in
 |---|---|---|
 | Snow Wolf freeze (same-night block, no repeat target, GA block, Hunter/SK visits) | ✅ | `game_engine::freeze` |
 | Snow Wolf turns Wolf when the last wolf dies | ✅ | `game::apply_transforms` |
-| Seer, Sorcerer, Fool, Oracle readings with legacy disguises | ✅ | `game_engine::reveals::resolve_night_readings` |
+| Seer, Sorcerer, Fool, Oracle readings with legacy disguises, read mid-night after the Harlot (a reader killed earlier learns nothing) | ✅ | `game_engine::reveals::resolve_night_readings`, called from `night::Night::seers` |
 | Augur readings (needs the balancer's pool: `balance_with_pool` + `run_game_with_role_pool`) | ✅ | same |
 | Detective snoops by day, wolves may catch them | ✅ | `reveals::resolve_detective` |
 | Troublemaker's second lynch; Pacifist vs Troublemaker, last one wins | ✅ | `game::run_game`, `orchestrator::last_day_veto` |
 | Lynch tie / no votes announcements (no re-vote: `RandomLynch` is `false`) | ✅ | `orchestrator::LynchResult` |
 | Clumsy Guy vote redirect | ✅ | `orchestrator::LynchVotes` |
 | Revealed Mayor's vote counts double on every later lynch | ✅ | `orchestrator::tally_lynch` |
-| Hunter domino chains | ✅ | `game::process_deaths_and_hunter_shots` |
-| Gunner bullet count shown and carried over a Thief steal | ✅ | `roles::gunner::bullets_left`, `game::apply_thief_steals` |
-| Thief full mode: a try every night, 50% to land, never on wolves or Cultists, victim becomes the Thief, frozen Thief blocked, SK/Grave Digger/away Harlot or GA | ✅ | `visits::resolve_full_steal`, `game::swap_roles` |
-| Cultist Hunter kills a hunted Cultist (before the cult converts), reports misses and dead targets, dies at the SK | ✅ | `visits::resolve_hunt` |
+| Hunter domino chains; a last shot skipped (`HunterSkipChoice*`) told apart from one never taken (`HunterNoChoice*`) | ✅ | `game::process_deaths_and_hunter_shots`, `orchestrator::resolve_hunter_shots_by` |
+| Gunner bullet count shown and carried over a Thief steal | ✅ | `roles::gunner::bullets_left`, `night::Night::thief` |
+| Thief full mode: a try every night, 50% to land, never on wolves or Cultists, victim becomes the Thief, frozen Thief blocked, SK/Grave Digger/away Harlot or GA | ✅ | `night::Night::thief` |
+| Cultist Hunter kills a hunted Cultist (before the cult converts), reports misses and dead targets, dies at the SK | ✅ | `night::Night::cultist_hunter` |
+| The night in the legacy order, through one shared visit rule (Arsonist, wolves, SK, Cultist Hunter, cult, Chemist, Harlot, seers, GA, Thief) | ✅ | `game_engine::night`. Scope: `features/night-sequence.feature` |
+| The Arsonist offered only undoused houses, shown those doused (`AlreadyDousedList`), spark only once something is doused | ✅ | `orchestrator::resolve_night_with_freeze` |
+| The Grave Digger told whose graves they dig (`DigGraves`/`DigNoGraves`) | ✅ | `game::run_game_with_rules` |
+| Day abilities announced when used; the Pacifist's peace closes the vote | ✅ | `orchestrator::DayAnswers` (`OnAnswer::closed`). Scope: `features/day-abilities.feature` |
+| The Gunner's shot kills at once: told when answered, the victim's questions close, votes by or for them dropped. Their lover's grief, a shot Hunter's last shot and role changes still wait for the day's questions to close | ✅ | `orchestrator::DayAnswers::shoot` |
+| A Gunner or Spumpkin who kills the Wise Elder becomes a Villager (`GunnerShotWiseElder`, `DetonatedWiseElder`) | ✅ | `orchestrator::DayAnswers::shoot`, `game::run_game_with_rules` |
+| Role info and team lists when roles are dealt; every role change told to the player and their old and new teams; the Doppelganger's role model, picked at random for a Wild Child or Doppelganger who didn't | ✅ | `game_engine::role_info`. Scope: `features/role-info.feature` |
+| Game length at the end of the summary (`EndTime`) | ✅ | `bot::game` (the presenter keeps the clock) |
+| Achievements | ⛔ | Dropped for this port |
 
 Group settings the engine follows, scoped in `features/game-rules.feature`
 (`run_game_with_rules`; `run_game` keeps the legacy defaults):
@@ -200,7 +209,8 @@ there, through the permission gate, with:
   shutting down.
 - **Running games** (`bot::game`): what the group's settings say
   (`control::game_rules::game_start`, Random mode included) and roles
-  dealt with their pool (`balance_with_pool`), roles by PM, each phase's
+  dealt with their pool (`balance_with_pool`), roles and team lists by PM
+  as the engine writes them (`game_engine::role_info`), each phase's
   questions sent together under the engine's announced timer (the
   Snow Wolf's freeze with the rest of the night; day abilities open for
   the whole day, then the vote), lynch votes announced as they land,
@@ -217,10 +227,26 @@ on a paused clock.
 
 Known gaps:
 
-- Day abilities (Mayor, Pacifist, Blacksmith, Troublemaker) are
-  announced when the day's batch closes, not the moment they are used,
-  and a Pacifist's peace still lets the vote run before cancelling it.
-  Both come from the engine resolving the day's actions and votes
-  together; announcing them live needs the same `OnAnswer` treatment
-  votes have.
 - `/getlang` doesn't offer the legacy "All" zip.
+
+## Locale keys missing from English.xml
+
+The translation files are left as they are. These keys are used by the
+engine but don't exist in `Werewolf for Telegram/Languages/English.xml`,
+so the engine renders English fallback text for them
+(`game_engine::messages::FALLBACK_TEXTS`). Once a key is added to the
+files, delete its fallback: `sim/tests/locale_coverage.rs` fails until
+you do, so the files' text and translations take over.
+
+| Key | Used for | Placeholders |
+|---|---|---|
+| `Detonation` | A Spumpkin's detonation (death line) | `{0}` Spumpkin, `{1}` victim, `{2}` "{victim} was {role}" when roles are shown |
+| `DetonatedWiseElder` | A Spumpkin who blew up the Wise Elder | `{0}` Spumpkin, `{1}` Wise Elder |
+| `RoleInfoSpumpkin` | The Spumpkin's role info | none |
+| `RoleInfoWitch` | The Witch's role info (new role, not in the legacy game) | none |
+| `RoleInfoChef` | The Chef's role info (beta-fork role, no mechanics here) | none |
+| `RoleInfoBarkeep` | The Barkeep's role info (beta-fork role, no mechanics here) | none |
+
+Questions with no key at all (the bot's own English, `bot::game::question_text`):
+the Witch's heal and poison, the Blacksmith's silver, the Spumpkin's
+detonation.

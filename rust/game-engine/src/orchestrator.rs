@@ -27,7 +27,7 @@
 //! topological sort is future work for whenever a second dependency shows
 //! up and two hardcoded levels stop being enough.
 
-use crate::messages::{Announcement, Note, SecretTally};
+use crate::messages::{Announcement, Message, MessageArg, Note, SecretTally};
 use crate::rules::GameRules;
 use crate::rng::RngSource;
 use crate::roles::{
@@ -35,6 +35,7 @@ use crate::roles::{
     PlayerId, RoleState,
 };
 use async_trait::async_trait;
+use crate::death_text::{death_message, DeathContext};
 use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
 
@@ -317,7 +318,6 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
             Role::Thief => "ThiefStoleKiller",
             Role::GuardianAngel => "GAGuardedKiller",
             Role::Chemist => "ChemistSKPublic",
-            // Missing from English.xml, so it shows as a visible gap there.
             Role::Arsonist => "ArsonistVisitKiller",
             _ => return None,
         }),
@@ -503,6 +503,7 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         // death_text's night lines.
         "GAGuardedKiller",
         "ChemistSKPublic",
+        "ArsonistVisitKiller",
         "WolfVisitBurn",
         "DefaultVisitBurn",
         "GAGuardedWolf",
@@ -644,7 +645,8 @@ pub trait Presenter {
     /// (a legitimate answer, e.g. Harlot choosing to stay home) — an
     /// implementer that returns `Some(v)` should return exactly `count`
     /// entries; the orchestrator treats anything else as "no answer"
-    /// rather than trusting a malformed response.
+    /// rather than trusting a malformed response. `Some` of an empty list
+    /// means the player pressed Skip (see `Answer::Targets`).
     async fn ask_targets(
         &mut self,
         player: PlayerId,
@@ -745,7 +747,7 @@ pub trait Presenter {
                 continue;
             }
             let answer = match question {
-                Question::Targets { player, prompt, options, count } => {
+                Question::Targets { player, prompt, options, count, .. } => {
                     Answer::Targets(self.ask_targets(player, prompt, &options, count).await)
                 }
                 Question::Toggle { player, prompt } => Answer::Toggle(self.ask_toggle(player, prompt).await),
@@ -777,6 +779,9 @@ pub enum Question {
         prompt: Prompt,
         options: Vec<PlayerId>,
         count: usize,
+        /// What to ask, when it's more than the prompt's own key (the
+        /// Arsonist's question lists the houses already doused).
+        text: Option<crate::messages::Message>,
     },
     Toggle {
         player: PlayerId,
@@ -800,7 +805,9 @@ impl Question {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Answer {
-    /// `None`: declined, timed out, or not answered.
+    /// `None`: timed out or not answered. `Some` of an empty list: the
+    /// player pressed Skip, which only the Hunter's last shot tells apart
+    /// from no answer; everywhere else it counts as no answer.
     Targets(Option<Vec<PlayerId>>),
     Toggle(bool),
 }
@@ -818,6 +825,11 @@ pub trait OnAnswer {
     /// say so: `LynchPeaceTimeout`). Default: nothing closes early.
     fn closed(&self, _index: usize) -> bool {
         false
+    }
+
+    /// The key a presenter edits a closed question's message to.
+    fn closed_key(&self, _index: usize) -> &'static str {
+        "TimesUp"
     }
 }
 
@@ -875,7 +887,12 @@ struct BatchBuilder {
 
 impl BatchBuilder {
     fn targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], count: usize) -> usize {
-        self.questions.push(Question::Targets { player, prompt, options: options.to_vec(), count });
+        self.questions.push(Question::Targets { player, prompt, options: options.to_vec(), count, text: None });
+        self.questions.len() - 1
+    }
+
+    fn targets_with_text(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], text: crate::messages::Message) -> usize {
+        self.questions.push(Question::Targets { player, prompt, options: options.to_vec(), count: 1, text: Some(text) });
         self.questions.len() - 1
     }
 
@@ -898,39 +915,6 @@ fn single_target_answer(answers: &[Answer], index: Option<usize>) -> Option<Play
 
 fn toggle_answer(answers: &[Answer], index: Option<usize>) -> bool {
     matches!(index.map(|i| &answers[i]), Some(Answer::Toggle(true)))
-}
-
-/// The one place that validates a presenter's answer actually matches what
-/// was asked for: exactly `count` entries, all distinct. Every call site
-/// below goes through this — including `ask_one` — so "what counts as a
-/// well-formed answer" is defined once, not re-derived per arity.
-async fn ask_exact(
-    presenter: &mut dyn Presenter,
-    player: PlayerId,
-    prompt: Prompt,
-    options: &[PlayerId],
-    count: usize,
-) -> Option<Vec<PlayerId>> {
-    let picked = presenter.ask_targets(player, prompt, options, count).await?;
-    validate_pick(picked, options, count)
-}
-
-/// Convenience for the one-target case, since it's by far the common one
-/// (every role in `one_target_prompt` below, plus both of Witch's potion
-/// questions — nine call sites and counting). Cupid's two-target ask has
-/// exactly one call site, so it isn't given the same treatment: naming a
-/// function for something called once is the same mistake as `ask_target`/
-/// `ask_two_targets` being separate trait methods, just moved down a
-/// layer — it goes straight through `ask_exact` at its call site instead.
-async fn ask_one(
-    presenter: &mut dyn Presenter,
-    player: PlayerId,
-    prompt: Prompt,
-    options: &[PlayerId],
-) -> Option<PlayerId> {
-    ask_exact(presenter, player, prompt, options, 1)
-        .await
-        .and_then(|v| v.into_iter().next())
 }
 
 /// What every alive player brings into either phase: who they are and
@@ -1001,7 +985,7 @@ pub async fn resolve_night_by_actor(
     states: &mut HashMap<PlayerId, RoleState>,
     presenter: &mut dyn Presenter,
 ) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>) {
-    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter, &[]).await;
+    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter, &[], &[]).await;
     (actions, wolf_target)
 }
 
@@ -1012,13 +996,16 @@ pub async fn resolve_night_by_actor(
 ///
 /// Players in `skip` get no menu tonight: drunk wolves, and wolves after
 /// the Blacksmith's silver (Werewolf.cs:5191, 5316). A Chemist who hasn't
-/// brewed brews instead of being asked (Werewolf.cs:5259-5271).
+/// brewed brews instead of being asked (Werewolf.cs:5259-5271). The
+/// Arsonist is offered only houses not yet `doused`, is shown those that
+/// are, and can spark only once there are some (Werewolf.cs:5280-5292).
 pub async fn resolve_night_with_freeze(
     players: &[AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
     freeze: Option<(PlayerId, Vec<PlayerId>)>,
     presenter: &mut dyn Presenter,
     skip: &[PlayerId],
+    doused: &[PlayerId],
 ) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>, Option<(PlayerId, PlayerId)>) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut actions: Vec<(PlayerId, NightAction)> = vec![];
@@ -1047,6 +1034,19 @@ pub async fn resolve_night_with_freeze(
         let mut a = Asked { player: *player, cupid: None, target: None, toggle: None };
         if player.role == Role::Cupid {
             a.cupid = Some(batch.targets(player.id, Prompt::CupidLink, &alive, 2));
+        } else if player.role == Role::Arsonist {
+            let options: Vec<PlayerId> = alive.iter().copied().filter(|id| !doused.contains(id)).collect();
+            let living_doused: Vec<PlayerId> = alive.iter().copied().filter(|id| doused.contains(id)).collect();
+            let text = if living_doused.is_empty() {
+                Message::new("AskArsonistNoDoused", vec![])
+            } else {
+                Message::new("AskArsonist", vec![])
+                    .followed_by(Message::new("AlreadyDousedList", vec![MessageArg::PlayersAnd(living_doused.clone())]))
+            };
+            a.target = Some(batch.targets_with_text(player.id, Prompt::ArsonistDouse, &options, text));
+            if !living_doused.is_empty() {
+                a.toggle = Some(batch.toggle(player.id, Prompt::ArsonistSpark));
+            }
         } else {
             // A role model is picked once (Werewolf.cs:5222-5237).
             let picked = matches!(player.role, Role::WildChild | Role::Doppelganger) && state.primary_used;
@@ -1228,11 +1228,13 @@ struct LynchVotes<'a> {
     rng: &'a mut dyn RngSource,
     /// `(voter, target)`, in the order the votes landed.
     cast: Vec<(PlayerId, PlayerId)>,
+    /// Players shot today, who can't vote or be voted for.
+    excluded: Vec<PlayerId>,
 }
 
 impl<'a> LynchVotes<'a> {
     fn new(rules: &'a GameRules, rng: &'a mut dyn RngSource, alive: usize) -> Self {
-        LynchVotes { ballots: vec![], alive, rules, rng, cast: vec![] }
+        LynchVotes { ballots: vec![], alive, rules, rng, cast: vec![], excluded: vec![] }
     }
 
     fn ask(&mut self, batch: &mut BatchBuilder, voter: &AlivePlayer, alive: &[PlayerId]) {
@@ -1251,6 +1253,7 @@ impl OnAnswer for LynchVotes<'_> {
         let Answer::Targets(Some(picked)) = answer else {
             return vec![];
         };
+        let options: Vec<PlayerId> = options.into_iter().filter(|o| !self.excluded.contains(o)).collect();
         let Some(choice) = validate_pick(picked.clone(), &options, 1).map(|v| v[0]) else {
             return vec![];
         };
@@ -1280,12 +1283,54 @@ struct DayAnswers<'a> {
     /// Whether a Pacifist's peace stands: peace sets it and a later
     /// Troublemaker clears it (Werewolf.cs:916-917, 970-971).
     peace: bool,
+    /// Batch index of each Gunner's shot, with the Gunner.
+    shots: Vec<(usize, AlivePlayer)>,
+    /// Who each question in the batch is for, by index.
+    owners: Vec<PlayerId>,
+    players: &'a [AlivePlayer],
+    /// `ShowRolesDeath`, for the shot's line.
+    reveal: bool,
+}
+
+impl DayAnswers<'_> {
+    /// The Gunner's shot kills at once (Werewolf.cs:2873-2898): its line
+    /// is told now, and the victim is out of the rest of the day.
+    fn shoot(&mut self, gunner: AlivePlayer, answer: &Answer) -> Vec<NarrationEvent> {
+        let Answer::Targets(Some(picked)) = answer else { return vec![] };
+        let Some(&target) = picked.first() else { return vec![] };
+        let Some(victim) = self.players.iter().find(|p| p.id == target && p.id != gunner.id) else { return vec![] };
+        if self.votes.excluded.contains(&target) {
+            return vec![];
+        }
+        self.votes.excluded.push(target);
+        self.votes.cast.retain(|&(voter, voted)| voter != target && voted != target);
+        let message = death_message(&DeathContext {
+            victim: target,
+            role: victim.role,
+            method: KillMethod::Shoot,
+            by: Some((gunner.id, Role::Gunner)),
+            killer_was_lynched: false,
+            reveal: self.reveal,
+            pack_size: 0,
+            killed_by: Some(Role::Gunner),
+        });
+        let mut said =
+            vec![NarrationEvent::Death { victim: target, role: victim.role, method: KillMethod::Shoot, reveal_role: self.reveal, message }];
+        if victim.role == Role::WiseElder {
+            said.push(NarrationEvent::Announce(Announcement::GunnerShotWiseElder { gunner: gunner.id, elder: target }));
+        }
+        said
+    }
 }
 
 impl OnAnswer for DayAnswers<'_> {
     fn answered(&mut self, index: usize, answer: &Answer) -> Vec<NarrationEvent> {
         if self.closed(index) {
             return vec![];
+        }
+        if let Some(at) = self.shots.iter().position(|(i, _)| *i == index) {
+            let (_, gunner) = self.shots.remove(at);
+            return self.shoot(gunner, answer);
         }
         let Some(at) = self.abilities.iter().position(|(i, _)| *i == index) else {
             return self.votes.answered(index, answer);
@@ -1313,6 +1358,22 @@ impl OnAnswer for DayAnswers<'_> {
     }
 
     fn closed(&self, index: usize) -> bool {
+        self.shot_asked(index) || self.peace_closed(index)
+    }
+
+    fn closed_key(&self, index: usize) -> &'static str {
+        if self.peace_closed(index) && !self.shot_asked(index) { "LynchPeaceTimeout" } else { "TimesUp" }
+    }
+}
+
+impl DayAnswers<'_> {
+    /// Question `index` is for someone shot today.
+    fn shot_asked(&self, index: usize) -> bool {
+        self.owners.get(index).is_some_and(|p| self.votes.excluded.contains(p))
+    }
+
+    /// Question `index` is a lynch vote a Pacifist's peace closed.
+    fn peace_closed(&self, index: usize) -> bool {
         self.peace && self.votes.ballots.iter().any(|(i, _, _)| *i == index)
     }
 }
@@ -1408,12 +1469,23 @@ pub async fn resolve_day(
 ) -> (Vec<DayAction>, LynchResult) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut batch = BatchBuilder::default();
-    let mut day = DayAnswers { votes: LynchVotes::new(rules, rng, alive.len()), abilities: vec![], peace: false };
+    let mut day = DayAnswers {
+        votes: LynchVotes::new(rules, rng, alive.len()),
+        abilities: vec![],
+        peace: false,
+        shots: vec![],
+        owners: vec![],
+        players,
+        reveal: rules.show_roles_on_death,
+    };
     let mut asked = vec![];
     for player in players {
         day.votes.ask(&mut batch, player, &alive);
         let state = states.entry(player.id).or_default();
         let target = one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &alive, 1));
+        if let (Some(index), Role::Gunner) = (target, player.role) {
+            day.shots.push((index, *player));
+        }
         // Each yes/no ability is used once, and not offered again
         // (Werewolf.cs:5070-5100, `!HasUsedAbility`).
         let toggle = toggle_day_prompt(player.role)
@@ -1424,8 +1496,10 @@ pub async fn resolve_day(
         }
         asked.push((player, target, toggle));
     }
+    day.owners = batch.questions.iter().map(Question::player).collect();
     let answers = ask_phase(presenter, Phase::Day, &batch.questions, &mut day).await;
     let peace = day.peace;
+    let shot = day.votes.excluded.clone();
     let votes_by_voter = day.votes.cast;
 
     let mut day_actions = vec![];
@@ -1435,7 +1509,8 @@ pub async fn resolve_day(
         let ctx = DayContext {
             alive: &alive,
             self_id: player.id,
-            chosen_target: single_target_answer(&answers, target),
+            // Someone shot today doesn't snoop or shoot at day's end.
+            chosen_target: single_target_answer(&answers, target).filter(|_| !shot.contains(&player.id)),
             toggle_choice: toggle_answer(&answers, toggle),
         };
         day_actions.extend(behavior.day_action(&ctx, state));
@@ -1835,12 +1910,20 @@ pub async fn resolve_hunter_shots_by(
         };
         let options: Vec<PlayerId> = alive_ids.iter().copied().filter(|&id| id != hunter_id).collect();
         let lynched = method == KillMethod::Lynch;
-        match ask_one(presenter, hunter_id, prompt, &options).await {
-            Some(target) => shots.push((target, hunter_id)),
-            None => {
+        // Skip (an empty pick) and no answer are told apart
+        // (Werewolf.cs:5453-5463).
+        match presenter.ask_targets(hunter_id, prompt, &options, 1).await {
+            Some(picked) if picked.is_empty() => {
                 let announcement = Announcement::HunterSkipChoice { hunter: hunter_id, lynched };
                 presenter.narrate(NarrationEvent::Announce(announcement)).await;
             }
+            picked => match picked.and_then(|p| validate_pick(p, &options, 1)) {
+                Some(target) => shots.push((target[0], hunter_id)),
+                None => {
+                    let announcement = Announcement::HunterNoChoice { hunter: hunter_id, lynched };
+                    presenter.narrate(NarrationEvent::Announce(announcement)).await;
+                }
+            },
         }
     }
 
