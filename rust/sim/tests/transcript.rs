@@ -14,7 +14,7 @@ use sim::{load_fixtures, FixturePresenter, TranscriptPresenter};
 use std::collections::HashMap;
 
 const FIXTURE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/games_100.json");
-const LANGUAGE_PACK_PATH: &str = "/home/user/Werewolf/Werewolf for Telegram/Languages/English.xml";
+const LANGUAGE_PACK_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages/English.xml");
 
 #[tokio::test]
 async fn narrates_a_full_fixture_replay_as_a_readable_transcript() {

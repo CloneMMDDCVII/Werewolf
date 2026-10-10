@@ -1,7 +1,7 @@
 use i18n::Catalog;
 
 const LANGUAGES_DIR: &str =
-    "/home/user/Werewolf/Werewolf for Telegram/Languages";
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages");
 
 #[test]
 fn loads_all_language_files_without_error() {

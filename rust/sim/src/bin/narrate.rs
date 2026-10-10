@@ -17,7 +17,7 @@ use std::fs;
 
 const FIXTURE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/games_100.json");
 const LANGUAGE_PACK_PATH: &str =
-    "/home/user/Werewolf/Werewolf for Telegram/Languages/English.xml";
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages/English.xml");
 
 #[tokio::main]
 async fn main() {

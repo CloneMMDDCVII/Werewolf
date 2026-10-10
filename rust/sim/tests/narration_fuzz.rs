@@ -28,7 +28,7 @@ use shared::ALL_ROLES;
 use sim::TranscriptPresenter;
 use std::collections::HashMap;
 
-const LANGUAGE_PACK_PATH: &str = "/home/user/Werewolf/Werewolf for Telegram/Languages/English.xml";
+const LANGUAGE_PACK_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages/English.xml");
 const SEEDS: u64 = 300;
 
 struct Xorshift64(u64);
