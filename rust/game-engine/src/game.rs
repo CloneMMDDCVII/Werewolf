@@ -6,7 +6,7 @@
 //! `fixture_day_replay.rs`) checked a single night or a single day in
 //! isolation.
 
-use crate::freeze::{apply_freeze, ask_freeze};
+use crate::freeze::{apply_freeze, freeze_question};
 use crate::death_text::{death_message, DeathContext};
 use crate::game_end::{check_game_end, wolves_win_plural, EndContext, GameEnd};
 use crate::messages::{Announcement, Note};
@@ -18,7 +18,7 @@ use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::orchestrator::{
     apply_day_results, apply_night_results, last_day_veto, resolve_arsonist_detonation, resolve_chemistry,
     resolve_cultist_conversion, resolve_day, resolve_grave_digger_falls, resolve_harlot_visit_deaths,
-    resolve_hunter_shots_by, resolve_lover_deaths, resolve_lynch_vote, resolve_night_by_actor,
+    resolve_hunter_shots_by, resolve_lover_deaths, resolve_lynch_vote, resolve_night_with_freeze,
     resolve_spumpkin_detonation, resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
 };
 use crate::reveals::{resolve_detective, resolve_night_readings, AugurMemory};
@@ -175,14 +175,16 @@ pub async fn run_game_with_rules(
         let start_of_night = alive.clone();
         let night_seconds = rules.night_seconds(round, &alive);
         presenter.narrate(NarrationEvent::Announce(Announcement::NightTime { seconds: night_seconds })).await;
-        let freeze = ask_freeze(&alive, frozen_last_night, silver_spread_tonight, presenter).await;
         if rules.thief_full {
             // A full-mode Thief may try every night (Werewolf.cs:4166).
             for p in alive.iter().filter(|p| p.role == Role::Thief) {
                 states.entry(p.id).or_default().primary_used = false;
             }
         }
-        let (mut tagged_actions, wolf_target) = resolve_night_by_actor(&alive, &mut states, presenter).await;
+        // The Snow Wolf's freeze goes out with everyone else's night question.
+        let freeze_ask = freeze_question(&alive, frozen_last_night, silver_spread_tonight);
+        let (mut tagged_actions, wolf_target, freeze) =
+            resolve_night_with_freeze(&alive, &mut states, freeze_ask, presenter).await;
         let freeze_outcome = apply_freeze(freeze, &mut tagged_actions, &alive, dug_graves, rules.thief_full, rng);
         narrate_all(freeze_outcome.events, presenter).await;
         frozen_last_night = freeze_outcome.frozen;

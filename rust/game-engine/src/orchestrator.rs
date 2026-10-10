@@ -773,6 +773,172 @@ pub trait Presenter {
     fn game_was_killed(&mut self) -> bool {
         false
     }
+
+    /// Asks a whole phase's questions at once and returns one answer per
+    /// question, in order. The legacy game sends every night prompt
+    /// together under one timer (`SendNightActions`) and every lynch vote
+    /// together under another, so a real presenter overrides this to send
+    /// them all and wait once; asking one player after another would make
+    /// a ten-player night ten timers long.
+    ///
+    /// `on_answer` is the engine's reaction to each answer the moment it
+    /// lands, before the rest of the batch is in: a presenter calls it as
+    /// each answer arrives and narrates what it returns right away. That
+    /// is how a lynch vote is announced when it is cast
+    /// (Werewolf.cs:1125-1137), not after everyone has voted.
+    ///
+    /// The default asks one question at a time through `ask_targets` and
+    /// `ask_toggle`, in order, calling `on_answer` after each, so a
+    /// presenter that doesn't override it sees exactly the calls it always
+    /// did.
+    async fn ask_batch(&mut self, _phase: Phase, questions: Vec<Question>, on_answer: &mut dyn OnAnswer) -> Vec<Answer> {
+        let mut answers = Vec::with_capacity(questions.len());
+        for (index, question) in questions.into_iter().enumerate() {
+            let answer = match question {
+                Question::Targets { player, prompt, options, count } => {
+                    Answer::Targets(self.ask_targets(player, prompt, &options, count).await)
+                }
+                Question::Toggle { player, prompt } => Answer::Toggle(self.ask_toggle(player, prompt).await),
+            };
+            for event in on_answer.answered(index, &answer) {
+                self.narrate(event).await;
+            }
+            answers.push(answer);
+        }
+        answers
+    }
+}
+
+/// Which phase a batch of questions belongs to, so a presenter can pick
+/// the right timer: the night's, or the day's (role actions for the whole
+/// day, then the lynch vote).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    Night,
+    Day,
+}
+
+/// One question in a batch: the same two shapes as `ask_targets` and
+/// `ask_toggle`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Question {
+    Targets {
+        player: PlayerId,
+        prompt: Prompt,
+        options: Vec<PlayerId>,
+        count: usize,
+    },
+    Toggle {
+        player: PlayerId,
+        prompt: Prompt,
+    },
+}
+
+impl Question {
+    pub fn player(&self) -> PlayerId {
+        match self {
+            Question::Targets { player, .. } | Question::Toggle { player, .. } => *player,
+        }
+    }
+
+    pub fn prompt(&self) -> Prompt {
+        match self {
+            Question::Targets { prompt, .. } | Question::Toggle { prompt, .. } => *prompt,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Answer {
+    /// `None`: declined, timed out, or not answered.
+    Targets(Option<Vec<PlayerId>>),
+    Toggle(bool),
+}
+
+/// See `Presenter::ask_batch`.
+pub trait OnAnswer {
+    /// Answer `index` of the batch just landed; returns what to tell the
+    /// group or the player now. Called at most once per question.
+    fn answered(&mut self, index: usize, answer: &Answer) -> Vec<NarrationEvent>;
+}
+
+/// For batches nothing needs to react to as they're answered.
+pub struct Quiet;
+
+impl OnAnswer for Quiet {
+    fn answered(&mut self, _: usize, _: &Answer) -> Vec<NarrationEvent> {
+        vec![]
+    }
+}
+
+/// Sends one phase's questions and returns validated answers, one per
+/// question (see `validate_pick`); an answer of the wrong shape, or a
+/// missing one, counts as no answer.
+async fn ask_phase(
+    presenter: &mut dyn Presenter,
+    phase: Phase,
+    questions: &[Question],
+    on_answer: &mut dyn OnAnswer,
+) -> Vec<Answer> {
+    if questions.is_empty() {
+        return vec![];
+    }
+    let mut answers = presenter.ask_batch(phase, questions.to_vec(), on_answer).await.into_iter();
+    questions.iter().map(|q| validate_answer(q, answers.next())).collect()
+}
+
+fn validate_answer(question: &Question, answer: Option<Answer>) -> Answer {
+    match (question, answer) {
+        (Question::Targets { options, count, .. }, Some(Answer::Targets(Some(picked)))) => {
+            Answer::Targets(validate_pick(picked, options, *count))
+        }
+        (Question::Targets { .. }, _) => Answer::Targets(None),
+        (Question::Toggle { .. }, Some(Answer::Toggle(b))) => Answer::Toggle(b),
+        (Question::Toggle { .. }, _) => Answer::Toggle(false),
+    }
+}
+
+/// What counts as a well-formed pick: exactly `count` entries, all
+/// distinct, all among the options offered. An answer outside the options
+/// (a stale button for a player who has since died, say) counts as no
+/// answer, never as a pick.
+fn validate_pick(picked: Vec<PlayerId>, options: &[PlayerId], count: usize) -> Option<Vec<PlayerId>> {
+    let all_distinct = (1..picked.len()).all(|i| !picked[..i].contains(&picked[i]));
+    let all_offered = picked.iter().all(|p| options.contains(p));
+    (picked.len() == count && all_distinct && all_offered).then_some(picked)
+}
+
+/// Builds a batch while remembering where each question landed.
+#[derive(Default)]
+struct BatchBuilder {
+    questions: Vec<Question>,
+}
+
+impl BatchBuilder {
+    fn targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], count: usize) -> usize {
+        self.questions.push(Question::Targets { player, prompt, options: options.to_vec(), count });
+        self.questions.len() - 1
+    }
+
+    fn toggle(&mut self, player: PlayerId, prompt: Prompt) -> usize {
+        self.questions.push(Question::Toggle { player, prompt });
+        self.questions.len() - 1
+    }
+}
+
+fn targets_answer(answers: &[Answer], index: Option<usize>) -> Option<Vec<PlayerId>> {
+    match index.map(|i| &answers[i]) {
+        Some(Answer::Targets(t)) => t.clone(),
+        _ => None,
+    }
+}
+
+fn single_target_answer(answers: &[Answer], index: Option<usize>) -> Option<PlayerId> {
+    targets_answer(answers, index).and_then(|v| v.into_iter().next())
+}
+
+fn toggle_answer(answers: &[Answer], index: Option<usize>) -> bool {
+    matches!(index.map(|i| &answers[i]), Some(Answer::Toggle(true)))
 }
 
 /// The one place that validates a presenter's answer actually matches what
@@ -787,15 +953,7 @@ async fn ask_exact(
     count: usize,
 ) -> Option<Vec<PlayerId>> {
     let picked = presenter.ask_targets(player, prompt, options, count).await?;
-    let all_distinct = (1..picked.len()).all(|i| !picked[..i].contains(&picked[i]));
-    // An answer outside the options offered (a stale button for a player
-    // who has since died, say) counts as no answer, never as a pick.
-    let all_offered = picked.iter().all(|p| options.contains(p));
-    if picked.len() == count && all_distinct && all_offered {
-        Some(picked)
-    } else {
-        None
-    }
+    validate_pick(picked, options, count)
 }
 
 /// Convenience for the one-target case, since it's by far the common one
@@ -884,56 +1042,65 @@ pub async fn resolve_night_by_actor(
     states: &mut HashMap<PlayerId, RoleState>,
     presenter: &mut dyn Presenter,
 ) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>) {
+    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter).await;
+    (actions, wolf_target)
+}
+
+/// `resolve_night_by_actor`, with the Snow Wolf's freeze question
+/// (`freeze::freeze_question`: the Snow Wolf and who they may freeze) sent
+/// in the same batch as everyone else's night question. Also returns the
+/// freeze picked, as `(snow_wolf, target)`.
+pub async fn resolve_night_with_freeze(
+    players: &[AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    freeze: Option<(PlayerId, Vec<PlayerId>)>,
+    presenter: &mut dyn Presenter,
+) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>, Option<(PlayerId, PlayerId)>) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut actions: Vec<(PlayerId, NightAction)> = vec![];
 
-    // --- Stage 1: roles with no dependencies ---
+    // --- Stage 1: roles with no dependencies, all asked at once ---
+    struct Asked {
+        player: AlivePlayer,
+        cupid: Option<usize>,
+        target: Option<usize>,
+        toggle: Option<usize>,
+    }
+    let mut batch = BatchBuilder::default();
+    let freeze_index = freeze.as_ref().map(|(snow_wolf, options)| batch.targets(*snow_wolf, Prompt::SnowWolfFreeze, options, 1));
+    let mut asked = vec![];
     for player in players {
-        let behavior = behavior_for(player.role);
-        if !behavior.requires().is_empty() {
+        if !behavior_for(player.role).requires().is_empty() {
             continue; // handled in stage 2
         }
-
-        let state = states.entry(player.id).or_default();
-
+        let mut a = Asked { player: *player, cupid: None, target: None, toggle: None };
         if player.role == Role::Cupid {
-            let chosen = ask_exact(presenter, player.id, Prompt::CupidLink, &alive, 2)
-                .await
-                .map(|v| (v[0], v[1]));
-            let ctx = NightContext {
-                alive: &alive,
-                self_id: player.id,
-                chosen_target: None,
-                heal_target: None,
-                poison_target: None,
-                love_targets: chosen,
-                wolf_target: None,
-                toggle_choice: false,
-            };
-            actions.extend(behavior.night_action(&ctx, state).into_iter().map(|a| (player.id, a)));
-            continue;
+            a.cupid = Some(batch.targets(player.id, Prompt::CupidLink, &alive, 2));
+        } else {
+            a.target = one_target_prompt(player.role).map(|prompt| batch.targets(player.id, prompt, &alive, 1));
+            a.toggle = toggle_night_prompt(player.role).map(|prompt| batch.toggle(player.id, prompt));
         }
+        asked.push(a);
+    }
+    let answers = ask_phase(presenter, Phase::Night, &batch.questions, &mut Quiet).await;
 
-        let chosen_target = match one_target_prompt(player.role) {
-            Some(prompt) => ask_one(presenter, player.id, prompt, &alive).await,
-            None => None,
-        };
-        let toggle_choice = match toggle_night_prompt(player.role) {
-            Some(prompt) => presenter.ask_toggle(player.id, prompt).await,
-            None => false,
-        };
-
+    let freeze = freeze
+        .zip(single_target_answer(&answers, freeze_index))
+        .map(|((snow_wolf, _), target)| (snow_wolf, target));
+    for a in &asked {
+        let behavior = behavior_for(a.player.role);
+        let state = states.entry(a.player.id).or_default();
         let ctx = NightContext {
             alive: &alive,
-            self_id: player.id,
-            chosen_target,
+            self_id: a.player.id,
+            chosen_target: single_target_answer(&answers, a.target),
             heal_target: None,
             poison_target: None,
-            love_targets: None,
+            love_targets: targets_answer(&answers, a.cupid).map(|v| (v[0], v[1])),
             wolf_target: None,
-            toggle_choice,
+            toggle_choice: toggle_answer(&answers, a.toggle),
         };
-        actions.extend(behavior.night_action(&ctx, state).into_iter().map(|a| (player.id, a)));
+        actions.extend(behavior.night_action(&ctx, state).into_iter().map(|act| (a.player.id, act)));
     }
 
     // Tally the wolves' target: majority vote among EatVote actions, tie
@@ -944,7 +1111,10 @@ pub async fn resolve_night_by_actor(
         _ => None,
     }));
 
-    // --- Stage 2: roles depending on a fact produced above ---
+    // --- Stage 2: roles depending on a fact produced above, asked
+    // together once that fact is known ---
+    let mut batch = BatchBuilder::default();
+    let mut asked = vec![];
     for player in players {
         let behavior = behavior_for(player.role);
         if behavior.requires().is_empty() {
@@ -954,23 +1124,25 @@ pub async fn resolve_night_by_actor(
             behavior.requires().contains(&NightFact::WolfTarget),
             "stage 2 currently only understands WolfTarget-dependent roles"
         );
-
-        let state = states.entry(player.id).or_default();
-
         // Witch is the only stage-2 role today: ask both her potion
         // questions. `is_available()` is a role-assignment-time concern
         // (whether she's dealt into the game at all), not enforced here —
         // if she's in `players`, the orchestrator resolves her correctly
         // regardless, which is what proves the dependency plumbing works.
-        let heal_target = ask_one(presenter, player.id, Prompt::WitchHeal, &alive).await;
-        let poison_target = ask_one(presenter, player.id, Prompt::WitchPoison, &alive).await;
-
+        let heal = batch.targets(player.id, Prompt::WitchHeal, &alive, 1);
+        let poison = batch.targets(player.id, Prompt::WitchPoison, &alive, 1);
+        asked.push((*player, heal, poison));
+    }
+    let answers = ask_phase(presenter, Phase::Night, &batch.questions, &mut Quiet).await;
+    for (player, heal, poison) in asked {
+        let behavior = behavior_for(player.role);
+        let state = states.entry(player.id).or_default();
         let ctx = NightContext {
             alive: &alive,
             self_id: player.id,
             chosen_target: None,
-            heal_target,
-            poison_target,
+            heal_target: single_target_answer(&answers, Some(heal)),
+            poison_target: single_target_answer(&answers, Some(poison)),
             love_targets: None,
             wolf_target,
             toggle_choice: false,
@@ -978,7 +1150,7 @@ pub async fn resolve_night_by_actor(
         actions.extend(behavior.night_action(&ctx, state).into_iter().map(|a| (player.id, a)));
     }
 
-    (actions, wolf_target)
+    (actions, wolf_target, freeze)
 }
 
 /// The one place "tally votes, find the majority, ties resolve to no
@@ -1064,40 +1236,60 @@ impl LynchResult {
     }
 }
 
-/// Asks `voter` for their lynch vote. Nobody can vote for themselves
-/// (Werewolf.cs:4959: `x.Id != player.Id`). A Clumsy Guy's vote has a
-/// 50% chance of landing on a random living player other than themselves
+/// Collects lynch votes as they are cast, announcing each one
+/// (Werewolf.cs:1125-1137). Nobody can vote for themselves
+/// (Werewolf.cs:4959: `x.Id != player.Id`). A Clumsy Guy's vote has a 50%
+/// chance of landing on a random living player other than themselves
 /// instead (Werewolf.cs:999-1011, `ChooseRandomPlayerId(player, false)`),
-/// which may happen to be the player they picked.
-async fn ask_lynch_vote(
-    voter: &AlivePlayer,
-    alive: &[PlayerId],
-    presenter: &mut dyn Presenter,
-    rng: &mut dyn RngSource,
-) -> Option<PlayerId> {
-    let options: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != voter.id).collect();
-    let choice = ask_one(presenter, voter.id, Prompt::LynchVote, &options).await?;
-    if voter.role == Role::ClumsyGuy && !options.is_empty() && rng.chance(50) {
-        return Some(options[rng.pick_index(options.len())]);
-    }
-    Some(choice)
+/// which may happen to be the player they picked; the announcement names
+/// where it landed.
+struct LynchVotes<'a> {
+    /// Batch index of each voter's question, with the voter and the
+    /// players they could vote for.
+    ballots: Vec<(usize, AlivePlayer, Vec<PlayerId>)>,
+    alive: usize,
+    rules: &'a GameRules,
+    rng: &'a mut dyn RngSource,
+    /// `(voter, target)`, in the order the votes landed.
+    cast: Vec<(PlayerId, PlayerId)>,
 }
 
-/// Tells the group about a vote as it lands: who voted for whom, or under
-/// secret lynch only how many have voted so far (Werewolf.cs:1125-1137).
-async fn announce_vote(
-    voter: PlayerId,
-    target: PlayerId,
-    voted_so_far: usize,
-    alive: usize,
-    rules: &GameRules,
-    presenter: &mut dyn Presenter,
-) {
-    let announcement = match rules.secret_lynch {
-        None => Announcement::PlayerVotedLynch { voter, target },
-        Some(_) => Announcement::PlayerVoteCounts { voted: voted_so_far as u32, alive: alive as u32 },
-    };
-    presenter.narrate(NarrationEvent::Announce(announcement)).await;
+impl<'a> LynchVotes<'a> {
+    fn new(rules: &'a GameRules, rng: &'a mut dyn RngSource, alive: usize) -> Self {
+        LynchVotes { ballots: vec![], alive, rules, rng, cast: vec![] }
+    }
+
+    fn ask(&mut self, batch: &mut BatchBuilder, voter: &AlivePlayer, alive: &[PlayerId]) {
+        let options: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != voter.id).collect();
+        let index = batch.targets(voter.id, Prompt::LynchVote, &options, 1);
+        self.ballots.push((index, *voter, options));
+    }
+}
+
+impl OnAnswer for LynchVotes<'_> {
+    fn answered(&mut self, index: usize, answer: &Answer) -> Vec<NarrationEvent> {
+        let Some(at) = self.ballots.iter().position(|(i, _, _)| *i == index) else {
+            return vec![];
+        };
+        let (_, voter, options) = self.ballots.remove(at); // one vote per ballot
+        let Answer::Targets(Some(picked)) = answer else {
+            return vec![];
+        };
+        let Some(choice) = validate_pick(picked.clone(), &options, 1).map(|v| v[0]) else {
+            return vec![];
+        };
+        let target = if voter.role == Role::ClumsyGuy && !options.is_empty() && self.rng.chance(50) {
+            options[self.rng.pick_index(options.len())]
+        } else {
+            choice
+        };
+        self.cast.push((voter.id, target));
+        let announcement = match self.rules.secret_lynch {
+            None => Announcement::PlayerVotedLynch { voter: voter.id, target },
+            Some(_) => Announcement::PlayerVoteCounts { voted: self.cast.len() as u32, alive: self.alive as u32 },
+        };
+        vec![NarrationEvent::Announce(announcement)]
+    }
 }
 
 /// Secret lynch results, most votes first (Werewolf.cs:2717-2741), when
@@ -1164,13 +1356,13 @@ pub async fn resolve_lynch_vote(
     rng: &mut dyn RngSource,
 ) -> LynchResult {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
-    let mut votes_by_voter = vec![];
+    let mut batch = BatchBuilder::default();
+    let mut votes = LynchVotes::new(rules, rng, alive.len());
     for player in players {
-        if let Some(target) = ask_lynch_vote(player, &alive, presenter, rng).await {
-            votes_by_voter.push((player.id, target));
-            announce_vote(player.id, target, votes_by_voter.len(), alive.len(), rules, presenter).await;
-        }
+        votes.ask(&mut batch, player, &alive);
     }
+    ask_phase(presenter, Phase::Day, &batch.questions, &mut votes).await;
+    let votes_by_voter = votes.cast;
     if let Some(results) = secret_lynch_results(&votes_by_voter, players, states, rules) {
         presenter.narrate(NarrationEvent::Announce(results)).await;
     }
@@ -1190,32 +1382,28 @@ pub async fn resolve_day(
     rng: &mut dyn RngSource,
 ) -> (Vec<DayAction>, LynchResult) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
-    let mut day_actions = vec![];
-    let mut votes_by_voter: Vec<(PlayerId, PlayerId)> = vec![];
-
+    let mut batch = BatchBuilder::default();
+    let mut votes = LynchVotes::new(rules, rng, alive.len());
+    let mut asked = vec![];
     for player in players {
-        if let Some(target) = ask_lynch_vote(player, &alive, presenter, rng).await {
-            votes_by_voter.push((player.id, target));
-            announce_vote(player.id, target, votes_by_voter.len(), alive.len(), rules, presenter).await;
-        }
+        votes.ask(&mut batch, player, &alive);
+        let state = states.entry(player.id).or_default();
+        let target = one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &alive, 1));
+        let toggle = toggle_day_prompt(player.role).map(|prompt| batch.toggle(player.id, prompt));
+        asked.push((player, target, toggle));
+    }
+    let answers = ask_phase(presenter, Phase::Day, &batch.questions, &mut votes).await;
+    let votes_by_voter = votes.cast;
 
+    let mut day_actions = vec![];
+    for (player, target, toggle) in asked {
         let behavior = behavior_for(player.role);
         let state = states.entry(player.id).or_default();
-
-        let chosen_target = match one_target_day_prompt(player.role, state) {
-            Some(prompt) => ask_one(presenter, player.id, prompt, &alive).await,
-            None => None,
-        };
-        let toggle_choice = match toggle_day_prompt(player.role) {
-            Some(prompt) => presenter.ask_toggle(player.id, prompt).await,
-            None => false,
-        };
-
         let ctx = DayContext {
             alive: &alive,
             self_id: player.id,
-            chosen_target,
-            toggle_choice,
+            chosen_target: single_target_answer(&answers, target),
+            toggle_choice: toggle_answer(&answers, toggle),
         };
         day_actions.extend(behavior.day_action(&ctx, state));
     }
@@ -1387,25 +1575,46 @@ mod apply_day_results_tests {
         assert_eq!(tally_lynch(&[], &players, &states), LynchResult::NoVotes);
     }
 
-    struct VoteFor(PlayerId);
-
-    #[async_trait(?Send)]
-    impl Presenter for VoteFor {
-        async fn ask_targets(&mut self, _: PlayerId, _: Prompt, _: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
-            Some(vec![self.0])
-        }
-    }
-
     /// Werewolf.cs:999-1011: half the time the Clumsy Guy's vote lands on
     /// a random living player other than themselves.
-    #[tokio::test]
-    async fn a_clumsy_guys_vote_can_go_astray() {
+    #[test]
+    fn a_clumsy_guys_vote_can_go_astray() {
         let clumsy = AlivePlayer { id: PlayerId(1), role: Role::ClumsyGuy };
         let alive = [PlayerId(1), PlayerId(2), PlayerId(3)];
+        let rules = GameRules::default();
+        let cast = |rng: &mut dyn RngSource| {
+            let mut votes = LynchVotes::new(&rules, rng, alive.len());
+            let mut batch = BatchBuilder::default();
+            votes.ask(&mut batch, &clumsy, &alive);
+            let said = votes.answered(0, &Answer::Targets(Some(vec![PlayerId(2)])));
+            (votes.cast, said)
+        };
         let mut rng = crate::rng::ScriptedRngSource::new().with_chance(true).with_index(1);
-        assert_eq!(ask_lynch_vote(&clumsy, &alive, &mut VoteFor(PlayerId(2)), &mut rng).await, Some(PlayerId(3)));
+        let (votes, said) = cast(&mut rng);
+        assert_eq!(votes, vec![(PlayerId(1), PlayerId(3))]);
+        // The announcement names where the vote landed.
+        assert_eq!(
+            said,
+            vec![NarrationEvent::Announce(Announcement::PlayerVotedLynch { voter: PlayerId(1), target: PlayerId(3) })]
+        );
         let mut rng = crate::rng::ScriptedRngSource::new().with_chance(false);
-        assert_eq!(ask_lynch_vote(&clumsy, &alive, &mut VoteFor(PlayerId(2)), &mut rng).await, Some(PlayerId(2)));
+        assert_eq!(cast(&mut rng).0, vec![(PlayerId(1), PlayerId(2))]);
+    }
+
+    /// A vote for yourself, or a second answer to the same ballot, is not
+    /// counted.
+    #[test]
+    fn votes_count_once_and_never_for_yourself() {
+        let voter = AlivePlayer { id: PlayerId(1), role: Role::Villager };
+        let alive = [PlayerId(1), PlayerId(2)];
+        let rules = GameRules::default();
+        let mut rng = crate::rng::ScriptedRngSource::new();
+        let mut votes = LynchVotes::new(&rules, &mut rng, alive.len());
+        let mut batch = BatchBuilder::default();
+        votes.ask(&mut batch, &voter, &alive);
+        assert!(votes.answered(0, &Answer::Targets(Some(vec![PlayerId(1)]))).is_empty());
+        assert!(votes.answered(0, &Answer::Targets(Some(vec![PlayerId(2)]))).is_empty());
+        assert!(votes.cast.is_empty());
     }
 
     /// Werewolf.cs:917 ("peace overrides trouble"): a Pacifist acting

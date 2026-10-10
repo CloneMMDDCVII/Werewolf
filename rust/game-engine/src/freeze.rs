@@ -52,15 +52,14 @@ const SNOW_WOLF_DIES_AT_SERIAL_KILLER_PERCENT: u32 = 80;
 /// Snow Wolf (Werewolf.cs:3114: `Program.R.Next(100) < 50`).
 const HUNTER_FROZEN_PERCENT: u32 = 50;
 
-/// Asks the living Snow Wolf who to freeze tonight. Nobody is asked the
-/// night after a Blacksmith spreads silver (Werewolf.cs:5274:
-/// `if (!_silverSpread)`). Returns `(snow_wolf, target)`.
-pub async fn ask_freeze(
+/// Who would be asked to freeze tonight and who they may pick: the living
+/// Snow Wolf, and everyone but wolves and last night's frozen player
+/// (Werewolf.cs:5274-5276). `None` when there's nobody to ask.
+pub fn freeze_question(
     alive: &[AlivePlayer],
     frozen_last_night: Option<PlayerId>,
     silver_spread: bool,
-    presenter: &mut dyn Presenter,
-) -> Option<(PlayerId, PlayerId)> {
+) -> Option<(PlayerId, Vec<PlayerId>)> {
     if silver_spread {
         return None;
     }
@@ -70,6 +69,19 @@ pub async fn ask_freeze(
         .filter(|p| p.id != snow_wolf && !is_legacy_wolf_role(p.role) && Some(p.id) != frozen_last_night)
         .map(|p| p.id)
         .collect();
+    Some((snow_wolf, options))
+}
+
+/// Asks the living Snow Wolf who to freeze tonight. Nobody is asked the
+/// night after a Blacksmith spreads silver (Werewolf.cs:5274:
+/// `if (!_silverSpread)`). Returns `(snow_wolf, target)`.
+pub async fn ask_freeze(
+    alive: &[AlivePlayer],
+    frozen_last_night: Option<PlayerId>,
+    silver_spread: bool,
+    presenter: &mut dyn Presenter,
+) -> Option<(PlayerId, PlayerId)> {
+    let (snow_wolf, options) = freeze_question(alive, frozen_last_night, silver_spread)?;
     let picked = presenter
         .ask_targets(snow_wolf, Prompt::SnowWolfFreeze, &options, 1)
         .await?;
