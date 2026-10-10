@@ -123,8 +123,9 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
 }
 
 /// Every `Prompt` variant, for `sim/tests/locale_coverage.rs` and anything
-/// else that iterates them. A new variant goes here as well as in
-/// [`Prompt::locale_key`]; the compiler only enforces the latter.
+/// else that iterates them. A new variant fails to compile in this file's
+/// `position` test helper until it has a number there, and the test then
+/// fails until the variant is listed here.
 pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::WolfEat,
     Prompt::SerialKillerKill,
@@ -163,6 +164,53 @@ pub const ALL_PROMPTS: &[Prompt] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const VARIANTS: usize = 32;
+
+    /// Exhaustive on purpose, no `_` arm.
+    fn position(prompt: Prompt) -> usize {
+        match prompt {
+            Prompt::WolfEat => 0,
+            Prompt::SerialKillerKill => 1,
+            Prompt::SeerCheck => 2,
+            Prompt::HarlotVisit => 3,
+            Prompt::GuardianAngelProtect => 4,
+            Prompt::DetectiveInvestigate => 5,
+            Prompt::FoolInvestigate => 6,
+            Prompt::WildChildRoleModel => 7,
+            Prompt::DoppelgangerRoleModel => 8,
+            Prompt::CupidLink => 9,
+            Prompt::WitchHeal => 10,
+            Prompt::WitchPoison => 11,
+            Prompt::LynchVote => 12,
+            Prompt::GunnerShoot { .. } => 13,
+            Prompt::BlacksmithSilver => 14,
+            Prompt::CultistHunterInvestigate => 15,
+            Prompt::SorcererInvestigate => 16,
+            Prompt::OracleInvestigate => 17,
+            Prompt::CultistConvert => 18,
+            Prompt::MayorReveal => 19,
+            Prompt::PacifistPeace => 20,
+            Prompt::SandmanSleep => 21,
+            Prompt::ThiefSteal => 22,
+            Prompt::ChemistBrew => 23,
+            Prompt::ArsonistDouse => 24,
+            Prompt::ArsonistSpark => 25,
+            Prompt::TroublemakerTrouble => 26,
+            Prompt::SpumpkinDetonate => 27,
+            Prompt::HunterFinalShotLynched => 28,
+            Prompt::HunterFinalShotKilled => 29,
+            Prompt::WolfCubBonusKill => 30,
+            Prompt::SnowWolfFreeze => 31,
+        }
+    }
+
+    #[test]
+    fn all_prompts_lists_every_variant_once() {
+        let mut positions: Vec<usize> = ALL_PROMPTS.iter().map(|&p| position(p)).collect();
+        positions.sort_unstable();
+        assert_eq!(positions, (0..VARIANTS).collect::<Vec<_>>());
+    }
 
     #[test]
     fn fool_sorcerer_oracle_all_reuse_seers_exact_prompt() {

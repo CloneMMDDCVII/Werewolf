@@ -29,18 +29,18 @@ Feature: Every dimension of the architecture assessment at 5/5
     And bot/README.md says admin ids live only in the config file
 
   Scenario: Understandability - a file per concern
-    # not tested: not built yet
+    # not tested: code layout; the old paths are checked by bot, sim and control compiling unchanged
     Then orchestrator.rs is split into presenter, prompt, night asking, day and deaths modules
     And game.rs keeps the Game loop while transforms move to their own module
     And every existing public path still resolves through re-exports
     And NightAction docs describe the code, not its history
 
   Scenario: Extensibility - a new question is one edit
-    # not tested: not built yet
+    # covered by: all_prompts_lists_every_variant_once
     Then each Prompt declares its own locale key in one place
 
   Scenario: Maintenance - less hand-written test scaffolding
-    # not tested: not built yet, apart from the .feature files part (specs_are_claimed)
+    # covered by: the_first_matching_rule_answers, every_scenario_is_claimed
     Then game-engine exports a shared test presenter and night scene builder
     And tests touched by this work use them
     And the .feature files exist once, as documentation linked from ARCHITECTURE.md

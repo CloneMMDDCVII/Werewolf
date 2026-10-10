@@ -49,6 +49,12 @@ fn user(id: i64) -> User {
     }
 }
 
+impl Drop for Bot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.languages);
+    }
+}
+
 impl Bot {
     async fn new(max_games: usize) -> Bot {
         Self::with_store(max_games, memory_store().await).await

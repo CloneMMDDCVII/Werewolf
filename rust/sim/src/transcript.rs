@@ -42,7 +42,7 @@ fn prompt_fallback_text(prompt: Prompt) -> &'static str {
 
 /// Whether a prompt is asked during the night or day phase — purely for
 /// transcript labeling, mirroring which of `resolve_night_with_freeze`/`resolve_day`
-/// asks it (see `orchestrator::one_target_day_prompt`/`toggle_day_prompt`).
+/// asks it (each role's `RoleDef::night`/`RoleDef::day`).
 fn phase_label(prompt: Prompt) -> &'static str {
     match prompt {
         Prompt::GunnerShoot { .. }

@@ -100,8 +100,8 @@ game resolves them in, which the replays depend on.
    `def`.
 4. **A new question?** Add a `Prompt` variant in
    `orchestrator/prompt.rs`; the compiler then asks for its legacy key in
-   `Prompt::locale_key`, right below the enum. List it in `ALL_PROMPTS`
-   too, then point `DEF.night` or `DEF.day` at it.
+   `Prompt::locale_key`, right below the enum. A test in the same file
+   then has you number it and list it in `ALL_PROMPTS`. Point `DEF.night` or `DEF.day` at it.
 5. **Does the role touch other players at night?** Add a region to
    `night.rs` in the legacy order, plus any rule in `Night::visit`, and
    link it from the role's header.
