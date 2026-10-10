@@ -8,6 +8,7 @@
 use bot::config::{self, Config};
 use bot::core::{BotCore, CoreConfig, MemoryAdmission};
 use bot::health::{self, Heartbeat, Probe};
+use bot::sd_notify::{self, Notifier};
 use bot::spawn::PoolSpawner;
 use bot::telegram::{Retrying, Telegram};
 use bot::teloxide_adapter::{poll, TeloxideTelegram};
@@ -105,6 +106,7 @@ async fn main() -> ExitCode {
         }
     };
     let heartbeat = Arc::new(Heartbeat::new());
+    let notifier = Arc::new(Notifier::from_env());
     if let Some(addr) = config.health_addr {
         let listener = match tokio::net::TcpListener::bind(addr).await {
             Ok(l) => l,
@@ -134,6 +136,7 @@ async fn main() -> ExitCode {
         let telegram = telegram.clone();
         let stop = stop_polling.clone();
         let heartbeat = heartbeat.clone();
+        let notifier = notifier.clone();
         tokio::spawn(async move {
             poll(
                 telegram.inner(),
@@ -145,6 +148,7 @@ async fn main() -> ExitCode {
                     if ok {
                         heartbeat.beat();
                     }
+                    notifier.notify(sd_notify::WATCHDOG);
                 },
                 stop.cancelled_owned(),
             )
@@ -152,7 +156,11 @@ async fn main() -> ExitCode {
         })
     };
 
+    // Only under a Type=notify systemd unit; see deploy/werewolf-bot.service.
+    notifier.notify(sd_notify::READY);
+
     let _ = tokio::signal::ctrl_c().await;
+    notifier.notify(sd_notify::STOPPING);
     core.stop_accepting();
     let running = core.active_groups();
     if running > 0 {
