@@ -9,6 +9,7 @@ members = [
     "control",
     "db",
     "bot",
+    "xtask",
 ]
 
 [workspace.package]

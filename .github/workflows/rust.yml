@@ -1,8 +1,8 @@
 name: Rust
 
 on:
+  # Every branch, so work in progress is checked before a PR exists.
   push:
-    branches: [master]
     paths: ["rust/**", ".github/workflows/rust.yml"]
   pull_request:
     paths: ["rust/**", ".github/workflows/rust.yml"]
@@ -11,7 +11,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
+  ci:
     runs-on: ubuntu-latest
     services:
       # The db crate's tests run every storage scenario against SQLite and,
@@ -36,16 +36,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-      - run: cargo test --workspace --locked
+      # The same entry point developers run locally and the pre-push hook
+      # runs: rustfmt --check, clippy -D warnings, the full test suite.
+      - run: cargo xtask ci
 
   # The bot as a single download per platform: unzip, run, follow the
   # instructions it prints. Linux builds are static (musl), so they run on
   # any distribution without installing anything.
   release-build:
-    needs: test
+    needs: ci
     strategy:
       fail-fast: false
       matrix:
