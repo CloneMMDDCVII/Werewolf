@@ -516,6 +516,16 @@ impl Open {
             Shape::Toggle { .. } => Answer::Toggle(false),
         }
     }
+
+    /// Its batch position and answer: "no answer" if it was never
+    /// answered or closed.
+    fn into_answer(self) -> (usize, Answer) {
+        let answer = match self.answer {
+            Some(a) => a,
+            None => self.no_answer(),
+        };
+        (self.index, answer)
+    }
 }
 
 pub struct TelegramPresenter {
@@ -896,7 +906,7 @@ impl TelegramPresenter {
         }
         self.collect(&mut open, deadline, Until::Answered, on_answer).await;
         self.close(&mut open, |_| true, on_answer).await;
-        open.into_iter().map(|q| (q.index, q.answer.unwrap())).collect()
+        open.into_iter().map(Open::into_answer).collect()
     }
 
     async fn ask_one(&mut self, q: Question) -> Answer {
@@ -1016,7 +1026,7 @@ impl Presenter for TelegramPresenter {
                     self.collect(&mut open, lynch, Until::Answered, on_answer).await;
                 }
                 self.close(&mut open, |_| true, on_answer).await;
-                fill(open.into_iter().map(|q| (q.index, q.answer.unwrap())).collect());
+                fill(open.into_iter().map(Open::into_answer).collect());
             }
         }
         questions
