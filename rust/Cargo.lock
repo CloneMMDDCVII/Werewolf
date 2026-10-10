@@ -196,6 +196,7 @@ dependencies = [
  "control",
  "db",
  "env_logger",
+ "futures",
  "game-engine",
  "i18n",
  "log",

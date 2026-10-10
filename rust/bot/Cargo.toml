@@ -21,6 +21,7 @@ serde.workspace = true
 serde_json.workspace = true
 rand.workspace = true
 tokio-util = { version = "0.7", features = ["rt"] }
+futures = { version = "0.3", default-features = false, features = ["std"] }
 url = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 toml = "0.8"

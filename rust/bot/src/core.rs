@@ -12,9 +12,11 @@ use crate::text::{bold, escape, Texts};
 use control::group_config::{linked_group_name, load_settings, GroupSettings, Toggle};
 use control::lobby::{AbortReason, Candidate, ExtendError, JoinError, LeaveError, Lobby, StartOutcome};
 use db::Store;
+use futures::FutureExt;
 use moderation::{CommandMessage, GateDecision, Invocation, Moderation, RestoreCheck, Timestamp};
 use shared::GameMode;
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -789,7 +791,16 @@ impl BotCore {
                     clicks,
                     on_finish: Box::new(move || core.free_slot(group)),
                 };
-                self.spawner.spawn(Box::new(move || Box::pin(game::play(setup))));
+                self.spawner.spawn(Box::new(move || {
+                    Box::pin(async move {
+                        // The slot is freed by `play` itself, even when it
+                        // panics; this only reports it. Shared state is
+                        // behind locks that ignore poisoning.
+                        if let Err(panic) = AssertUnwindSafe(game::play(setup)).catch_unwind().await {
+                            log::error!("group {group}: game panicked: {}", panic_message(&*panic));
+                        }
+                    })
+                }));
             }
         }
     }
@@ -1088,6 +1099,16 @@ impl BotCore {
             log::error!("/{}: {e}", cmd.name);
         }
     }
+}
+
+/// What a panic said, when it said it with a string (`panic!` and
+/// `unwrap` always do).
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("(no message)")
 }
 
 /// For tests and the dry-run harness: build a `Chat` for a group.
