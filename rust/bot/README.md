@@ -31,6 +31,10 @@ setting. The ones you may want to change:
 | `language_admins` | none | Telegram user ids allowed to check and install language files (`/validatelangs`, `/uploadlang`). |
 | `health_addr` | off | Serve a health check on this address, e.g. `127.0.0.1:8080`. See below. |
 
+Global and language admin ids live only in this file. By design there is
+no command or other in-band way to add one: to grant or revoke admin
+rights, edit the file and restart the bot.
+
 Use `--config path/to/werewolf.toml` to keep the config elsewhere (relative
 paths in it are then resolved from that file's folder). Set `RUST_LOG=debug`
 for more detailed logs.
