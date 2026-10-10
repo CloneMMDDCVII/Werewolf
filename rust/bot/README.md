@@ -79,6 +79,10 @@ at its top say how to install it. It uses:
   from Telegram (about every 30 seconds), so if polling hangs systemd
   kills the bot, and `Restart=always` starts it again. Games cut off this
   way are announced when it comes back, as after any crash.
+  A failed fetch reports in too, so a Telegram outage does not restart
+  the bot; only a hung loop does. The health check's `polling` counts
+  successful fetches only, so it is the signal for "can the bot reach
+  Telegram", and the watchdog the one for "is the bot stuck".
 - `KillSignal=SIGINT`: `systemctl stop` works like the first Ctrl+C, so
   running games finish first; whatever is still running after
   `TimeoutStopSec` is killed.
