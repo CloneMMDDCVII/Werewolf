@@ -9,7 +9,7 @@
 //! table, and broadcasting reloads to nodes (one process now: reload the
 //! `Catalog` after `install`).
 
-use crate::{LanguagePack, LoadError};
+use crate::{LanguageId, LanguagePack, LoadError};
 use shared::time::Timestamp;
 use std::fs;
 use std::io;
@@ -77,6 +77,61 @@ pub fn bases(files: &[LangFile]) -> Vec<&str> {
     bases
 }
 
+/// The file with this id among `files`.
+pub fn file_by_id(files: &[LangFile], id: LanguageId) -> Option<&LangFile> {
+    files.iter().find(|f| LanguageId::of(&f.file_name) == id)
+}
+
+/// The base language with this id among `files`.
+pub fn base_by_id(files: &[LangFile], id: LanguageId) -> Option<&str> {
+    id.find_in(bases(files))
+}
+
+/// A button in the language admins' menus, as carried in Telegram callback
+/// data (the legacy `validate|…` and `upload|…` callbacks,
+/// UpdateHandler.cs:1263-1298). Languages are named by [`LanguageId`], so
+/// every button fits Telegram's 64 bytes whatever the names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdminButton {
+    /// A base in the `/validatelangs` menu: validate it if it has one
+    /// file, else offer its variants.
+    PickBase(LanguageId),
+    /// "All" in the variant menu: validate every file of the base.
+    ValidateBase(LanguageId),
+    /// One variant: validate that file.
+    ValidateFile(LanguageId),
+    /// "New" after `/uploadlang`: install the uploaded file with this id
+    /// (the presenter finds it among its pending uploads).
+    KeepNew(LanguageId),
+    /// "Old": [`KEPT_OLD`].
+    KeepOld,
+}
+
+impl AdminButton {
+    pub fn encode(&self) -> String {
+        match self {
+            AdminButton::PickBase(id) => format!("lv|b|{id}"),
+            AdminButton::ValidateBase(id) => format!("lv|a|{id}"),
+            AdminButton::ValidateFile(id) => format!("lv|f|{id}"),
+            AdminButton::KeepNew(id) => format!("lu|n|{id}"),
+            AdminButton::KeepOld => "lu|o".to_string(),
+        }
+    }
+
+    pub fn decode(data: &str) -> Option<Self> {
+        let mut parts = data.split('|');
+        let button = match (parts.next()?, parts.next()?, parts.next()) {
+            ("lv", "b", Some(id)) => AdminButton::PickBase(id.parse().ok()?),
+            ("lv", "a", Some(id)) => AdminButton::ValidateBase(id.parse().ok()?),
+            ("lv", "f", Some(id)) => AdminButton::ValidateFile(id.parse().ok()?),
+            ("lu", "n", Some(id)) => AdminButton::KeepNew(id.parse().ok()?),
+            ("lu", "o", None) => AdminButton::KeepOld,
+            _ => return None,
+        };
+        parts.next().is_none().then_some(button)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ErrorLevel {
     DuplicatedString,
@@ -114,28 +169,6 @@ fn check_language_node(file: &LangFile, errors: &mut Vec<LanguageError>) {
         if value.trim().is_empty() {
             errors.push(LanguageError::new(&file.file_name, NODE, message, ErrorLevel::FatalError));
         }
-    }
-}
-
-/// `TestLength` (LanguageHelper.cs:589-600): the language menus put base,
-/// variant and file name into Telegram callback data, capped at 64 bytes.
-fn check_lengths(file: &LangFile, errors: &mut Vec<LanguageError>) {
-    let meta = &file.pack.meta;
-    if format!("setlang|-1001049529775|{}|{}|v", meta.base, meta.variant).len() > 64 {
-        errors.push(LanguageError::new(
-            &file.file_name,
-            NODE,
-            "Base and variant are too long. (*38 utf8 byte max*)",
-            ErrorLevel::FatalError,
-        ));
-    }
-    if format!("preferred|-1001049529775|{}|toggle", file.file_name).len() > 64 {
-        errors.push(LanguageError::new(
-            &file.file_name,
-            NODE,
-            "Filename is too long. (*32 utf8 byte max*)",
-            ErrorLevel::FatalError,
-        ));
     }
 }
 
@@ -189,10 +222,14 @@ fn check_strings(file: &LangFile, master: &LanguagePack, errors: &mut Vec<Langua
 }
 
 /// Every check `/validatelangs` runs on one file, in the C#'s order.
+///
+/// Not ported: `TestLength` (LanguageHelper.cs:589-600), which refused
+/// files whose base, variant or file name would push the legacy button
+/// data past Telegram's 64 bytes. Buttons carry a [`LanguageId`] now, so
+/// names have no length limit.
 pub fn check_file(file: &LangFile, master: &LanguagePack) -> Vec<LanguageError> {
     let mut errors = vec![];
     check_language_node(file, &mut errors);
-    check_lengths(file, &mut errors);
     check_strings(file, master, &mut errors);
     errors
 }
@@ -376,7 +413,6 @@ pub struct UploadCheck {
 pub fn check_upload(new: &LangFile, installed: &[LangFile], master: &LanguagePack) -> UploadCheck {
     let mut errors = vec![];
     check_language_node(new, &mut errors);
-    check_lengths(new, &mut errors);
     if let Some(clash) = upload_conflict(new, installed) {
         let m = &clash.pack.meta;
         errors.push(LanguageError::new(
@@ -441,7 +477,6 @@ pub fn check_upload(new: &LangFile, installed: &[LangFile], master: &LanguagePac
     match current {
         Some(cur) => {
             let mut cur_errors = vec![];
-            check_lengths(cur, &mut cur_errors);
             check_strings(cur, master, &mut cur_errors);
             report += &format!(
                 "\n\nOLD FILE (Last updated: {})\n*{}.xml - ({})*\nErrors: {}\nMissing strings: {}",
@@ -583,13 +618,36 @@ mod tests {
     }
 
     #[test]
-    fn overlong_base_and_variant_or_file_name_are_fatal() {
-        let file = lang("German", "Deutsch", &"B".repeat(20), &"V".repeat(20), COMPLETE);
-        assert_eq!(check_file(&file, &master())[0].message, "Base and variant are too long. (*38 utf8 byte max*)");
-        let file = lang(&"F".repeat(33), "Deutsch", "German", "Normal", COMPLETE);
-        assert_eq!(check_file(&file, &master())[0].message, "Filename is too long. (*32 utf8 byte max*)");
-        let file = lang(&"F".repeat(32), "Deutsch", "German", "Normal", COMPLETE);
-        assert!(check_file(&file, &master()).is_empty());
+    fn long_names_are_fine_now_that_buttons_carry_ids() {
+        let file = lang(&"F".repeat(60), "Deutsch", &"B".repeat(40), &"V".repeat(40), COMPLETE);
+        assert_eq!(check_file(&file, &master()), vec![]);
+    }
+
+    #[test]
+    fn admin_buttons_round_trip_and_stay_short() {
+        let long = LanguageId::of(&"Ü".repeat(200));
+        for button in [
+            AdminButton::PickBase(long),
+            AdminButton::ValidateBase(long),
+            AdminButton::ValidateFile(long),
+            AdminButton::KeepNew(long),
+            AdminButton::KeepOld,
+        ] {
+            let data = button.encode();
+            assert!(data.len() <= 64, "{data}");
+            assert_eq!(AdminButton::decode(&data), Some(button));
+        }
+        assert_eq!(AdminButton::decode("lv|f|nothex"), None);
+        assert_eq!(AdminButton::decode("lu|o|extra"), None);
+        assert_eq!(AdminButton::decode("validate|1|English|null|base"), None);
+    }
+
+    #[test]
+    fn ids_resolve_to_files_and_bases() {
+        let files = [lang("German", "Deutsch", "German", "Normal", ""), lang("Pirate", "Arr", "English", "Pirate", "")];
+        assert_eq!(file_by_id(&files, LanguageId::of("Pirate")).map(|f| f.pack.meta.name.as_str()), Some("Arr"));
+        assert_eq!(base_by_id(&files, LanguageId::of("English")), Some("English"));
+        assert_eq!(file_by_id(&files, LanguageId::of("Gone")).map(|f| &f.file_name), None);
     }
 
     #[test]

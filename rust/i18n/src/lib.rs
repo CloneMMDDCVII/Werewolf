@@ -23,6 +23,9 @@
 //! other structurally-valid-but-unusual content, round-trips unchanged.
 
 pub mod admin;
+pub mod id;
+
+pub use id::LanguageId;
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::{Reader, Writer};

@@ -1,7 +1,7 @@
 //! The language admin tools against the real language files, and the
 //! install step on a scratch directory.
 use i18n::admin::{self, ErrorLevel, LangFile};
-use i18n::LanguagePack;
+use i18n::{LanguageId, LanguagePack};
 use std::fs;
 use std::path::PathBuf;
 
@@ -25,17 +25,33 @@ fn every_shipped_file_can_be_validated() {
     let (_details, summary) = admin::summary_report(&files, &master());
     assert!(summary.starts_with("*Validation complete*\nErrors: "));
     assert!(admin::bases(&files).contains(&"English"));
-    // The C#'s checks give the same answer on the shipped files: the only
-    // fatal language-node problem is one file whose name is longer than
-    // the 64-byte "preferred" callback allows (66 bytes). It predates
-    // that check; the legacy bot would refuse a re-upload of it too.
+    // No shipped file has a fatal language-node problem. (The C#'s
+    // callback-length check flagged "Singapore (Public Housing Version)";
+    // buttons carry ids now, so that check is gone.)
     let fatal: Vec<_> = files
         .iter()
         .flat_map(|f| admin::check_file(f, &master()))
         .filter(|e| e.level == ErrorLevel::FatalError && e.key == "*Language Node*")
         .map(|e| e.file)
         .collect();
-    assert_eq!(fatal, vec!["Singapore (Public Housing Version)"]);
+    assert!(fatal.is_empty(), "{fatal:?}");
+}
+
+#[test]
+fn every_shipped_file_and_base_has_its_own_id() {
+    let (files, _) = admin::load_dir(LANGUAGES_DIR).unwrap();
+    // Files and bases are looked up separately, so a file named like its
+    // base ("English") is fine; within each kind, ids must not collide.
+    let distinct = |names: Vec<&str>| {
+        let mut ids: Vec<LanguageId> = names.iter().map(|n| LanguageId::of(n)).collect();
+        ids.sort();
+        ids.dedup();
+        ids.len() == names.len()
+    };
+    assert!(distinct(files.iter().map(|f| f.file_name.as_str()).collect()), "two file names share an id");
+    assert!(distinct(admin::bases(&files)), "two bases share an id");
+    let singapore = admin::file_by_id(&files, LanguageId::of("Singapore (Public Housing Version)"));
+    assert!(singapore.is_some());
 }
 
 /// A fresh scratch directory per test.
