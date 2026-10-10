@@ -122,3 +122,25 @@ games must still load, or keep the variant with `dealt: false` so it is
 never dealt (as the Witch is). A role with `pool: Pool::Never` stays out
 of balanced games but can still be dealt by a caller's own role pool
 (Chef and Barkeep).
+
+## Specs
+
+The project's rule is that behaviour is agreed in Gherkin before it is
+coded: each `.feature` file is the approval document for one piece of
+work. They live in `features/` and `control/features/`, once, as
+documentation; nothing executes them.
+
+Directly under each `Scenario:` line, one comment says what checks it:
+
+```gherkin
+  Scenario: A tied vote kills nobody
+    # covered by: a_tied_lynch_kills_nobody_and_says_so, tied_lynch_vote_kills_nobody
+```
+
+The names are `#[test]` functions in the workspace. `engine_transcripts`
+means only the 300-game digest gate exercises the behaviour, and
+`# not tested: <reason>` says why nothing does (operator-only, Telegram
+layout, documentation, a CI step, or `gap` for a test still to write).
+`sim/tests/specs_are_claimed.rs` fails when a scenario has none of these
+or names a function that no longer exists, so a renamed or deleted test
+shows up in the spec it was checking.
