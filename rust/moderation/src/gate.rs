@@ -42,6 +42,7 @@ pub fn policy_for(trigger: &str) -> Option<CommandPolicy> {
         "config" => CommandPolicy { group_admin_only: true, in_group_only: true, ..ANYONE },
         "killgame" => CommandPolicy { in_group_only: true, ..GLOBAL_ADMIN },
         "getban" | "permban" | "remban" | "restore" => GLOBAL_ADMIN,
+        "uploadlang" | "validatelangs" => CommandPolicy { lang_admin_only: true, ..ANYONE },
         "getidles" => CommandPolicy { group_admin_only: true, allow_anonymous_admins: true, ..ANYONE },
         "start" | "help" | "ping" | "setlang" | "getlang" => ANYONE,
         _ => return None,
@@ -311,6 +312,8 @@ mod tests {
         assert!(killgame.global_admin_only && killgame.in_group_only && !killgame.blockable);
         let config = policy_for("config").unwrap();
         assert!(config.group_admin_only && !config.allow_anonymous_admins && !config.blockable);
+        let uploadlang = policy_for("uploadlang").unwrap();
+        assert!(uploadlang.lang_admin_only && !uploadlang.global_admin_only && !uploadlang.in_group_only);
         assert_eq!(policy_for("asplode"), None);
     }
 

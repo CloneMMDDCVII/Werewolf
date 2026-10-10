@@ -1,12 +1,14 @@
-//! Just enough UTC time handling for ban bookkeeping and the legacy
-//! `/getban` text, without pulling a date library into the workspace.
+//! Just enough UTC time handling for the legacy admin texts (ban dates in
+//! `/getban`, "last updated" in the language tools), without pulling a
+//! date library into the workspace.
 
 use serde::{Deserialize, Serialize};
 
 const SECS_PER_DAY: i64 = 86_400;
 
-/// Seconds since the Unix epoch, UTC. Every timestamp moderation stores
-/// is UTC (the C# wrote `DateTime.UtcNow` everywhere it issued a ban).
+/// Seconds since the Unix epoch, UTC. Everything the port stores is UTC
+/// (the C# wrote `DateTime.UtcNow` for bans and compared file times in
+/// UTC).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Timestamp(pub i64);
 
@@ -15,6 +17,13 @@ impl Timestamp {
     pub fn from_utc(year: i64, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> Self {
         let days = days_from_civil(year, month, day);
         Timestamp(days * SECS_PER_DAY + i64::from(hour) * 3600 + i64::from(minute) * 60 + i64::from(second))
+    }
+
+    pub fn from_system_time(time: std::time::SystemTime) -> Self {
+        match time.duration_since(std::time::UNIX_EPOCH) {
+            Ok(after) => Timestamp(after.as_secs() as i64),
+            Err(before) => Timestamp(-(before.duration().as_secs() as i64)),
+        }
     }
 
     pub fn plus_seconds(self, seconds: i64) -> Self {
@@ -31,18 +40,26 @@ impl Timestamp {
     /// `+00:00`: the port only stores UTC, where the C# printed whatever
     /// the server's local offset happened to be.
     pub fn legacy_format(self) -> String {
-        const MONTHS: [&str; 12] = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
         let (year, month, day) = civil_from_days(self.0.div_euclid(SECS_PER_DAY));
         let secs = self.0.rem_euclid(SECS_PER_DAY);
         format!(
             "{day:02}{}{year:04} {}:{:02}:{:02} +00:00",
-            MONTHS[month as usize - 1],
+            MONTHS[month as usize - 1].to_ascii_uppercase(),
             secs / 3600,
             (secs % 3600) / 60,
             secs % 60
         )
     }
+
+    /// `DateTime.ToString("MMM dd")`, e.g. "Oct 03": the language tools'
+    /// "Last updated" date.
+    pub fn month_day(self) -> String {
+        let (_, month, day) = civil_from_days(self.0.div_euclid(SECS_PER_DAY));
+        format!("{} {day:02}", MONTHS[month as usize - 1])
+    }
 }
+
+const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /// Howard Hinnant's `days_from_civil`: days since 1970-01-01.
 fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
@@ -84,6 +101,7 @@ mod tests {
         let t = Timestamp::from_utc(2026, 10, 1, 9, 5, 7);
         assert_eq!(t.legacy_format(), "01OCT2026 9:05:07 +00:00");
         assert_eq!(t.year(), 2026);
+        assert_eq!(t.month_day(), "Oct 01");
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 use crate::ban::{Ban, BanIssuer, BanList, BanSource};
 use crate::target::{CommandMessage, Mention, PlayerDirectory, PlayerRecord};
-use crate::time::Timestamp;
+use shared::time::Timestamp;
 
 /// `FormatHTML` (Extensions.cs:28-31): every player-supplied string that
 /// goes into an HTML-mode message passes through this.

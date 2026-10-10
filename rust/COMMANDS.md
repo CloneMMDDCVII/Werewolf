@@ -38,8 +38,8 @@ scope (explained in notes, not just skipped silently)
 
 ## Admin (AdminCommands.cs) — group/global admin tools
 
-Scope: `notes/scopes/moderation.feature` in the project folder. Every
-command here is pure logic in the `moderation` crate (no Telegram, no
+Scopes: `notes/scopes/moderation.feature` and `language-admin.feature` in the project folder. Every
+moderation command here is pure logic in the `moderation` crate (no Telegram, no
 SQL), run over storage by `moderation::Moderation` (`db::Store`).
 
 | Command | Legacy source | Status | Notes |
@@ -50,7 +50,8 @@ SQL), run over storage by `moderation::Moderation` (`db::Store`).
 | `restore` | `AdminCommands.cs:496-581`, `UpdateHandler.cs:1125-1152`, `werewolf.sql` `RestoreAccount` | ✅ | `moderation::restore` scores the pair; `db::Games::move_player_history` moves games and kills. No row ids to compare, so "old is newer" checks Telegram ids only; empty histories no longer crash it. Achievement merge dropped with achievements. The yes/no buttons (dev-only confirm) are the presenter's |
 | `config` | `AdminCommands.cs:66-100` | — | Owned by the group-config work, not this table |
 | `setlink` / `remlink` | `AdminCommands.cs:273-322` | — | Group settings, same owner as `config` |
-| `uploadlang` / `validatelangs` | `AdminCommands.cs:102-218` | ⬜ | Language-file tooling, belongs with `i18n` |
+| `validatelangs` | `AdminCommands.cs:161-218`, `LanguageHelper.cs:64-178` | ✅ | `i18n::admin`: `check_file` (language node, callback-length limits, missing strings, placeholders, GIF caption length, `/join`, ads), `file_report`, `summary_report`, `bases` for the menu. Changes: every duplicated key is flagged (the C# only looked at two), ads are checked per file in the summary, checks see the raw value with markup |
+| `uploadlang` | `AdminCommands.cs:102-129`, `LanguageHelper.cs:180-430` | ✅ | `i18n::admin`: `check_upload_name`, `check_upload` (clash with installed files, comparison with the file it replaces), `install` (the "New" button). Dropped: committing English.xml to git from the bot, the `Language` DB table, node reload broadcasts; the caller reloads its `Catalog`. The one shipped file the checks flag, `Singapore (Public Housing Version).xml`, also fails the C#'s own 64-byte callback limit |
 | `addach` / `remach` | `AdminCommands.cs:324-494` | ⛔ | Achievements are dropped |
 | `reviewgifs` / `approvegifs` / `disapprovegifs` / `fixgifs` | `AdminCommands.cs:583-900` | ⛔ | Donation gifs; donations return later as Telegram Stars |
 | `fi` | `AdminCommands.cs:671-684` | ⛔ | Bot run info, infra |

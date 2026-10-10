@@ -19,7 +19,6 @@ pub mod idles;
 pub mod restore;
 pub mod service;
 pub mod target;
-pub mod time;
 
 pub use ban::{Ban, BanIssuer, BanList, BanSource, LegacyGlobalBan};
 pub use commands::{escape_html, getban_report, issuer_name, permban, remban, smite_targets, BanReport};
@@ -28,7 +27,7 @@ pub use restore::{levenshtein, restore_report, AccountFacts, RestoreCheck};
 pub use service::Moderation;
 pub use gate::{check, policy_for, BlockedChat, Chat, CommandPolicy, GateDecision, Invocation, Refusal, Sender};
 pub use target::{resolve_target, CommandMessage, Mention, PlayerDirectory, PlayerRecord, ReplyTo};
-pub use time::Timestamp;
+pub use shared::time::{self, Timestamp};
 
 use serde::{Deserialize, Serialize};
 

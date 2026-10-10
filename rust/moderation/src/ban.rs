@@ -1,7 +1,7 @@
 //! Global bans: the record, where it came from, and the in-memory list
 //! the bot consults on every command (`UpdateHandler.BanList`).
 
-use crate::time::Timestamp;
+use shared::time::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

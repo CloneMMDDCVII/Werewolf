@@ -1,3 +1,5 @@
+pub mod time;
+
 use serde::{Deserialize, Serialize};
 
 /// All roles observed across base game + Chaos mode.

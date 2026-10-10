@@ -12,7 +12,7 @@ use crate::commands::{getban_report, permban, remban, smite_targets, BanReport};
 use crate::idles::{getidles_report, getidles_targets, IdleCount, IDLE_WINDOW_SECS};
 use crate::restore::{parse_restore_args, restore_report, restored_reply, AccountFacts, RestoreCheck};
 use crate::target::{resolve_target, CommandMessage, Mention, PlayerDirectory, PlayerRecord};
-use crate::time::Timestamp;
+use shared::time::Timestamp;
 use db::{DbResult, Store};
 use i18n::LanguagePack;
 

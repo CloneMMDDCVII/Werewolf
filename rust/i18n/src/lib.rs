@@ -22,6 +22,8 @@
 //! event reader instead of a rigid struct-derive so that markup, and any
 //! other structurally-valid-but-unusual content, round-trips unchanged.
 
+pub mod admin;
+
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::{Reader, Writer};
 use std::collections::HashMap;
@@ -50,6 +52,9 @@ pub struct LanguagePack {
     /// error, not a parser error) — first occurrence wins, rest are
     /// recorded here rather than silently dropped or hard-failing the load.
     pub duplicate_keys: Vec<String>,
+    /// Keys whose `<string>` carries an `isgif` attribute: captions sent
+    /// with a GIF, which Telegram caps in length.
+    pub gif_keys: Vec<String>,
 }
 
 impl LanguagePack {
@@ -102,6 +107,11 @@ fn attr_value(tag: &BytesStart, name: &str) -> Option<String> {
     })
 }
 
+/// Parses a language file from a string (what `load` does after reading).
+pub fn parse_str(raw: &str) -> Result<LanguagePack, LoadError> {
+    parse(raw)
+}
+
 fn parse(raw: &str) -> Result<LanguagePack, LoadError> {
     let mut reader = Reader::from_str(raw);
     reader.config_mut().trim_text(true);
@@ -110,6 +120,7 @@ fn parse(raw: &str) -> Result<LanguagePack, LoadError> {
     let mut strings: HashMap<String, Vec<String>> = HashMap::new();
     let mut deprecated_keys = vec![];
     let mut duplicate_keys = vec![];
+    let mut gif_keys = vec![];
 
     let mut buf = Vec::new();
     loop {
@@ -132,6 +143,9 @@ fn parse(raw: &str) -> Result<LanguagePack, LoadError> {
             Event::Start(ref tag) if tag.name().as_ref() == b"string" => {
                 let key = attr_value(tag, "key").ok_or(LoadError::MissingKey)?;
                 let deprecated = attr_value(tag, "deprecated").map(|v| v == "true");
+                if attr_value(tag, "isgif").is_some() {
+                    gif_keys.push(key.clone());
+                }
 
                 let values = read_string_body(&mut reader)?;
 
@@ -155,6 +169,7 @@ fn parse(raw: &str) -> Result<LanguagePack, LoadError> {
         strings,
         deprecated_keys,
         duplicate_keys,
+        gif_keys,
     })
 }
 

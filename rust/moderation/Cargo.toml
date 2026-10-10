@@ -6,8 +6,8 @@ edition.workspace = true
 [dependencies]
 db = { path = "../db" }
 i18n = { path = "../i18n" }
+shared = { path = "../shared" }
 serde.workspace = true
 
 [dev-dependencies]
-shared = { path = "../shared" }
 tokio.workspace = true
