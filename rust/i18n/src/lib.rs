@@ -306,6 +306,11 @@ impl Catalog {
         self.packs.get(name)
     }
 
+    /// Every loaded pack with its filename stem, in no particular order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &LanguagePack)> {
+        self.packs.iter().map(|(name, pack)| (name.as_str(), pack))
+    }
+
     pub fn len(&self) -> usize {
         self.packs.len()
     }

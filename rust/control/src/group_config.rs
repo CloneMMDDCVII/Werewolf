@@ -20,14 +20,19 @@
 //!   renders a `Screen`; [`ConfigAction::encode`]/[`ConfigAction::decode`]
 //!   give it callback data that fits Telegram's 64-byte limit.
 //!
-//! Deliberately not here (see `COMMANDS.md`): the language picker (ported
-//! with the per-user `/setlang`, which shares `SelectLanguage`), and the
-//! five `Allow{Tanner,Fool,Cult,Thief,Arsonist}` flags - tagged
+//! The `Lang` option opens `language_picker`, shared with `/setlang`.
+//!
+//! Deliberately not here (see `COMMANDS.md`): the five `Allow{Tanner,Fool,Cult,Thief,Arsonist}` flags - tagged
 //! `RoleConfig` in `GroupConfig.cs`, but the RoleConfig submenu shows the
 //! per-role toggles instead (`UpdateHandler.cs:2199`), so no admin could
 //! reach them, and the node never reads them for balancing.
 
+use crate::language_picker::{group_language_button, DEFAULT_LANGUAGE};
 use crate::lobby::{DEFAULT_MAX_EXTEND_SECONDS, DEFAULT_MAX_PLAYERS};
+use crate::menu::{
+    rows_of, start_me_prompt, Action, Actor, Button, ButtonAction, CallbackOutcome, CommandOutcome, DecodeError, Message,
+    Notice, Screen, Text,
+};
 use db::{DbResult, Store};
 use game_engine::balancing::balance;
 use game_engine::rng::RngSource;
@@ -238,6 +243,8 @@ impl Toggle {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GroupSettings {
+    /// The language file the group plays in (see `language_picker`).
+    pub language: String,
     pub mode: ModeSetting,
     pub max_players: u32,
     /// Stored as the legacy `DayTime` column: the menu shows this plus 60
@@ -258,6 +265,7 @@ pub struct GroupSettings {
 impl Default for GroupSettings {
     fn default() -> Self {
         GroupSettings {
+            language: DEFAULT_LANGUAGE.to_string(),
             mode: ModeSetting::Player,
             max_players: DEFAULT_MAX_PLAYERS as u32,
             day_seconds: DEFAULT_DAY_SECONDS,
@@ -436,8 +444,8 @@ impl ConfigOption {
 
 /// `ConfigGroupAttribute.hardcodedConfigOptions` followed by the toggles
 /// tagged with that group, the order `GetConfigSubmenu` lists them in.
-/// The legacy `Lang` button heads GroupSettings; it returns with the
-/// language picker.
+/// GroupSettings' submenu also starts with the `Lang` button, which opens
+/// the language picker rather than an option screen.
 pub fn submenu_options(submenu: Submenu) -> Vec<ConfigOption> {
     let fixed: &[ConfigOption] = match submenu {
         Submenu::Timers => &[
@@ -490,100 +498,10 @@ pub enum Callback {
 }
 
 /// A callback addressed to one group, as carried in button data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConfigAction {
     pub group_id: i64,
     pub callback: Callback,
-}
-
-/// A piece of text a presenter resolves in the viewer's language.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Text {
-    Locale(String),
-    Raw(String),
-}
-
-impl Text {
-    fn key(key: &str) -> Self {
-        Text::Locale(key.to_string())
-    }
-}
-
-/// A locale string and the arguments substituted into its `{0}`, `{1}`...
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Message {
-    pub key: String,
-    pub args: Vec<Text>,
-}
-
-impl Message {
-    fn new(key: &str) -> Self {
-        Message { key: key.to_string(), args: vec![] }
-    }
-
-    fn with(key: &str, args: Vec<Text>) -> Self {
-        Message { key: key.to_string(), args }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ButtonAction {
-    Callback(ConfigAction),
-    /// A link that opens a private chat with the bot (`RequestPM`'s
-    /// "Start Me" button).
-    StartBotLink,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Button {
-    pub label: Text,
-    pub action: ButtonAction,
-}
-
-/// What a presenter shows: a message and its keyboard, one inner `Vec`
-/// per row.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Screen {
-    pub message: Message,
-    pub rows: Vec<Vec<Button>>,
-}
-
-/// A short notice on the button press itself (Telegram's callback answer).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Notice {
-    pub message: Message,
-    /// Shown as a dialog rather than a passing toast.
-    pub alert: bool,
-}
-
-/// The answer to `/config`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommandOutcome {
-    /// Send `menu` to the admin privately. If that fails because they
-    /// never started the bot, send `fallback` to the group instead
-    /// (`AdminCommands.cs:96-99`).
-    SendPrivately { menu: Screen, fallback: Screen },
-    /// Reply in the chat the command came from with this locale string.
-    Refuse(Message),
-}
-
-/// The answer to a button press.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CallbackOutcome {
-    /// Replace the pressed message with `screen`, after showing `notice`.
-    Show { screen: Screen, notice: Option<Notice> },
-    /// Answer the press with a notice and leave the message alone.
-    Notify(Notice),
-    /// Nothing to do (unknown group, or the inert "Valid" button).
-    Ignore,
-}
-
-/// Who sent a command or pressed a button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Actor {
-    /// A group admin, a global admin, or a developer: the three roles the
-    /// legacy checks accept (`UpdateHandler.cs:1031`).
-    pub can_configure: bool,
 }
 
 /// Where `/config` was sent.
@@ -605,7 +523,7 @@ pub fn config_command(chat: &CommandChat, actor: Actor) -> CommandOutcome {
     if !actor.can_configure {
         return CommandOutcome::Refuse(Message::new("GroupAdminOnly"));
     }
-    CommandOutcome::SendPrivately { menu: main_menu(chat.chat_id), fallback: start_me_prompt() }
+    CommandOutcome::SendPrivately { menu: main_menu(chat.chat_id), chat_notice: None, fallback: start_me_prompt() }
 }
 
 /// [`config_command`], recording the group in `store` when it succeeds.
@@ -644,14 +562,6 @@ pub async fn run_callback(
         store.groups().put_settings(action.group_id, &record.name, &settings, now).await?;
     }
     Ok(outcome)
-}
-
-/// `Helpers.cs::RequestPM`.
-pub fn start_me_prompt() -> Screen {
-    Screen {
-        message: Message::new("StartMe"),
-        rows: vec![vec![Button { label: Text::Raw("Start Me".to_string()), action: ButtonAction::StartBotLink }]],
-    }
 }
 
 /// A button press (`UpdateHandler.cs:1026-1985`, config commands only).
@@ -761,13 +671,7 @@ fn answer_label(toggle: Toggle, on: bool) -> Text {
 }
 
 fn button(group_id: i64, label: Text, callback: Callback) -> Button {
-    Button { label, action: ButtonAction::Callback(ConfigAction { group_id, callback }) }
-}
-
-/// Pairs buttons into rows of two, the last one alone if odd
-/// (`GetConfigMenu`/`GetConfigSubmenu`'s `twoMenu`).
-fn rows_of(buttons: Vec<Button>, width: usize) -> Vec<Vec<Button>> {
-    buttons.chunks(width).map(|c| c.to_vec()).collect()
+    Button { label, action: ButtonAction::Callback(Action::Config(ConfigAction { group_id, callback })) }
 }
 
 /// `UpdateHandler.cs:2169-2195`.
@@ -784,10 +688,13 @@ pub fn submenu_screen(group_id: i64, settings: &GroupSettings, submenu: Submenu)
     if submenu == Submenu::RoleConfig {
         return role_menu(group_id, settings);
     }
-    let mut buttons: Vec<Button> = submenu_options(submenu)
-        .into_iter()
-        .map(|o| button(group_id, Text::key(o.key()), Callback::OpenOption(o)))
-        .collect();
+    let mut buttons: Vec<Button> = vec![];
+    if submenu == Submenu::GroupSettings {
+        buttons.push(group_language_button(group_id));
+    }
+    buttons.extend(
+        submenu_options(submenu).into_iter().map(|o| button(group_id, Text::key(o.key()), Callback::OpenOption(o))),
+    );
     buttons.push(button(group_id, Text::key("Back"), Callback::BackToMain));
     Screen { message: Message::new("WhatToDo"), rows: rows_of(buttons, 2) }
 }
@@ -945,10 +852,6 @@ pub fn all_locale_keys() -> Vec<String> {
 }
 
 // ---------- Callback data ----------
-
-/// Why a callback string didn't decode.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DecodeError(pub String);
 
 impl ConfigAction {
     /// A compact `"cfg|<group>|<code>[|<arg>...]"` string. The longest

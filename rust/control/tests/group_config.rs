@@ -5,6 +5,8 @@
 //! (in-memory SQLite) `db::Store`.
 
 use control::group_config::*;
+use control::language_picker::{LanguageAction, LanguageStep, LanguageTarget};
+use control::menu::*;
 use control::lobby::{Candidate, ExtendError, Lobby};
 use db::Store;
 use game_engine::rng::SeededRngSource;
@@ -81,9 +83,9 @@ fn flat_labels(screen: &Screen) -> Vec<String> {
 }
 
 fn callback_of(button: &Button) -> Callback {
-    match button.action {
-        ButtonAction::Callback(a) => a.callback,
-        ButtonAction::StartBotLink => panic!("not a callback button"),
+    match &button.action {
+        ButtonAction::Callback(Action::Config(a)) => a.callback,
+        other => panic!("not a config button: {other:?}"),
     }
 }
 
@@ -173,10 +175,11 @@ fn global_admins_can_configure_any_group() {
 
 #[test]
 fn the_main_menu_is_sent_privately_to_the_admin() {
-    let CommandOutcome::SendPrivately { menu, .. } = config_command(&group_chat("Village Square"), admin()) else {
+    let CommandOutcome::SendPrivately { menu, chat_notice, .. } = config_command(&group_chat("Village Square"), admin()) else {
         panic!("expected the menu");
     };
     assert_eq!(menu.message.key, "WhatToDo");
+    assert_eq!(chat_notice, None);
     assert_eq!(
         labels(&menu),
         vec![vec!["Timers", "RoleConfig"], vec!["Mechanics", "GroupSettings"], vec!["Done"]]
@@ -211,6 +214,7 @@ fn each_submenu_lists_its_options_followed_by_back() {
         (
             Submenu::GroupSettings,
             vec![
+                "Lang",
                 "Mode",
                 "MaxPlayer",
                 "AllowExtend",
@@ -227,6 +231,15 @@ fn each_submenu_lists_its_options_followed_by_back() {
         let outcome = press(&mut store, Callback::OpenSubmenu(submenu));
         let shown = flat_labels(screen(&outcome));
         let (back, rest) = shown.split_last().unwrap();
+        if submenu == Submenu::GroupSettings {
+            assert_eq!(
+                screen(&outcome).rows[0][0].action,
+                ButtonAction::Callback(Action::Language(LanguageAction {
+                    target: LanguageTarget::Group(GROUP),
+                    step: LanguageStep::OpenBases,
+                }))
+            );
+        }
         assert_eq!(rest, options.as_slice(), "{submenu:?}");
         assert_eq!(back, "Back");
         assert_eq!(callback_of(last_button(screen(&outcome))), Callback::BackToMain);
@@ -495,13 +508,13 @@ fn every_button_on_every_screen_round_trips_through_callback_data() {
         }
     }
     for button in screens.iter().flat_map(|s| s.rows.iter().flatten()) {
-        let ButtonAction::Callback(action) = button.action else { continue };
+        let ButtonAction::Callback(action) = &button.action else { continue };
         let data = action.encode();
         assert!(data.len() <= 64, "{data} is over Telegram's 64-byte limit");
-        assert_eq!(ConfigAction::decode(&data), Ok(action), "{data}");
+        assert_eq!(Action::decode(&data).as_ref(), Ok(action), "{data}");
     }
-    assert!(ConfigAction::decode("cfg|1|zz").is_err());
-    assert!(ConfigAction::decode("vote|1|2").is_err());
+    assert!(Action::decode("cfg|1|zz").is_err());
+    assert!(Action::decode("vote|1|2").is_err());
 }
 
 #[test]

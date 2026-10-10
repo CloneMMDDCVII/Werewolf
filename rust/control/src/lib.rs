@@ -7,7 +7,9 @@
 
 pub mod capacity;
 pub mod group_config;
+pub mod language_picker;
 pub mod lobby;
+pub mod menu;
 pub mod restart;
 
 /// Seam for a future payment provider (Telegram Stars), so donations can be
