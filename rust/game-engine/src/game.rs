@@ -24,7 +24,7 @@ use crate::roles::gunner::bullets_left;
 use crate::roles::{behavior_for, DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::rules::GameRules;
 use crate::summary::{is_winner, GameSummary, SummaryEntry};
-use crate::{is_wolf_muscle, KillEvent, WinOutcome};
+use crate::{KillEvent, WinOutcome};
 use shared::{KillMethod, Role, Team};
 use std::collections::{HashMap, HashSet};
 
@@ -230,7 +230,7 @@ pub async fn run_game_with_rules(
             // Blacksmith's silver (Werewolf.cs:5191, 5316).
             let skip: Vec<PlayerId> = alive
                 .iter()
-                .filter(|p| is_eating_wolf(p.role) && (silver_spread_tonight || memory.drunk.contains(&p.id)))
+                .filter(|p| p.role.is_eating_wolf() && (silver_spread_tonight || memory.drunk.contains(&p.id)))
                 .map(|p| p.id)
                 .collect();
             // The Snow Wolf's freeze goes out with everyone else's night question.
@@ -759,7 +759,7 @@ async fn narrate_deaths(
     presenter: &mut dyn Presenter,
     announced: &[PlayerId],
 ) {
-    let pack_size = still_alive.iter().filter(|p| is_wolf_muscle(p.role)).count();
+    let pack_size = still_alive.iter().filter(|p| p.role.is_wolf()).count();
     // With roles shown, everyone the Arsonist burned shares one line
     // (Werewolf.cs:4198-4202).
     let burned: Vec<(PlayerId, Role)> = new_deaths
@@ -1009,7 +1009,7 @@ async fn demote_gunner_if_shot_a_wise_elder(
 /// even if dead" exceptions), which falling out of `alive.iter_mut().find`
 /// already matches for free. Also skips anyone already wolf-team
 /// (Werewolf.cs:2991: `!WolfRoles.Contains(p.PlayerRole) && p.PlayerRole
-/// != IRole.SnowWolf`) — `is_wolf_muscle`, not a plain `Role::Wolf`
+/// != IRole.SnowWolf`) — `Role::is_wolf`, not a plain `Role::Wolf`
 /// check, since a bitten Wolf Cub/Lycan/SnowWolf shouldn't be "converted"
 /// into the one specific role `IRole.Wolf` either (today's wolf-eat never
 /// targets a wolf-team player in the first place, so this is a belt-and-
@@ -1023,7 +1023,7 @@ async fn apply_pending_alpha_bites(
         let Some(from) = alive.iter().find(|p| p.id == player).map(|p| p.role) else {
             continue;
         };
-        if is_wolf_muscle(from) {
+        if from.is_wolf() {
             continue;
         }
         presenter
@@ -1083,10 +1083,10 @@ async fn ask_wolf_cub_votes(
     skip: &[PlayerId],
     presenter: &mut dyn Presenter,
 ) -> Vec<(PlayerId, PlayerId)> {
-    let options: Vec<PlayerId> = alive.iter().filter(|p| !is_wolf_muscle(p.role)).map(|p| p.id).collect();
+    let options: Vec<PlayerId> = alive.iter().filter(|p| !p.role.is_wolf()).map(|p| p.id).collect();
     let wolves: Vec<PlayerId> = alive
         .iter()
-        .filter(|p| is_eating_wolf(p.role) && !skip.contains(&p.id))
+        .filter(|p| p.role.is_eating_wolf() && !skip.contains(&p.id))
         .map(|p| p.id)
         .collect();
     if wolves.is_empty() {
@@ -1115,11 +1115,6 @@ async fn ask_wolf_cub_votes(
             _ => None,
         })
         .collect()
-}
-
-/// The legacy `WolfRoles` (Werewolf.cs:48): the wolves who eat.
-fn is_eating_wolf(role: Role) -> bool {
-    matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
 }
 
 /// What one of `apply_transforms`' changes tells the player and their
@@ -1194,11 +1189,9 @@ fn apply_transforms(
     states: &HashMap<PlayerId, RoleState>,
     just_died: &[(PlayerId, Role)],
 ) -> Vec<NarrationEvent> {
-    let any_wolf_muscle = alive.iter().any(|p| is_wolf_muscle(p.role));
+    let any_wolf_muscle = alive.iter().any(|p| p.role.is_wolf());
     // The legacy `WolfRoles` (Werewolf.cs:48), which leave out the Snow Wolf.
-    let any_eating_wolf = alive
-        .iter()
-        .any(|p| matches!(p.role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan));
+    let any_eating_wolf = alive.iter().any(|p| p.role.is_eating_wolf());
     let any_seer = alive.iter().any(|p| p.role == Role::Seer);
     let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
     let mut events = vec![];

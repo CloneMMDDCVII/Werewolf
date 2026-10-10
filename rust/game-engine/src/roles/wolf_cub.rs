@@ -13,7 +13,7 @@
 //! when the bonus question gets asked (same night as the main wolf vote,
 //! confirmed against `NightCycle` directly, not assumed). Team is
 //! already correct (`shared::Role::WolfCub` maps to `Team::Wolf`, and
-//! `is_wolf_muscle` already counts WolfCub as wolf muscle).
+//! `Role::is_wolf` already counts WolfCub as wolf muscle).
 
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
 use shared::{Role, Team};

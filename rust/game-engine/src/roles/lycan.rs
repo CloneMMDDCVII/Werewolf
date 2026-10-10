@@ -7,7 +7,7 @@
 //! `Investigate`/`CheckTeam` reveals, which this proof-of-concept already
 //! treats as unresolved display-layer detail for every investigate-shaped
 //! role (see `seer`/`sorcerer` module docs). Nothing extra to model here.
-//! Team is already correct via `is_wolf_muscle`.
+//! Team is already correct via `Role::is_wolf`.
 
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
 use shared::{Role, Team};

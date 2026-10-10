@@ -1,4 +1,4 @@
-//! SnowWolf is wolf-team muscle for win-condition purposes (`is_wolf_muscle`
+//! SnowWolf is wolf-team muscle for win-condition purposes (`Role::is_wolf`
 //! counts it), but it does **not** share the main wolf-eat vote: the
 //! legacy vote collection uses `WolfRoles = { Wolf, AlphaWolf, WolfCub,
 //! Lycan }` (Werewolf.cs:48), which leaves it out. Its night ability is a

@@ -42,16 +42,6 @@ const GUARDIAN_DIES_GUARDING_WOLF_PERCENT: u32 = 50;
 /// grave (Werewolf.cs:3510).
 const SERIAL_KILLER_RANDOM_KILL_PERCENT: u32 = 50;
 
-/// The legacy `WolfRoles` (Werewolf.cs:48): the wolves who eat.
-fn is_eating_wolf(role: Role) -> bool {
-    matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
-}
-
-/// `WolfRoles` plus the Snow Wolf, the check most visits use.
-fn is_wolf(role: Role) -> bool {
-    is_eating_wolf(role) || role == Role::SnowWolf
-}
-
 /// Every `*ConversionChance` in Settings.cs. Roles left out convert at
 /// `ConvertToCult`'s default of 100 (Werewolf.cs:2489).
 fn cult_conversion_chance_percent(role: Role) -> u32 {
@@ -370,7 +360,7 @@ impl Night<'_, '_> {
             return Visit::VisitorDied;
         }
         if target_role == Role::SerialKiller {
-            if !is_wolf(visitor_role)
+            if !visitor_role.is_wolf()
                 || !self.went_out(target)
                 || !self.not_frozen(target)
                 || self.roll(WOLF_DIES_AT_SERIAL_KILLER_PERCENT)
@@ -392,7 +382,7 @@ impl Night<'_, '_> {
         if visitor_role == Role::SnowWolf {
             return Visit::Success;
         }
-        if is_wolf(target_role) {
+        if target_role.is_wolf() {
             match visitor_role {
                 Role::Harlot => {
                     self.kill(visitor, KillMethod::VisitWolf, Some(target), Some(Role::Wolf), true);
@@ -433,7 +423,7 @@ impl Night<'_, '_> {
                     true,
                 );
                 let by = match visitor_role {
-                    r if is_eating_wolf(r) => Some(DiggerVisitor::Wolf),
+                    r if r.is_eating_wolf() => Some(DiggerVisitor::Wolf),
                     Role::CultistHunter => Some(DiggerVisitor::CultistHunter),
                     Role::Cultist => Some(DiggerVisitor::Cultist),
                     Role::GuardianAngel => Some(DiggerVisitor::GuardianAngel),
@@ -456,7 +446,8 @@ impl Night<'_, '_> {
         if visitor_role == Role::Arsonist {
             return Visit::Success;
         }
-        let away = target_role == Role::Harlot || (target_role == Role::GuardianAngel && !is_eating_wolf(visitor_role));
+        let away =
+            target_role == Role::Harlot || (target_role == Role::GuardianAngel && !visitor_role.is_eating_wolf());
         if away && self.went_out(target) && self.not_frozen(target) {
             return Visit::Fail;
         }
@@ -515,7 +506,7 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:3231-3494.
     fn wolves(&mut self) {
-        let wolves = self.living(is_eating_wolf);
+        let wolves = self.living(Role::is_eating_wolf);
         self.memory.drunk.clear();
         if wolves.is_empty() {
             return;
@@ -639,7 +630,7 @@ impl Night<'_, '_> {
     /// `BitePlayer` (Werewolf.cs:1943-1950).
     fn bite(&mut self, target: PlayerId, alpha: PlayerId) {
         self.outcome.bitten.push(target);
-        let pack = self.living(is_wolf);
+        let pack = self.living(Role::is_wolf);
         self.tell_all(&pack, NightNote::PlayerBittenWolves(target, alpha));
     }
 
@@ -800,7 +791,7 @@ impl Night<'_, '_> {
                     let left = self.living(|r| r == Role::Cultist).len() as u32;
                     self.tell(target, NightNote::CultHunterKilledCultVisit(newbie, left));
                 }
-                r if is_wolf(r) => {
+                r if r.is_wolf() => {
                     let home = if r == Role::SnowWolf {
                         !self.went_out(target)
                     } else {
@@ -935,7 +926,7 @@ impl Night<'_, '_> {
             Visit::VisitorDied => {
                 if !self.burning.contains(&target) {
                     match self.role(target) {
-                        Some(r) if is_wolf(r) => self.tell(harlot, NightNote::HarlotFuckWolf(target)),
+                        Some(r) if r.is_wolf() => self.tell(harlot, NightNote::HarlotFuckWolf(target)),
                         Some(Role::SerialKiller) => self.tell(harlot, NightNote::HarlotFuckKiller(target)),
                         Some(Role::GraveDigger) => self.tell(harlot, NightNote::HarlotFell(target)),
                         _ => {}
@@ -950,7 +941,7 @@ impl Night<'_, '_> {
                     Some(d)
                         if !d.by_visiting
                             && d.killed_by
-                                .is_some_and(|r| is_eating_wolf(r) || r == Role::SerialKiller) =>
+                                .is_some_and(|r| r.is_eating_wolf() || r == Role::SerialKiller) =>
                     {
                         self.kill(harlot, KillMethod::VisitVictim, Some(target), d.killed_by, true);
                     }
@@ -995,7 +986,7 @@ impl Night<'_, '_> {
             }
             Visit::Fail => self.tell(ga, NightNote::GuardEmptyHouse(charge)),
             Visit::VisitorDied => match self.role(charge) {
-                Some(r) if is_wolf(r) => self.tell(ga, NightNote::GuardWolf),
+                Some(r) if r.is_wolf() => self.tell(ga, NightNote::GuardWolf),
                 Some(Role::SerialKiller) => self.tell(ga, NightNote::GuardKiller),
                 Some(Role::GraveDigger) => self.tell(ga, NightNote::GAFell(charge)),
                 _ => {}
@@ -1038,7 +1029,7 @@ impl Night<'_, '_> {
             Visit::Success => {
                 let lands = self.roll(THIEF_STEAL_CHANCE_PERCENT);
                 let role = self.role(target).expect("a visited player is in the game");
-                if lands && !is_wolf(role) && role != Role::Cultist {
+                if lands && !role.is_wolf() && role != Role::Cultist {
                     self.steal(thief, target);
                 } else {
                     self.note(thief, Note::ThiefStealFailed { target });

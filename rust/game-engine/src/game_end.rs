@@ -9,7 +9,6 @@
 //! replays use; this module is what a live game follows. The Tanner-lynch
 //! win is checked before this, from the kill history.
 
-use crate::is_wolf_muscle;
 use crate::messages::Announcement;
 use crate::orchestrator::AlivePlayer;
 use crate::rng::RngSource;
@@ -92,7 +91,7 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
                             converted: vec![],
                         });
                     }
-                    Some(wolf) if is_wolf_muscle(wolf.role) => {
+                    Some(wolf) if wolf.role.is_wolf() => {
                         return Some(if rng.chance(HUNTER_KILLS_WOLF_PERCENT) {
                             GameEnd {
                                 winner: Team::Village,
@@ -142,7 +141,7 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
                 };
                 let cultist = find(Role::Cultist).expect("checked above");
                 return Some(match other.role {
-                    r if is_wolf_muscle(r) => GameEnd::win(Team::Wolf),
+                    r if r.is_wolf() => GameEnd::win(Team::Wolf),
                     Role::CultistHunter => GameEnd {
                         winner: Team::Village,
                         lines: vec![Announcement::CHKillsCultistEnd {
@@ -178,7 +177,7 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
     if alive.iter().all(|p| p.role.team() == Team::Cult) {
         return Some(GameEnd::win(Team::Cult));
     }
-    let wolves: Vec<&AlivePlayer> = alive.iter().filter(|p| is_wolf_muscle(p.role)).collect();
+    let wolves: Vec<&AlivePlayer> = alive.iter().filter(|p| p.role.is_wolf()).collect();
     let others = alive.len() - wolves.len();
     if wolves.len() >= others {
         // Werewolf.cs:4612-4625: a Gunner with bullets can still turn it
@@ -194,7 +193,7 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
     }
     let no_baddies = alive
         .iter()
-        .all(|p| !is_wolf_muscle(p.role) && !matches!(p.role, Role::Cultist | Role::SerialKiller | Role::Arsonist));
+        .all(|p| !p.role.is_wolf() && !matches!(p.role, Role::Cultist | Role::SerialKiller | Role::Arsonist));
     if no_baddies && !alive.iter().any(|p| ctx.bitten.contains(&p.id)) {
         return Some(GameEnd::win(Team::Village));
     }
@@ -267,7 +266,7 @@ fn neutral_ending(ctx: &EndContext) -> GameEnd {
 /// (Werewolf.cs:4816). Legacy's condition also counts dead Snow Wolves
 /// through an operator-precedence slip; `dead_snow_wolves` keeps that.
 pub fn wolves_win_plural(alive: &[AlivePlayer], dead_snow_wolves: usize) -> bool {
-    let living = alive.iter().filter(|p| is_wolf_muscle(p.role)).count();
+    let living = alive.iter().filter(|p| p.role.is_wolf()).count();
     living + dead_snow_wolves > 1
 }
 

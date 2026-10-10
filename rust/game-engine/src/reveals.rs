@@ -13,11 +13,6 @@ use crate::rng::RngSource;
 use crate::roles::{DayAction, NightAction, PlayerId};
 use shared::Role;
 
-/// The legacy `WolfRoles` array (Werewolf.cs:48).
-fn is_legacy_wolf_role(role: Role) -> bool {
-    matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
-}
-
 /// Chance the wolves learn who the Detective is on a day they snoop
 /// (`Settings.ChanceDetectiveCaught = 40`, Settings.cs:92).
 const DETECTIVE_CAUGHT_PERCENT: u32 = 40;
@@ -120,7 +115,7 @@ pub fn resolve_night_readings(
             continue;
         }
         let mut role = pool[rng.pick_index(pool.len())];
-        if is_legacy_wolf_role(role) {
+        if role.is_eating_wolf() {
             role = Role::Wolf;
         }
         events.push(tell(fool, Note::SeerSees { target, role }));
@@ -198,10 +193,7 @@ pub fn resolve_detective(
             continue;
         };
         if rng.chance(DETECTIVE_CAUGHT_PERCENT) {
-            for wolf in alive
-                .iter()
-                .filter(|p| is_legacy_wolf_role(p.role) || p.role == Role::SnowWolf)
-            {
+            for wolf in alive.iter().filter(|p| p.role.is_wolf()) {
                 events.push(NarrationEvent::Private {
                     to: wolf.id,
                     note: Note::DetectiveCaught { detective },

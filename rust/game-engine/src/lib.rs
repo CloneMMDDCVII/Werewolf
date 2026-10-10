@@ -53,17 +53,6 @@ pub fn evaluate_winner_with_kills(players: &[PlayerState], kills: &[KillEvent]) 
     evaluate_winner(players)
 }
 
-/// Roles counted as "wolf muscle" for the outnumber check.
-/// Mirrors `WolfRoles` array (Werewolf.cs:48) plus the `SnowWolf` special-case
-/// that appears alongside it at every call site. Notably excludes `Sorcerer`,
-/// which has `Team::Wolf` but is not counted here in the original code.
-pub(crate) fn is_wolf_muscle(role: Role) -> bool {
-    matches!(
-        role,
-        Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan | Role::SnowWolf
-    )
-}
-
 /// A resolved winner, or a marker that the original logic branches into
 /// territory we haven't ported (RNG outcomes, or state we don't have data
 /// for, like InLove/Bullet counts).
@@ -157,7 +146,7 @@ fn evaluate_common(alive: &[&PlayerState]) -> WinOutcome {
         return WinOutcome::Team(Team::Cult);
     }
 
-    let wolves = alive.iter().filter(|p| is_wolf_muscle(p.role)).count();
+    let wolves = alive.iter().filter(|p| p.role.is_wolf()).count();
     let others = alive.len() - wolves;
     if wolves >= others {
         // Gunner-parity exception (Werewolf.cs:4612-4625) needs Bullet data.
@@ -168,7 +157,7 @@ fn evaluate_common(alive: &[&PlayerState]) -> WinOutcome {
     }
 
     if alive.iter().all(|p| {
-        !is_wolf_muscle(p.role) && p.role != Role::Cultist && p.role != Role::SerialKiller && p.role != Role::Arsonist
+        !p.role.is_wolf() && p.role != Role::Cultist && p.role != Role::SerialKiller && p.role != Role::Arsonist
     }) {
         return WinOutcome::Team(Team::Village);
     }

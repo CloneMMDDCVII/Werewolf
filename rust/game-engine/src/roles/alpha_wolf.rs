@@ -8,7 +8,7 @@
 //! **not modeled here** — it's a slower, stateful conversion process
 //! distinct from anything else built so far, and would need its own
 //! dedicated hook. Team is already correct (`shared::Role::AlphaWolf`
-//! maps to `Team::Wolf`, and `is_wolf_muscle` already counts AlphaWolf as
+//! maps to `Team::Wolf`, and `Role::is_wolf` already counts AlphaWolf as
 //! wolf muscle for win-condition purposes).
 
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};

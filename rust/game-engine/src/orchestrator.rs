@@ -307,7 +307,7 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         // wolf and a Harlot dying to the exact same mechanic still get
         // different text.
         KillMethod::VisitKiller => Some(match role {
-            Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan => "SerialKillerKilledWolf",
+            r if r.is_eating_wolf() => "SerialKillerKilledWolf",
             // SnowWolf gets its own key even though it's wolf-team too
             // (Werewolf.cs:4396-4397: `case IRole.SnowWolf: if (KilledByRole
             // == SerialKiller) msg = "SnowFrozeKiller"`) - checked directly,
@@ -363,7 +363,7 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         // Werewolf.cs:4288-4302, the "killed by visiting Grave Digger"
         // switch.
         KillMethod::FallGrave => Some(match role {
-            Role::Wolf | Role::AlphaWolf | Role::Lycan | Role::WolfCub => "WolfFellPublic",
+            r if r.is_eating_wolf() => "WolfFellPublic",
             Role::Harlot => "HarlotFellPublic",
             Role::Cultist => "CultistFellPublic",
             Role::Thief => "ThiefFellPublic",
@@ -933,7 +933,9 @@ impl TeamVotes {
             };
             options.push(offered.clone());
             let heard = match prompt {
-                Prompt::WolfEat | Prompt::WolfCubBonusKill => Some((team(*player, eating_wolf), "WolfVotedKill")),
+                Prompt::WolfEat | Prompt::WolfCubBonusKill => {
+                    Some((team(*player, Role::is_eating_wolf), "WolfVotedKill"))
+                }
                 Prompt::CultistConvert => Some((team(*player, |r| r == Role::Cultist), "CultistVotedConvert")),
                 _ => None,
             };
@@ -962,11 +964,6 @@ impl OnAnswer for TeamVotes {
             })
             .collect()
     }
-}
-
-/// The legacy `WolfRoles` (Werewolf.cs:48): the wolves who eat.
-fn eating_wolf(role: Role) -> bool {
-    matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
 }
 
 /// Sends one phase's questions and returns validated answers, one per
@@ -1106,7 +1103,7 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
 /// player, less the wolves and the Snow Wolf for a wolf, and less the
 /// cult for a Cultist.
 fn night_options(player: &AlivePlayer, players: &[AlivePlayer]) -> Vec<PlayerId> {
-    let eats = eating_wolf;
+    let eats = Role::is_eating_wolf;
     players
         .iter()
         .filter(|o| o.id != player.id)

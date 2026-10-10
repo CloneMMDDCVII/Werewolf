@@ -117,7 +117,7 @@ pub fn death_message(d: &DeathContext) -> Option<Message> {
         }
         // Werewolf.cs:4305-4320, walking into a burning house.
         (KillMethod::VisitBurning, _) => {
-            let wolf = matches!(d.role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan);
+            let wolf = d.role.is_eating_wolf();
             Message::new(if wolf { "WolfVisitBurn" } else { "DefaultVisitBurn" }, vec![v, reveal])
         }
         // Werewolf.cs:4376.

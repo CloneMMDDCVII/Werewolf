@@ -7,7 +7,7 @@
 //! through its [`GameHandle`], which is `Send + Sync`.
 
 use crate::telegram::{Button, Keyboard, MsgRef, SendError, Telegram};
-use crate::text::{bold, escape, is_wolf, Texts};
+use crate::text::{bold, escape, Texts};
 use async_trait::async_trait;
 use control::game_rules::game_start;
 use control::group_config::{GroupSettings, Toggle};
@@ -615,7 +615,7 @@ impl TelegramPresenter {
         let text = self.prompt_text(prompt);
         // Werewolf.cs:5190-5214: wolves and cultists are told who to agree with.
         let team: Option<fn(Role) -> bool> = match prompt {
-            Prompt::WolfEat => Some(is_wolf),
+            Prompt::WolfEat => Some(Role::is_eating_wolf),
             Prompt::CultistConvert => Some(|r| r == Role::Cultist),
             _ => None,
         };

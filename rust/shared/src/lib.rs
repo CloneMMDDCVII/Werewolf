@@ -114,6 +114,10 @@ pub const ALL_ROLES: &[Role] = &[
     Role::Witch,
 ];
 
+/// The legacy `WolfRoles` array (Werewolf.cs:48, GameBalancing.cs:32), in
+/// its order, which balancing draws from. See `Role::is_eating_wolf`.
+pub const EATING_WOLVES: [Role; 4] = [Role::Wolf, Role::AlphaWolf, Role::WolfCub, Role::Lycan];
+
 impl Role {
     /// `Shared/Roles.cs:16-142`: the `[Role("emoji")]` attribute each legacy
     /// role carries, shown on the group `/config` role toggles. `None` for
@@ -226,6 +230,21 @@ impl Role {
             Barkeep => "Barkeep",
             Witch => "Witch",
         }
+    }
+
+    /// The legacy `WolfRoles` (Werewolf.cs:48): the wolves who vote on the
+    /// night's kill and eat. Leaves out the Snow Wolf, and the Sorcerer,
+    /// who is on the wolf team but is not a wolf.
+    pub fn is_eating_wolf(self) -> bool {
+        EATING_WOLVES.contains(&self)
+    }
+
+    /// The eating wolves plus the Snow Wolf: the legacy
+    /// `WolfRoles.Contains(role) || role == SnowWolf` that most visits and
+    /// the win check use. Narrower than `team() == Team::Wolf`, which also
+    /// holds the Sorcerer.
+    pub fn is_wolf(self) -> bool {
+        self.is_eating_wolf() || self == Role::SnowWolf
     }
 
     /// Mirrors `Werewolf.cs::SetTeam` (Werewolf Node/Werewolf.cs:1546-1610).
@@ -400,6 +419,20 @@ mod all_roles_tests {
             | Role::Barkeep
             | Role::Witch => {}
         }
+    }
+
+    #[test]
+    fn wolves_are_the_legacy_wolf_roles_and_the_snow_wolf() {
+        let eating: Vec<Role> = ALL_ROLES.iter().copied().filter(|r| r.is_eating_wolf()).collect();
+        assert_eq!(eating, vec![Role::Wolf, Role::AlphaWolf, Role::WolfCub, Role::Lycan]);
+        let wolves: Vec<Role> = ALL_ROLES.iter().copied().filter(|r| r.is_wolf()).collect();
+        assert_eq!(
+            wolves,
+            vec![Role::Wolf, Role::AlphaWolf, Role::WolfCub, Role::Lycan, Role::SnowWolf]
+        );
+        // The Sorcerer is on the wolf team without being a wolf.
+        assert_eq!(Role::Sorcerer.team(), Team::Wolf);
+        assert!(!Role::Sorcerer.is_wolf());
     }
 
     #[test]

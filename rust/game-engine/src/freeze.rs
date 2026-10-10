@@ -18,12 +18,6 @@ use crate::rng::RngSource;
 use crate::roles::{NightAction, PlayerId};
 use shared::{KillMethod, Role};
 
-/// The legacy `WolfRoles` array (Werewolf.cs:48). The Snow Wolf's targets
-/// exclude these but not other Snow Wolves or the Sorcerer.
-fn is_legacy_wolf_role(role: Role) -> bool {
-    matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
-}
-
 /// Whether being frozen cancels this role's night action.
 fn freeze_blocks(role: Role) -> bool {
     matches!(
@@ -66,7 +60,7 @@ pub fn freeze_question(
     let snow_wolf = alive.iter().find(|p| p.role == Role::SnowWolf)?.id;
     let options: Vec<PlayerId> = alive
         .iter()
-        .filter(|p| p.id != snow_wolf && !is_legacy_wolf_role(p.role) && Some(p.id) != frozen_last_night)
+        .filter(|p| p.id != snow_wolf && !p.role.is_eating_wolf() && Some(p.id) != frozen_last_night)
         .map(|p| p.id)
         .collect();
     Some((snow_wolf, options))

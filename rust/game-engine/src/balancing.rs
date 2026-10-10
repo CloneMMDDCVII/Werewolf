@@ -23,15 +23,10 @@
 //! bit-for-bit.
 
 use crate::rng::RngSource;
-use shared::{Role, ALL_ROLES};
+use shared::{Role, ALL_ROLES, EATING_WOLVES};
 
-/// `GameBalancing.cs:32`: only the four base wolf roles — `SnowWolf` is
-/// deliberately excluded here too (matches every other `WolfRoles`
-/// reference already ported into `game-engine`, e.g. `game
-/// ::apply_pending_alpha_bites`'s `is_wolf_muscle`, which is the *other*
-/// wolf-team list that *does* include `SnowWolf` — the two lists mean
-/// different things and this module needs the narrower one).
-const WOLF_ROLES: [Role; 4] = [Role::Wolf, Role::AlphaWolf, Role::WolfCub, Role::Lycan];
+/// `GameBalancing.cs:32`: the four eating wolves, without the Snow Wolf.
+const WOLF_ROLES: [Role; 4] = EATING_WOLVES;
 
 /// `GameBalancing.cs:43`: roles whose team isn't "village" for balancing
 /// purposes — used to compute team sizes and strength totals, not the
@@ -123,7 +118,7 @@ fn candidate_role_pool(rng: &mut dyn RngSource, player_count: usize, disabled_ro
 
     for &role in ALL_ROLES {
         match role {
-            Role::Wolf | Role::Lycan | Role::WolfCub | Role::AlphaWolf | Role::SnowWolf => {}
+            r if r.is_wolf() => {}
             Role::CultistHunter | Role::Cultist => {
                 if player_count > 10 {
                     roles_to_assign.push(role);

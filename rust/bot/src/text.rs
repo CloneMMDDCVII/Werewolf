@@ -175,12 +175,6 @@ impl Texts {
     }
 }
 
-/// The legacy `WolfRoles`: the pack that hunts together, without the Snow
-/// Wolf.
-pub fn is_wolf(role: Role) -> bool {
-    matches!(role, Role::Wolf | Role::WolfCub | Role::AlphaWolf | Role::Lycan)
-}
-
 /// `Role`'s serde name, which is also the legacy enum name the locale keys
 /// are built from (`RoleInfoSeer`, `RoleInfoGuardianAngel`).
 pub fn role_key(role: Role) -> String {

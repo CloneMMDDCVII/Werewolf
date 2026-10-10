@@ -8,12 +8,6 @@ use crate::orchestrator::{AlivePlayer, NarrationEvent};
 use crate::roles::PlayerId;
 use shared::Role;
 
-/// The legacy `WolfRoles` (Werewolf.cs:48): the wolves that eat, which
-/// leave out the Snow Wolf.
-fn eats(role: Role) -> bool {
-    matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
-}
-
 fn ids(alive: &[AlivePlayer], keep: impl Fn(&AlivePlayer) -> bool) -> Vec<PlayerId> {
     alive.iter().filter(|p| keep(p)).map(|p| p.id).collect()
 }
@@ -115,8 +109,8 @@ pub fn role_info(role: Role, alive: &[AlivePlayer], thief_full: bool) -> Message
                 info
             }
         }
-        Role::Wolf | Role::WolfCub | Role::AlphaWolf | Role::Lycan | Role::SnowWolf => {
-            let pack = ids(alive, |p| eats(p.role) || p.role == Role::SnowWolf);
+        r if r.is_wolf() => {
+            let pack = ids(alive, |p| p.role.is_wolf());
             if pack.len() < 2 {
                 return info;
             }
@@ -204,7 +198,7 @@ pub fn transform_tells(
             Message::new("CultistBitten", vec![me.clone()]),
         ));
     }
-    let eaters = others(&|r| eats(r));
+    let eaters = others(&Role::is_eating_wolf);
     let snow = others(&|r| r == Role::SnowWolf).first().copied();
     let beholder = holder(alive, Role::Beholder);
     match cause {
@@ -261,7 +255,7 @@ pub fn transform_tells(
         }
         Cause::Doppelganger { model } => {
             let model = MessageArg::Player(model);
-            let wolfish = matches!(to, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan);
+            let wolfish = to.is_eating_wolf();
             let teamed = wolfish || matches!(to, Role::Mason | Role::Cultist | Role::WildChild | Role::SnowWolf);
             if !teamed {
                 out.push(tell(player, role_info(to, alive, thief_full)));
@@ -320,9 +314,7 @@ pub fn transform_tells(
             let victim = MessageArg::Player(victim);
             let (team, key) = match to {
                 Role::Mason => (others(&|r| r == Role::Mason), "ThiefToMason"),
-                Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan => {
-                    (eaters.iter().copied().chain(snow).collect(), "ThiefToWolf")
-                }
+                r if r.is_eating_wolf() => (eaters.iter().copied().chain(snow).collect(), "ThiefToWolf"),
                 Role::SnowWolf => (eaters.clone(), "ThiefToSnowWolf"),
                 Role::Cultist => (others(&|r| r == Role::Cultist), "ThiefToCult"),
                 _ => (vec![], ""),
