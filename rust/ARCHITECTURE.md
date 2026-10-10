@@ -109,6 +109,9 @@ Change its `DEF` for what it is asked, what others see, its death lines
 or its balancing. Change its `RoleBehavior` for which answers are valid.
 Change the regions its header links to for what happens to others. The
 historical-game replays (`sim/tests`) fail if the legacy outcome changes.
+`sim/tests/engine_transcripts.rs` plays 300 seeded random games and
+fails if any of them plays differently; a refactor should keep all 300,
+and an intended rule change re-blesses the moved seeds (see that file).
 
 ## Deleting a role
 
