@@ -279,7 +279,6 @@ pub async fn run_game_with_rules(
         presenter.narrate(NarrationEvent::Announce(Announcement::LynchTime { seconds: lynch_seconds })).await;
         let (day_actions, lynch) = resolve_day(&alive, &mut states, rules, presenter, rng).await;
         let veto = last_day_veto(&day_actions);
-        narrate_all(day_action_announcements(&day_actions, &alive), presenter).await;
         let lynch_target_role = lynch.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
         silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
@@ -694,34 +693,6 @@ async fn apply_fled_players(
     if !fled_deaths.is_empty() {
         process_deaths(&fled_deaths, &[], alive, states, lovers, kills, deaths, reveal_role, presenter).await;
     }
-}
-
-/// Tells the presenter about a batch of already-built events, in order.
-/// Shared by anything that (unlike `narrate_deaths`) can build its
-/// `NarrationEvent`s directly rather than zipping two parallel arrays —
-/// `apply_transforms` today, the natural landing spot for anything else
-/// that ends up producing a batch of events at once.
-/// The moment-of-use lines for day abilities, in the order they were
-/// used: Mayor (Werewolf.cs:901), Pacifist (918), Blacksmith (941),
-/// Sandman (957) and Troublemaker (972).
-fn day_action_announcements(day_actions: &[DayAction], alive: &[AlivePlayer]) -> Vec<NarrationEvent> {
-    let holder = |role: Role| alive.iter().find(|p| p.role == role).map(|p| p.id);
-    day_actions
-        .iter()
-        .filter_map(|action| match action {
-            DayAction::Reveal => holder(Role::Mayor).map(|mayor| Announcement::MayorReveal { mayor }),
-            DayAction::Pacify => holder(Role::Pacifist).map(|pacifist| Announcement::PacifistNoLynch { pacifist }),
-            DayAction::SpreadSilver => {
-                holder(Role::Blacksmith).map(|blacksmith| Announcement::BlacksmithSpreadSilver { blacksmith })
-            }
-            DayAction::Trouble => {
-                holder(Role::Troublemaker).map(|troublemaker| Announcement::TroublemakerDoubleLynch { troublemaker })
-            }
-            DayAction::Sleep => holder(Role::Sandman).map(|sandman| Announcement::SandmanSleepAll { sandman }),
-            _ => None,
-        })
-        .map(NarrationEvent::Announce)
-        .collect()
 }
 
 /// Werewolf.cs:2745-2748: a Prince who survives their first lynch says so.

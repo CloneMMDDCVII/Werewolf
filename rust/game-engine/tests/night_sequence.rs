@@ -70,7 +70,7 @@ const P3: PlayerId = PlayerId(3);
 
 async fn play(players: &[AlivePlayer], presenter: &mut Night, seed: u64, rounds: u32) {
     let rules = GameRules::default();
-    run_game_with_rules(players, &ALL_ROLES, &rules, presenter, &mut SeededRngSource::new(seed), rounds).await;
+    run_game_with_rules(players, ALL_ROLES, &rules, presenter, &mut SeededRngSource::new(seed), rounds).await;
 }
 
 #[tokio::test]
@@ -142,7 +142,7 @@ async fn the_burned_share_one_line_when_roles_are_shown() {
     }
     let mut arsonist = Arsonist { inner: Night::new(&[]) };
     let rules = GameRules::default();
-    run_game_with_rules(&players, &ALL_ROLES, &rules, &mut arsonist, &mut SeededRngSource::new(0), 3).await;
+    run_game_with_rules(&players, ALL_ROLES, &rules, &mut arsonist, &mut SeededRngSource::new(0), 3).await;
     let burns: Vec<_> = arsonist
         .inner
         .narrated

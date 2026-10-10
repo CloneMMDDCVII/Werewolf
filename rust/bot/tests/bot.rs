@@ -36,6 +36,14 @@ impl Bot {
     }
 
     async fn with_store(max_games: usize, store: Store) -> Bot {
+        Self::build(max_games, store, 7).await
+    }
+
+    async fn with_seed(seed: u64) -> Bot {
+        Self::build(10, Store::in_memory().await.unwrap(), seed).await
+    }
+
+    async fn build(max_games: usize, store: Store, seed: u64) -> Bot {
         let tg = Arc::new(FakeTelegram::default());
         tg.make_admin(GROUP, ADMIN);
         tg.make_admin(OTHER_GROUP, ADMIN);
@@ -45,7 +53,7 @@ impl Bot {
             store.clone(),
             Arc::new(LocalSpawner::new()),
             Box::new(MaxGames(max_games)),
-            CoreConfig { default_language: "English".into(), global_admins: vec![DEV], seed: Some(7) },
+            CoreConfig { default_language: "English".into(), global_admins: vec![DEV], seed: Some(seed) },
         )
         .await
         .unwrap();
@@ -525,5 +533,74 @@ async fn lynch_votes_are_announced_as_they_are_cast() {
         assert!(bot.said(GROUP, "PlayerVotedLynch", &["Player2", &target]), "{}", bot.tg.transcript(GROUP));
         assert!(bot.tg.last(2).is_some());
         assert!(!bot.tg.open_keyboards(3).is_empty(), "the others are still voting");
+    })
+}
+
+/// The newest open question in `chat` whose text is a variant of `key`.
+fn question(bot: &Bot, chat: i64, key: &str) -> Option<bot::fake::FakeMessage> {
+    let variants = bot.texts.pack("English").variants(key).unwrap().to_vec();
+    bot.tg.open_keyboards(chat).into_iter().rev().find(|m| variants.contains(&m.text))
+}
+
+async fn click(bot: &Bot, from: i64, m: &bot::fake::FakeMessage, label: &str) {
+    let data = m
+        .keyboard
+        .iter()
+        .flatten()
+        .flatten()
+        .find_map(|b| match b {
+            Button::Callback { text, data } if text == label => Some(data.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no {label:?} button"));
+    bot.core.handle(Incoming::Callback { id: format!("cb{}", m.msg.id), from: user(from), message: Some(m.msg), data }).await;
+    tokio::time::sleep(Duration::from_millis(100)).await; // the game task picks the press up
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_pacifists_peace_closes_the_lynch_vote() {
+    local!(async {
+        let players = 1..=8;
+        // Deal until a Pacifist is still alive when the lynch vote opens.
+        for seed in 0..60 {
+            let bot = Bot::with_seed(seed).await;
+            bot.start_game(players.clone()).await;
+            let (pacifist, peace) = loop {
+                if bot.core.active_groups() == 0 || players.clone().any(|id| question(&bot, id, "AskLynch").is_some()) {
+                    break (0, None);
+                }
+                if let Some((id, m)) = players.clone().find_map(|id| question(&bot, id, "AskPacifist").map(|m| (id, m))) {
+                    break (id, Some(m));
+                }
+                tick(1).await;
+            };
+            let Some(peace) = peace else { continue };
+            // Let the discussion run out and the vote open.
+            let ballot = loop {
+                let open = players.clone().filter(|&id| id != pacifist).find_map(|id| question(&bot, id, "AskLynch").map(|m| (id, m)));
+                if open.is_some() {
+                    break open;
+                }
+                if bot.core.active_groups() == 0 {
+                    break None;
+                }
+                tick(1).await;
+            };
+            let Some((voter, ballot)) = ballot else { continue };
+            let target = ballot.keyboard.as_ref().unwrap()[0][0].text().to_string();
+            click(&bot, voter, &ballot, &target).await;
+            click(&bot, pacifist, &peace, &bot.t("Yes", &[])).await;
+
+            let pacifist_name = format!("Player{pacifist}");
+            assert!(bot.said(GROUP, "PacifistNoLynch", &[&pacifist_name]), "{}", bot.tg.transcript(GROUP));
+            assert!(bot.said(GROUP, "PacifistNoLynchNow", &[]), "{}", bot.tg.transcript(GROUP));
+            let still_voting: Vec<i64> =
+                players.clone().filter(|&id| question(&bot, id, "AskLynch").is_some()).collect();
+            assert!(still_voting.is_empty(), "lynch menus left open for {still_voting:?}");
+            let closed = players.clone().filter(|&id| bot.tg.texts(id).iter().any(|t| bot.is(t, "LynchPeaceTimeout", &[])));
+            assert!(closed.count() > 0, "open lynch menus should say the peace closed them");
+            return;
+        }
+        panic!("no seed dealt a Pacifist who lived to the lynch vote");
     })
 }

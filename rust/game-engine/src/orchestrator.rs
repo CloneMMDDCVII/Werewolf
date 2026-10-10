@@ -799,6 +799,13 @@ pub trait Presenter {
     async fn ask_batch(&mut self, _phase: Phase, questions: Vec<Question>, on_answer: &mut dyn OnAnswer) -> Vec<Answer> {
         let mut answers = Vec::with_capacity(questions.len());
         for (index, question) in questions.into_iter().enumerate() {
+            if on_answer.closed(index) {
+                answers.push(match question {
+                    Question::Targets { .. } => Answer::Targets(None),
+                    Question::Toggle { .. } => Answer::Toggle(false),
+                });
+                continue;
+            }
             let answer = match question {
                 Question::Targets { player, prompt, options, count } => {
                     Answer::Targets(self.ask_targets(player, prompt, &options, count).await)
@@ -865,6 +872,15 @@ pub trait OnAnswer {
     /// Answer `index` of the batch just landed; returns what to tell the
     /// group or the player now. Called at most once per question.
     fn answered(&mut self, index: usize, answer: &Answer) -> Vec<NarrationEvent>;
+
+    /// Whether question `index` is no longer wanted: a presenter stops
+    /// waiting for it, and once every question it still waits on is
+    /// closed, the batch is over. A lynch vote is closed by a Pacifist's
+    /// peace (Werewolf.cs:2575-2590, which also edits the open menus to
+    /// say so: `LynchPeaceTimeout`). Default: nothing closes early.
+    fn closed(&self, _index: usize) -> bool {
+        false
+    }
 }
 
 /// For batches nothing needs to react to as they're answered.
@@ -1309,6 +1325,55 @@ impl OnAnswer for LynchVotes<'_> {
     }
 }
 
+/// The day's batch: the lynch votes, plus the yes/no abilities, each
+/// announced the moment it's used, as the legacy callbacks do
+/// (Werewolf.cs:899-973), so a Mayor's reveal lands before the votes it
+/// doubles and a Pacifist's peace stops the vote it cancels.
+struct DayAnswers<'a> {
+    votes: LynchVotes<'a>,
+    /// Batch index of each yes/no ability, with who holds it. Only asked
+    /// while unused, so a yes always takes effect.
+    abilities: Vec<(usize, AlivePlayer)>,
+    /// Whether a Pacifist's peace stands: peace sets it and a later
+    /// Troublemaker clears it (Werewolf.cs:916-917, 970-971).
+    peace: bool,
+}
+
+impl OnAnswer for DayAnswers<'_> {
+    fn answered(&mut self, index: usize, answer: &Answer) -> Vec<NarrationEvent> {
+        if self.closed(index) {
+            return vec![];
+        }
+        let Some(at) = self.abilities.iter().position(|(i, _)| *i == index) else {
+            return self.votes.answered(index, answer);
+        };
+        let (_, player) = self.abilities.remove(at);
+        if *answer != Answer::Toggle(true) {
+            return vec![];
+        }
+        let id = player.id;
+        let announcement = match player.role {
+            Role::Mayor => Announcement::MayorReveal { mayor: id },
+            Role::Pacifist => {
+                self.peace = true;
+                Announcement::PacifistNoLynch { pacifist: id }
+            }
+            Role::Troublemaker => {
+                self.peace = false;
+                Announcement::TroublemakerDoubleLynch { troublemaker: id }
+            }
+            Role::Blacksmith => Announcement::BlacksmithSpreadSilver { blacksmith: id },
+            Role::Sandman => Announcement::SandmanSleepAll { sandman: id },
+            _ => return vec![],
+        };
+        vec![NarrationEvent::Announce(announcement)]
+    }
+
+    fn closed(&self, index: usize) -> bool {
+        self.peace && self.votes.ballots.iter().any(|(i, _, _)| *i == index)
+    }
+}
+
 /// Secret lynch results, most votes first (Werewolf.cs:2717-2741), when
 /// the group shows votes. A revealed Mayor appears with a count of 2.
 fn secret_lynch_results(
@@ -1400,21 +1465,25 @@ pub async fn resolve_day(
 ) -> (Vec<DayAction>, LynchResult) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut batch = BatchBuilder::default();
-    let mut votes = LynchVotes::new(rules, rng, alive.len());
+    let mut day = DayAnswers { votes: LynchVotes::new(rules, rng, alive.len()), abilities: vec![], peace: false };
     let mut asked = vec![];
     for player in players {
-        votes.ask(&mut batch, player, &alive);
+        day.votes.ask(&mut batch, player, &alive);
         let state = states.entry(player.id).or_default();
         let target = one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &alive, 1));
-        // A Sandman who already slept the village isn't asked again
-        // (Werewolf.cs:5070).
+        // Each yes/no ability is used once, and not offered again
+        // (Werewolf.cs:5070-5100, `!HasUsedAbility`).
         let toggle = toggle_day_prompt(player.role)
-            .filter(|&prompt| !(prompt == Prompt::SandmanSleep && state.primary_used))
+            .filter(|_| !state.primary_used)
             .map(|prompt| batch.toggle(player.id, prompt));
+        if let Some(index) = toggle {
+            day.abilities.push((index, *player));
+        }
         asked.push((player, target, toggle));
     }
-    let answers = ask_phase(presenter, Phase::Day, &batch.questions, &mut votes).await;
-    let votes_by_voter = votes.cast;
+    let answers = ask_phase(presenter, Phase::Day, &batch.questions, &mut day).await;
+    let peace = day.peace;
+    let votes_by_voter = day.votes.cast;
 
     let mut day_actions = vec![];
     for (player, target, toggle) in asked {
@@ -1427,6 +1496,16 @@ pub async fn resolve_day(
             toggle_choice: toggle_answer(&answers, toggle),
         };
         day_actions.extend(behavior.day_action(&ctx, state));
+    }
+    // Whichever of peace and trouble was answered last is the one that
+    // stands (see `last_day_veto`), whatever order the players are in.
+    let winner = if peace { DayAction::Pacify } else { DayAction::Trouble };
+    if let Some(at) = day_actions.iter().position(|a| *a == winner) {
+        let veto = day_actions.remove(at);
+        day_actions.push(veto);
+    }
+    if peace {
+        return (day_actions, LynchResult::NoVotes);
     }
 
     if let Some(results) = secret_lynch_results(&votes_by_voter, players, states, rules) {

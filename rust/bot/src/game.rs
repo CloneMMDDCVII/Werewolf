@@ -355,9 +355,27 @@ struct Open {
     index: usize,
     qid: u32,
     player: PlayerId,
+    prompt: Prompt,
     msg: Option<MsgRef>,
     shape: Shape,
     answer: Option<Answer>,
+}
+
+/// How long `collect` waits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Until {
+    /// The whole timer: the day's role actions stay open all day.
+    Timer,
+    /// Until every question still wanted is answered. The Mayor's reveal
+    /// and the Pacifist's peace can be used any time (Werewolf.cs:898,
+    /// "Reveal at any time roles"), so nobody waits on them.
+    Answered,
+}
+
+/// The day questions that stay open from the discussion through the
+/// lynch vote.
+fn any_time(prompt: Prompt) -> bool {
+    matches!(prompt, Prompt::MayorReveal | Prompt::PacifistPeace)
 }
 
 enum Shape {
@@ -511,7 +529,7 @@ impl TelegramPresenter {
         };
         let keyboard = self.keyboard(qid, &shape);
         let msg = self.pm(player, &self.question_text(prompt), Some(keyboard)).await;
-        let mut open = Open { index, qid, player, msg, shape, answer: None };
+        let mut open = Open { index, qid, player, prompt, msg, shape, answer: None };
         if msg.is_none() {
             open.answer = Some(open.no_answer());
         }
@@ -519,7 +537,9 @@ impl TelegramPresenter {
     }
 
     async fn on_click(&mut self, open: &mut [Open], click: Click, on_answer: &mut dyn OnAnswer) {
-        let Some(q) = open.iter_mut().find(|q| q.qid == click.qid && q.answer.is_none()) else {
+        let Some(q) =
+            open.iter_mut().find(|q| q.qid == click.qid && q.answer.is_none() && !on_answer.closed(q.index))
+        else {
             let closed = self.texts.get(&self.lang, "", "That question is closed.", &[]);
             let _ = self.telegram.answer_callback(&click.callback_id, Some(&closed)).await;
             return;
@@ -584,12 +604,12 @@ impl TelegramPresenter {
         }
     }
 
-    /// Waits for answers until everyone answered (unless `full`), the
-    /// deadline passes, or the game is killed. Questions still open then
-    /// count as "no answer" and their message says time is up.
-    async fn collect(&mut self, open: &mut [Open], deadline: Instant, full: bool, on_answer: &mut dyn OnAnswer) {
+    /// Waits for answers until `until` says so, the deadline passes, or
+    /// the game is killed. Questions still open stay open; see `close`.
+    async fn collect(&mut self, open: &mut [Open], deadline: Instant, until: Until, on_answer: &mut dyn OnAnswer) {
         loop {
-            if self.handle.is_killed() || (!full && open.iter().all(|q| q.answer.is_some())) {
+            let waiting = |q: &Open| q.answer.is_none() && !on_answer.closed(q.index) && !any_time(q.prompt);
+            if self.handle.is_killed() || (until == Until::Answered && !open.iter().any(waiting)) {
                 break;
             }
             tokio::select! {
@@ -601,35 +621,44 @@ impl TelegramPresenter {
                 },
             }
         }
+    }
+
+    /// Ends the open questions `which` picks: they count as "no answer",
+    /// and their message says why (time is up, or a Pacifist's peace
+    /// closed the vote: `LynchPeaceTimeout`, Werewolf.cs:2582).
+    async fn close(&mut self, open: &mut [Open], which: impl Fn(&Open) -> bool, on_answer: &dyn OnAnswer) {
         let times_up = self.t("TimesUp", &[]);
-        for q in open.iter_mut().filter(|q| q.answer.is_none()) {
+        let peace = self.t("LynchPeaceTimeout", &[]);
+        for q in open.iter_mut().filter(|q| q.answer.is_none() && which(q)) {
             q.answer = Some(q.no_answer());
             if let Some(msg) = q.msg {
-                let _ = self.telegram.edit(msg, &times_up, None).await;
+                let text = if on_answer.closed(q.index) { &peace } else { &times_up };
+                let _ = self.telegram.edit(msg, text, None).await;
             }
         }
     }
 
-    /// Sends `questions` (with their batch positions), waits as `collect`
-    /// does, and returns each answer with its position.
+    /// Sends `questions` (with their batch positions), waits until they're
+    /// answered, closes what's left, and returns each answer with its
+    /// position.
     async fn ask(
         &mut self,
         questions: Vec<(usize, Question)>,
         deadline: Instant,
-        full: bool,
         on_answer: &mut dyn OnAnswer,
     ) -> Vec<(usize, Answer)> {
         let mut open = vec![];
         for (index, q) in questions {
             open.push(self.open(index, q).await);
         }
-        self.collect(&mut open, deadline, full, on_answer).await;
+        self.collect(&mut open, deadline, Until::Answered, on_answer).await;
+        self.close(&mut open, |_| true, on_answer).await;
         open.into_iter().map(|q| (q.index, q.answer.unwrap())).collect()
     }
 
     async fn ask_one(&mut self, q: Question) -> Answer {
         let deadline = Self::secs(SINGLE_QUESTION_SECONDS);
-        self.ask(vec![(0, q)], deadline, false, &mut Quiet).await.pop().map(|(_, a)| a).unwrap_or(Answer::Toggle(false))
+        self.ask(vec![(0, q)], deadline, &mut Quiet).await.pop().map(|(_, a)| a).unwrap_or(Answer::Toggle(false))
     }
 
     fn secs(n: u64) -> Instant {
@@ -683,22 +712,38 @@ impl Presenter for TelegramPresenter {
                     None => Self::secs(self.night_seconds as u64),
                 };
                 self.night_deadline = Some(deadline);
-                fill(self.ask(questions.iter().cloned().enumerate().collect(), deadline, false, on_answer).await);
+                fill(self.ask(questions.iter().cloned().enumerate().collect(), deadline, on_answer).await);
             }
             Phase::Day => {
                 // Discussion first, with the day's role actions open for
-                // the whole day timer, then the lynch vote.
+                // the whole day timer, then the lynch vote. The Mayor and
+                // the Pacifist can still act during the vote.
                 let (votes, actions): (Vec<_>, Vec<_>) =
                     questions.iter().cloned().enumerate().partition(|(_, q)| q.prompt() == Prompt::LynchVote);
-                if !actions.is_empty() || self.pending_lynch_time.is_some() {
+                let mut open = vec![];
+                for (index, q) in actions {
+                    open.push(self.open(index, q).await);
+                }
+                if !open.is_empty() || self.pending_lynch_time.is_some() {
                     let day = Self::secs(self.day_seconds as u64);
-                    fill(self.ask(actions, day, true, on_answer).await);
+                    self.collect(&mut open, day, Until::Timer, on_answer).await;
                 }
-                if !self.handle.is_killed() {
+                self.close(&mut open, |q| !any_time(q.prompt), on_answer).await;
+                // Peace made before the vote means there is none
+                // (Werewolf.cs:2558-2563).
+                let peace = !votes.is_empty() && votes.iter().all(|(index, _)| on_answer.closed(*index));
+                if peace {
+                    self.pending_lynch_time = None;
+                } else if !self.handle.is_killed() {
                     self.flush_lynch_time().await;
+                    for (index, q) in votes {
+                        open.push(self.open(index, q).await);
+                    }
                     let lynch = Self::secs(self.lynch_seconds as u64);
-                    fill(self.ask(votes, lynch, false, on_answer).await);
+                    self.collect(&mut open, lynch, Until::Answered, on_answer).await;
                 }
+                self.close(&mut open, |_| true, on_answer).await;
+                fill(open.into_iter().map(|q| (q.index, q.answer.unwrap())).collect());
             }
         }
         questions
