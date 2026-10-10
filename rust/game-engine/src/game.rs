@@ -8,7 +8,10 @@
 
 use crate::freeze::{apply_freeze, ask_freeze};
 use crate::death_text::{death_message, DeathContext};
+use crate::game_end::{check_game_end, wolves_win_plural, EndContext, GameEnd};
 use crate::messages::{Announcement, Note};
+use crate::orchestrator::game_over_message;
+use crate::roles::gunner::bullets_left;
 use crate::visits::{resolve_full_steal, resolve_hunt, VisitScene};
 use crate::rules::GameRules;
 use crate::summary::{is_winner, GameSummary, SummaryEntry};
@@ -21,7 +24,7 @@ use crate::orchestrator::{
 use crate::reveals::{resolve_detective, resolve_night_readings, AugurMemory};
 use crate::rng::RngSource;
 use crate::roles::{behavior_for, DayAction, LoversState, NightAction, PlayerId, RoleState};
-use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
+use crate::{is_wolf_muscle, KillEvent, WinOutcome};
 use shared::{KillMethod, Role, Team};
 use std::collections::{HashMap, HashSet};
 
@@ -155,7 +158,7 @@ pub async fn run_game_with_rules(
         bitten_pending.clear();
 
         if let Some(outcome) =
-            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
         {
             return outcome;
         }
@@ -318,7 +321,7 @@ pub async fn run_game_with_rules(
         narrate_all(readings, presenter).await;
 
         if let Some(outcome) =
-            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
         {
             return outcome;
         }
@@ -370,7 +373,7 @@ pub async fn run_game_with_rules(
         .await;
 
         if let Some(outcome) =
-            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
         {
             return outcome;
         }
@@ -401,7 +404,7 @@ pub async fn run_game_with_rules(
             .await;
 
             if let Some(outcome) =
-                check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+                check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
             {
                 return outcome;
             }
@@ -413,7 +416,8 @@ pub async fn run_game_with_rules(
     let winner = WinOutcome::Unimplemented(
         "max_rounds reached without a resolved winner (likely repeated tied votes)",
     );
-    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone() }).await;
+    let message = game_over_message(&winner, false);
+    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone(), message }).await;
     let summary = game_summary(&setup, &winner, &alive, &lovers, &kills, &deaths);
     presenter.narrate(NarrationEvent::GameSummary(summary)).await;
     GameOutcome {
@@ -436,15 +440,30 @@ async fn check_for_game_end(
     lovers: &LoversState,
     kills: &mut Vec<KillEvent>,
     deaths: &mut Vec<(PlayerId, KillMethod)>,
+    bitten: &[PlayerId],
+    rng: &mut dyn RngSource,
 ) -> Option<GameOutcome> {
     let winner = if presenter.game_was_killed() {
         WinOutcome::Killed
     } else {
         let reveal = setup.rules.show_roles_on_death;
         apply_fled_players(presenter, alive, states, lovers, kills, deaths, reveal).await;
-        resolved_winner(alive, kills, lovers)?
+        if kills.iter().any(|k| k.method == KillMethod::Lynch && k.victim_role == Role::Tanner) {
+            // Werewolf.cs:2768-2776: lynching the Tanner ends the game.
+            WinOutcome::Team(Team::Tanner)
+        } else {
+            let in_love = |id: PlayerId| lovers.partner_of(id).is_some();
+            let bullets = |id: PlayerId| states.get(&id).map(bullets_left).unwrap_or(2);
+            let role_model = |id: PlayerId| states.get(&id).and_then(|s| s.remembered_player);
+            let ctx = EndContext { alive, in_love: &in_love, bullets: &bullets, role_model: &role_model, bitten };
+            let end = check_game_end(&ctx, rng)?;
+            play_out_ending(&end, alive, kills, deaths, reveal, presenter).await;
+            WinOutcome::Team(end.winner)
+        }
     };
-    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone() }).await;
+    let dead_snow_wolves = kills.iter().filter(|k| k.victim_role == Role::SnowWolf).count();
+    let message = game_over_message(&winner, wolves_win_plural(alive, dead_snow_wolves));
+    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone(), message }).await;
     let summary = game_summary(setup, &winner, alive, lovers, kills, deaths);
     presenter.narrate(NarrationEvent::GameSummary(summary)).await;
     Some(GameOutcome {
@@ -452,6 +471,33 @@ async fn check_for_game_end(
         rounds_played: round,
         deaths: deaths.clone(),
     })
+}
+
+/// What an ending does before the winner is named: its lines, the deaths
+/// it causes (announced by those lines, so their own line is `None`), and
+/// the cult's last convert.
+async fn play_out_ending(
+    end: &GameEnd,
+    alive: &mut Vec<AlivePlayer>,
+    kills: &mut Vec<KillEvent>,
+    deaths: &mut Vec<(PlayerId, KillMethod)>,
+    reveal_role: bool,
+    presenter: &mut dyn Presenter,
+) {
+    for line in &end.lines {
+        presenter.narrate(NarrationEvent::Announce(line.clone())).await;
+    }
+    let died_with_roles = record_deaths(alive, &end.deaths, kills, deaths);
+    for (&(victim, method), &(_, role)) in end.deaths.iter().zip(&died_with_roles) {
+        presenter.narrate(NarrationEvent::Death { victim, role, method, reveal_role, message: None }).await;
+    }
+    alive.retain(|p| !end.deaths.iter().any(|&(v, _)| v == p.id));
+    for &id in &end.converted {
+        if let Some(p) = alive.iter_mut().find(|p| p.id == id) {
+            presenter.narrate(NarrationEvent::Transform { player: id, from: p.role, to: Role::Cultist }).await;
+            p.role = Role::Cultist;
+        }
+    }
 }
 
 /// Builds the end-of-game summary: survivors first, then the dead in the
@@ -1140,56 +1186,6 @@ fn apply_transforms(
         }
     }
     events
-}
-
-/// `Some(outcome)` only for an actual `Team` win — every other `WinOutcome`
-/// variant means "don't stop, but also don't pretend this was a clean
-/// continue" (see `run_game`'s doc comment on the RNG/data-gap caveat).
-/// Only needs the *current* alive roster: `evaluate_winner` filters to
-/// `alive` players internally, so dead players' entries would never be
-/// looked at anyway.
-///
-/// Checks a Lovers win *before* the normal team logic below, matching the
-/// real precedence (Werewolf.cs:4525-4527: the lovers check is the very
-/// first thing `CheckForWin`'s two-player case looks at). Getting this
-/// order backwards is a real bug this test setup caught: two mutually
-/// in-love Villager survivors would otherwise hit `evaluate_common`'s "no
-/// wolves alive" branch and resolve to a plain Village win before the
-/// Lovers check ever ran. `evaluate_winner_with_kills` itself has no idea
-/// lover pairings exist at all (that's why `sim`'s fixture replay can
-/// never verify a Lovers outcome — the historical export has no `InLove`
-/// data to give it), so `run_game` is the one place with enough live
-/// state to check it. The Tanner-lynch short-circuit inside
-/// `evaluate_winner_with_kills` still can't conflict with this ordering:
-/// it only ever names someone who just died, never one of the two
-/// players a Lovers win would be checking.
-fn resolved_winner(alive: &[AlivePlayer], kills: &[KillEvent], lovers: &LoversState) -> Option<WinOutcome> {
-    let player_states: Vec<PlayerState> = alive
-        .iter()
-        .map(|p| PlayerState {
-            id: p.id.0,
-            role: p.role,
-            alive: true,
-        })
-        .collect();
-
-    // Checked *before* the general team logic below, matching
-    // Werewolf.cs:4525-4527 - the lovers check is the very first thing
-    // `CheckForWin`'s two-player case looks at, ahead of even the
-    // Sorcerer/Tanner/Thief/Doppelgänger tie-check right after it.
-    // `evaluate_common`'s "no wolves alive" branch would otherwise call
-    // two mutually-in-love Villager survivors a plain Village win, which
-    // is the bug this ordering exists to avoid.
-    let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
-    if lovers.is_lovers_win(&alive_ids) {
-        return Some(WinOutcome::Team(Team::Lovers));
-    }
-
-    if let outcome @ WinOutcome::Team(_) = evaluate_winner_with_kills(&player_states, kills) {
-        return Some(outcome);
-    }
-
-    None
 }
 
 #[cfg(test)]

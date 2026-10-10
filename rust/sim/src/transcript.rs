@@ -19,7 +19,7 @@
 
 use async_trait::async_trait;
 use game_engine::orchestrator::{
-    game_over_locale_key, prompt_locale_key, transform_locale_key, NarrationEvent,
+    prompt_locale_key, transform_locale_key, NarrationEvent,
     Presenter, Prompt,
 };
 use game_engine::messages::{render, Message};
@@ -253,12 +253,12 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
                 let text = summary.render(&lookup, &name);
                 self.lines.extend(text.lines().map(str::to_string));
             }
-            NarrationEvent::GameOver { winner } => {
-                let template = match game_over_locale_key(&winner) {
-                    Some(key) => self.pack.get(key).unwrap_or("The game is over."),
-                    None => "The game is over.",
+            NarrationEvent::GameOver { winner, message } => {
+                let text = match message {
+                    Some(message) => self.render_message(&message),
+                    None => "The game is over.".to_string(),
                 };
-                self.lines.push(format!("{template} ({winner:?})"));
+                self.lines.push(format!("{text} ({winner:?})"));
             }
         }
     }

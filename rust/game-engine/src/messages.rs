@@ -216,6 +216,16 @@ pub enum Announcement {
     HunterSkipChoice { hunter: PlayerId, lynched: bool },
     /// Werewolf.cs:5473, a dying Hunter who shot the Wise Elder.
     HunterKilledWiseElder { hunter: PlayerId, elder: PlayerId },
+    /// Last-two endings (Werewolf.cs:4544-4578, 4840-4894).
+    HunterKillsWolfEnd { hunter: PlayerId, wolf: PlayerId },
+    WolfKillsHunterEnd { hunter: PlayerId, wolf: PlayerId },
+    SKHunterEnd { serial_killer: PlayerId, hunter: PlayerId },
+    CHKillsCultistEnd { cultist: PlayerId, hunter: PlayerId },
+    SerialKillerWinsOverpower { serial_killer: PlayerId, other: PlayerId },
+    ArsonistWinsOverpower { arsonist: PlayerId, other: PlayerId },
+    /// A neutral role left at a no-winner ending: `SorcererEnd`,
+    /// `ThiefEnd`, `DoppelgangerEnd` or `TannerEnd` (Werewolf.cs:4696-4806).
+    NeutralEnd { player: PlayerId, role: Role },
 }
 
 /// One line of the secret lynch results.
@@ -329,6 +339,18 @@ impl Announcement {
             Announcement::HunterSkipChoice { lynched: true, .. } => "HunterSkipChoiceLynched",
             Announcement::HunterSkipChoice { lynched: false, .. } => "HunterSkipChoiceShot",
             Announcement::HunterKilledWiseElder { .. } => "HunterKilledWiseElder",
+            Announcement::HunterKillsWolfEnd { .. } => "HunterKillsWolfEnd",
+            Announcement::WolfKillsHunterEnd { .. } => "WolfKillsHunterEnd",
+            Announcement::SKHunterEnd { .. } => "SKHunterEnd",
+            Announcement::CHKillsCultistEnd { .. } => "CHKillsCultistEnd",
+            Announcement::SerialKillerWinsOverpower { .. } => "SerialKillerWinsOverpower",
+            Announcement::ArsonistWinsOverpower { .. } => "ArsonistWinsOverpower",
+            Announcement::NeutralEnd { role, .. } => match role {
+                Role::Sorcerer => "SorcererEnd",
+                Role::Thief => "ThiefEnd",
+                Role::Doppelganger => "DoppelgangerEnd",
+                _ => "TannerEnd",
+            },
         }
     }
 
@@ -341,7 +363,14 @@ impl Announcement {
             | Announcement::BlacksmithSpreadSilver { blacksmith: one }
             | Announcement::PrinceLynched { prince: one }
             | Announcement::HunterSkipChoice { hunter: one, .. } => vec![Player(*one)],
-            Announcement::HunterKilledWiseElder { hunter, elder } => vec![Player(*hunter), Player(*elder)],
+            Announcement::HunterKilledWiseElder { hunter: a, elder: b }
+            | Announcement::HunterKillsWolfEnd { hunter: a, wolf: b }
+            | Announcement::WolfKillsHunterEnd { hunter: a, wolf: b }
+            | Announcement::SKHunterEnd { serial_killer: a, hunter: b }
+            | Announcement::CHKillsCultistEnd { cultist: a, hunter: b }
+            | Announcement::SerialKillerWinsOverpower { serial_killer: a, other: b }
+            | Announcement::ArsonistWinsOverpower { arsonist: a, other: b } => vec![Player(*a), Player(*b)],
+            Announcement::NeutralEnd { player, .. } => vec![Player(*player)],
             Announcement::NightTime { seconds } | Announcement::DayTime { seconds } | Announcement::LynchTime { seconds } => {
                 vec![Number(*seconds as i64)]
             }
@@ -443,6 +472,16 @@ pub fn all_message_keys() -> Vec<&'static str> {
             Announcement::HunterSkipChoice { hunter: p, lynched: true },
             Announcement::HunterSkipChoice { hunter: p, lynched: false },
             Announcement::HunterKilledWiseElder { hunter: p, elder: p },
+            Announcement::HunterKillsWolfEnd { hunter: p, wolf: p },
+            Announcement::WolfKillsHunterEnd { hunter: p, wolf: p },
+            Announcement::SKHunterEnd { serial_killer: p, hunter: p },
+            Announcement::CHKillsCultistEnd { cultist: p, hunter: p },
+            Announcement::SerialKillerWinsOverpower { serial_killer: p, other: p },
+            Announcement::ArsonistWinsOverpower { arsonist: p, other: p },
+            Announcement::NeutralEnd { player: p, role: Role::Sorcerer },
+            Announcement::NeutralEnd { player: p, role: Role::Thief },
+            Announcement::NeutralEnd { player: p, role: Role::Doppelganger },
+            Announcement::NeutralEnd { player: p, role: Role::Tanner },
         ]
         .iter()
         .map(Announcement::locale_key),

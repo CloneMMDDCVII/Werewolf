@@ -109,3 +109,22 @@ async fn a_lynched_hunter_who_shoots_names_both() {
     assert_eq!(line.key, "HunterKilledFinalLynched");
     assert_eq!(line.args[..2], [MessageArg::Player(P2), MessageArg::Player(P3)]);
 }
+
+#[tokio::test]
+async fn the_serial_killer_overpowers_the_last_villager_and_the_summary_shows_it() {
+    let players = roster(&[Role::SerialKiller, Role::Villager, Role::Villager]);
+    let mut day = Day::new(P2);
+    let outcome = run_game(&players, &mut day, &mut SeededRngSource::new(0), 1).await;
+    assert_eq!(outcome.winner, game_engine::WinOutcome::Team(shared::Team::SerialKiller));
+    assert!(day.announcements().contains(&Announcement::SerialKillerWinsOverpower { serial_killer: PlayerId(1), other: P3 }));
+    assert!(outcome.deaths.contains(&(P3, KillMethod::SerialKilled)));
+    let summary = day
+        .narrated
+        .iter()
+        .find_map(|e| match e {
+            NarrationEvent::GameSummary(s) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(summary.entries.iter().filter(|e| e.alive).count(), 1);
+}

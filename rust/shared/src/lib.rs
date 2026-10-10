@@ -284,6 +284,9 @@ pub enum KillMethod {
     /// shoots back instead of being converted (`IPlayer.cs`'s `KillMthd`
     /// enum: `HunterCult`, Werewolf.cs:3635-3637).
     HunterCult,
+    /// The Tanner (or a Doppelgänger who became one) giving up when only
+    /// neutral roles are left (Werewolf.cs:4726).
+    Suicide,
     /// Not in the legacy game (there was no Witch to poison anyone) — new
     /// kill method for `shared::Role::Witch`'s poison potion.
     Poison,

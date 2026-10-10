@@ -228,7 +228,11 @@ pub enum NarrationEvent {
     /// apart from the honest non-`Team` cases (`RngDependent`,
     /// `InsufficientData`, `Unimplemented`) this proof-of-concept
     /// sometimes has to report instead of a clean win.
-    GameOver { winner: crate::WinOutcome },
+    GameOver {
+        winner: crate::WinOutcome,
+        /// The winner's line (see `game_over_message`).
+        message: Option<crate::messages::Message>,
+    },
     /// Something told to one player only — see `messages::Note`.
     Private { to: PlayerId, note: Note },
     /// Something told to the whole group — see `messages::Announcement`.
@@ -428,11 +432,11 @@ pub fn transform_locale_key(from: Role, to: Role) -> Option<&'static str> {
 /// `Unimplemented`) have no legacy equivalent to look up, since the real
 /// game always resolved to a concrete winner one way or another; that gap
 /// is exactly what those variants exist to flag (see `WinOutcome`'s own
-/// doc). `Team::NoOne`/`Team::Thief` also have no key — `Team::Thief` is
+/// doc). `Team::Thief` has no key either: it is
 /// the Thief's transient pre-steal team, never itself a winning faction
 /// in `evaluate_winner_with_kills` (checked: nothing produces
-/// `WinOutcome::Team(Team::Thief)` today), and no "nobody wins" win
-/// screen exists in English.xml either. Both are still named explicitly
+/// `WinOutcome::Team(Team::Thief)` today). `Team::NoOne` is `NoWinner`
+/// (Werewolf.cs:4810). `Thief` is still named explicitly
 /// rather than folded behind the RNG/data-gap arm below, so a reader
 /// isn't left wondering whether their absence is an oversight.
 pub fn game_over_locale_key(outcome: &crate::WinOutcome) -> Option<&'static str> {
@@ -445,13 +449,23 @@ pub fn game_over_locale_key(outcome: &crate::WinOutcome) -> Option<&'static str>
         WinOutcome::Team(Team::SerialKiller) => Some("SerialKillerWins"),
         WinOutcome::Team(Team::Arsonist) => Some("ArsonistWins"),
         WinOutcome::Team(Team::Lovers) => Some("LoversWin"),
-        WinOutcome::Team(Team::NoOne)
-        | WinOutcome::Team(Team::Thief)
+        WinOutcome::Team(Team::NoOne) => Some("NoWinner"),
+        WinOutcome::Team(Team::Thief)
         | WinOutcome::RngDependent(_)
         | WinOutcome::InsufficientData(_)
         | WinOutcome::Unimplemented(_)
         | WinOutcome::Killed => None,
     }
+}
+
+/// The winner's line: `game_over_locale_key`, except that more than one
+/// wolf left makes it `WolvesWin` (Werewolf.cs:4816-4825).
+pub fn game_over_message(outcome: &crate::WinOutcome, several_wolves: bool) -> Option<crate::messages::Message> {
+    let key = match outcome {
+        crate::WinOutcome::Team(Team::Wolf) if several_wolves => "WolvesWin",
+        _ => game_over_locale_key(outcome)?,
+    };
+    Some(crate::messages::Message::new(key, vec![]))
 }
 
 /// Every distinct locale key `prompt_locale_key`/`death_locale_key` can
@@ -546,6 +560,8 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "SerialKillerWins",
         "ArsonistWins",
         "LoversWin",
+        "NoWinner",
+        "WolvesWin",
     ]);
     keys.extend(crate::messages::all_message_keys());
     // Role display names, which notes like `SeerSees` fill in. The four
@@ -663,8 +679,8 @@ mod locale_mapping_tests {
     }
 
     #[test]
-    fn rng_dependent_and_no_one_outcomes_have_no_key() {
-        assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::NoOne)), None);
+    fn rng_dependent_outcomes_have_no_key_and_no_one_is_no_winner() {
+        assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::NoOne)), Some("NoWinner"));
         assert_eq!(game_over_locale_key(&WinOutcome::RngDependent("test")), None);
     }
 }

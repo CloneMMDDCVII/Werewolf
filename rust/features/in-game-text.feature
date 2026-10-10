@@ -61,6 +61,39 @@ Feature: Every death gets its legacy line
     When a dying Hunter shoots the Wise Elder
     Then the group is told "HunterKilledWiseElder" after the shot
 
+Feature: The game ends the way the legacy game ends
+  # game_end::check_game_end ports CheckForGameEnd and DoGameEnd for a live
+  # game; lib::evaluate_winner stays the RNG-free check fixture replays use.
+
+  Scenario Outline: Last-two standoffs
+    Given only <a> and <b> are alive, not in love
+    Then <ending>
+    Examples:
+      | a        | b               | ending                                                                    |
+      | a Hunter | a wolf          | 30%: "HunterKillsWolfEnd", the wolf dies, village wins; else "WolfKillsHunterEnd", wolves win |
+      | a Hunter | the SK          | "SKHunterEnd", both die, "NoWinner"                                        |
+      | a Hunter | a Hunter        | the village wins                                                          |
+      | anyone   | the SK          | "SerialKillerWinsOverpower", the other dies, the SK wins                  |
+      | anyone   | the Arsonist    | "ArsonistWinsOverpower" unless a Gunner with bullets is one of them       |
+      | a Cultist| a Cultist       | the cult wins                                                             |
+      | a Cultist| a wolf          | the wolves win                                                            |
+      | a Cultist| the CH          | "CHKillsCultistEnd", the Cultist dies, the village wins                   |
+      | a Cultist| anyone else     | they are converted (not a Thief or Doppelgänger) and the cult wins        |
+
+  Scenario: A Gunner with bullets holds off level wolves
+    Given the wolves equal the others and a Gunner has a bullet left
+    Then the game goes on
+
+  Scenario: Neutral endings name who was left
+    Given only neutral roles are left
+    Then each gets "SorcererEnd", "ThiefEnd", "DoppelgangerEnd" or "TannerEnd"
+    And a Tanner left with another neutral role dies first
+    And the winner line is "NoWinner"
+
+  Scenario: Several wolves win together
+    When the wolves win with more than one wolf left
+    Then the winner line is "WolvesWin" instead of "WolfWins"
+
 Feature: Night results, transforms, team lists and endings
   # Built in batches from the research tables; each batch adds its own
   # scenarios here as it lands.

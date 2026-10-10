@@ -10,6 +10,7 @@ pub mod balancing;
 pub mod death_text;
 pub mod freeze;
 pub mod game;
+pub mod game_end;
 pub mod messages;
 pub mod reveals;
 pub mod orchestrator;
