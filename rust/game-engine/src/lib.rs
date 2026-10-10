@@ -9,7 +9,9 @@
 //! - [`orchestrator`]: asking questions, the day, deaths and the hunter's shot;
 //! - [`game_end`]: the live end-of-game check;
 //! - [`evaluate_winner`] and [`evaluate_winner_with_kills`]: the RNG-free
-//!   win check the fixture replays use.
+//!   win check the fixture replays use;
+//! - `testing` (tests only, or the `testing` feature): a scripted
+//!   presenter for tests.
 //!
 //! `rust/ARCHITECTURE.md` walks through a game and through adding a role.
 
@@ -28,6 +30,8 @@ pub mod role_info;
 pub mod roles;
 pub mod rules;
 pub mod summary;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod transforms;
 
 pub use game::{run_game, run_game_with_role_pool, run_game_with_rules, GameOutcome};

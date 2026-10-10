@@ -28,6 +28,9 @@ concern (`presenter.rs`, `prompt.rs`, `night_ask.rs`, `day.rs`,
 `orchestrator::resolve_day`, and this document names the file
 (`orchestrator::day::resolve_day`) so you know where to look.
 
+A test that only needs fixed answers uses `game_engine::testing::Script`
+(behind the `testing` feature) instead of writing its own presenter.
+
 ## The life of a game
 
 1. `control::lobby::Lobby` collects players. `assign_roles` deals them
@@ -117,6 +120,10 @@ historical-game replays (`sim/tests`) fail if the legacy outcome changes.
 `sim/tests/engine_transcripts.rs` plays 300 seeded random games and
 fails if any of them plays differently; a refactor should keep all 300,
 and an intended rule change re-blesses the moved seeds (see that file).
+Renaming a field of a narrated type (`NarrationEvent`, `Announcement`,
+`Note` and what they carry) moves every digest, because the transcript is
+their `Debug` output; after re-blessing, write `DIFF_OUT` dumps on the old
+and new code and diff them to confirm only the names changed.
 
 ## Deleting a role
 

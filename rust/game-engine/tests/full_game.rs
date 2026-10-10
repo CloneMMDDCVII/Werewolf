@@ -2,42 +2,13 @@
 //! rounds, not just one isolated night or day — the thing every other
 //! integration test in this crate has been building toward.
 
-use async_trait::async_trait;
 use game_engine::messages::Announcement;
-use game_engine::orchestrator::{AlivePlayer, NarrationEvent, Presenter, Prompt};
+use game_engine::orchestrator::{NarrationEvent, Prompt};
 use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
+use game_engine::testing::{roster, Script, When};
 use game_engine::{run_game, WinOutcome};
 use shared::{KillMethod, Role, Team};
-
-/// A presenter with a fixed script per round: the wolf always eats the
-/// same target, villagers always vote to lynch the same (wrong) target,
-/// so the game plays out deterministically across as many rounds as it
-/// takes for the wolves to outnumber the village.
-struct FixedScriptPresenter {
-    wolf_eats: PlayerId,
-    village_lynches: PlayerId,
-}
-
-#[async_trait(?Send)]
-impl Presenter for FixedScriptPresenter {
-    async fn ask_targets(
-        &mut self,
-        _player: PlayerId,
-        prompt: Prompt,
-        _options: &[PlayerId],
-        count: usize,
-    ) -> Option<Vec<PlayerId>> {
-        if count != 1 {
-            return None;
-        }
-        match prompt {
-            Prompt::WolfEat => Some(vec![self.wolf_eats]),
-            Prompt::LynchVote => Some(vec![self.village_lynches]),
-            _ => None,
-        }
-    }
-}
 
 #[tokio::test]
 async fn wolves_win_once_they_outnumber_the_village() {
@@ -46,24 +17,12 @@ async fn wolves_win_once_they_outnumber_the_village() {
     let victim2 = PlayerId(3);
     let bystander = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: victim1,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: victim2,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: bystander,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (victim1, Role::Villager),
+        (victim2, Role::Villager),
+        (bystander, Role::Villager),
+    ]);
 
     // The wolf eats victim1 every night; the village (mis-)votes to lynch
     // victim2 every day. After night 1 + day 1: wolf, bystander alive (2
@@ -72,10 +31,9 @@ async fn wolves_win_once_they_outnumber_the_village() {
     // day questions naturally drop (dead players aren't in the alive roster
     // asked from), so the game converges to wolf vs. bystander and the
     // wolf wins by outnumbering (1 wolf >= 1 other).
-    let mut presenter = FixedScriptPresenter {
-        wolf_eats: victim1,
-        village_lynches: victim2,
-    };
+    let mut presenter = Script::new()
+        .pick(Prompt::WolfEat, victim1)
+        .pick(Prompt::LynchVote, victim2);
 
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
@@ -94,51 +52,17 @@ async fn a_lynched_tanner_wins_immediately_even_mid_game() {
     let wolf = PlayerId(3);
     let villager = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: voter,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: tanner,
-            role: Role::Tanner,
-        },
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: villager,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (voter, Role::Villager),
+        (tanner, Role::Tanner),
+        (wolf, Role::Wolf),
+        (villager, Role::Villager),
+    ]);
 
-    // Nobody scripted to eat (None), so no night death; the day vote lands
-    // on the Tanner, who should win immediately regardless of the wolf
-    // still being alive.
-    struct LynchTannerPresenter {
-        tanner: PlayerId,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for LynchTannerPresenter {
-        async fn ask_targets(
-            &mut self,
-            _player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 {
-                return None;
-            }
-            match prompt {
-                Prompt::LynchVote => Some(vec![self.tanner]),
-                _ => None,
-            }
-        }
-    }
-
-    let mut presenter = LynchTannerPresenter { tanner };
+    // Nobody scripted to eat, so no night death; the day vote lands on the
+    // Tanner, who should win immediately regardless of the wolf still
+    // being alive.
+    let mut presenter = Script::new().pick(Prompt::LynchVote, tanner);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
@@ -156,53 +80,16 @@ async fn a_lynched_hunter_takes_someone_down_with_them() {
     let doomed_villager = PlayerId(3);
     let survivor = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: hunter,
-            role: Role::Hunter,
-        },
-        AlivePlayer {
-            id: doomed_villager,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: survivor,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (hunter, Role::Hunter),
+        (doomed_villager, Role::Villager),
+        (survivor, Role::Villager),
+    ]);
 
-    struct HunterRevengePresenter {
-        hunter: PlayerId,
-        shot: PlayerId,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for HunterRevengePresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 {
-                return None;
-            }
-            match prompt {
-                Prompt::LynchVote => Some(vec![self.hunter]),
-                Prompt::HunterFinalShotLynched if player == self.hunter => Some(vec![self.shot]),
-                _ => None,
-            }
-        }
-    }
-
-    let mut presenter = HunterRevengePresenter {
-        hunter,
-        shot: doomed_villager,
-    };
+    let mut presenter = Script::new()
+        .pick(Prompt::LynchVote, hunter)
+        .pick(When::asked(Prompt::HunterFinalShotLynched).by(hunter), doomed_villager);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
@@ -218,45 +105,6 @@ async fn a_lynched_hunter_takes_someone_down_with_them() {
     );
 }
 
-/// Scripted presenter for the two Cupid/lover tests below: links two
-/// players night 1, then follows a fixed wolf-eat/lynch script.
-struct CupidScriptPresenter {
-    link: (PlayerId, PlayerId),
-    wolf_eats: Vec<PlayerId>, // one entry consumed per night, in order
-    lynches: Vec<PlayerId>,   // one entry per day, in order
-    night: usize,
-    day: usize,
-}
-
-#[async_trait(?Send)]
-impl Presenter for CupidScriptPresenter {
-    async fn ask_targets(
-        &mut self,
-        _player: PlayerId,
-        prompt: Prompt,
-        _options: &[PlayerId],
-        count: usize,
-    ) -> Option<Vec<PlayerId>> {
-        match prompt {
-            Prompt::CupidLink if count == 2 => Some(vec![self.link.0, self.link.1]),
-            Prompt::WolfEat if count == 1 => {
-                let target = self.wolf_eats.get(self.night).copied();
-                self.night += 1;
-                target.map(|t| vec![t])
-            }
-            // Every voter gets the day's target. The wolf's own vote for
-            // itself is refused (nobody can vote for themselves), so the
-            // two lovers' votes carry it.
-            Prompt::LynchVote if count == 1 => self.lynches.get(self.day).copied().map(|t| vec![t]),
-            _ => None,
-        }
-    }
-
-    fn advance_round(&mut self) {
-        self.day += 1;
-    }
-}
-
 #[tokio::test]
 async fn a_wolf_eating_one_lover_kills_the_other_too() {
     // Cupid links LoverX/LoverY night 1; the wolf eats LoverX that same
@@ -267,32 +115,16 @@ async fn a_wolf_eating_one_lover_kills_the_other_too() {
     let lover_x = PlayerId(3);
     let lover_y = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: cupid,
-            role: Role::Cupid,
-        },
-        AlivePlayer {
-            id: lover_x,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: lover_y,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (cupid, Role::Cupid),
+        (lover_x, Role::Villager),
+        (lover_y, Role::Villager),
+    ]);
 
-    let mut presenter = CupidScriptPresenter {
-        link: (lover_x, lover_y),
-        wolf_eats: vec![lover_x],
-        lynches: vec![],
-        night: 0,
-        day: 0,
-    };
+    let mut presenter = Script::new()
+        .picks(Prompt::CupidLink, vec![lover_x, lover_y])
+        .pick(When::asked(Prompt::WolfEat).in_round(1), lover_x);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
 
@@ -317,32 +149,20 @@ async fn the_last_two_survivors_win_as_lovers() {
     let lover_x = PlayerId(3);
     let lover_y = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: cupid,
-            role: Role::Cupid,
-        },
-        AlivePlayer {
-            id: lover_x,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: lover_y,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (cupid, Role::Cupid),
+        (lover_x, Role::Villager),
+        (lover_y, Role::Villager),
+    ]);
 
-    let mut presenter = CupidScriptPresenter {
-        link: (lover_x, lover_y),
-        wolf_eats: vec![cupid],
-        lynches: vec![wolf],
-        night: 0,
-        day: 0,
-    };
+    // Every voter gets the day's target. The wolf's own vote for itself is
+    // refused (nobody can vote for themselves), so the two lovers' votes
+    // carry it.
+    let mut presenter = Script::new()
+        .picks(Prompt::CupidLink, vec![lover_x, lover_y])
+        .pick(When::asked(Prompt::WolfEat).in_round(1), cupid)
+        .pick(When::asked(Prompt::LynchVote).in_round(1), wolf);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 10).await;
 
@@ -365,58 +185,14 @@ async fn shooting_the_wise_elder_still_kills_them_but_demotes_the_gunner() {
     let wise_elder = PlayerId(2);
     let bystander = PlayerId(3);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: gunner,
-            role: Role::Gunner,
-        },
-        AlivePlayer {
-            id: wise_elder,
-            role: Role::WiseElder,
-        },
-        AlivePlayer {
-            id: bystander,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (gunner, Role::Gunner),
+        (wise_elder, Role::WiseElder),
+        (bystander, Role::Villager),
+    ]);
 
-    struct ShootWiseElderPresenter {
-        gunner: PlayerId,
-        wise_elder: PlayerId,
-        transforms: Vec<game_engine::orchestrator::NarrationEvent>,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for ShootWiseElderPresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 {
-                return None;
-            }
-            match prompt {
-                Prompt::GunnerShoot { .. } if player == self.gunner => Some(vec![self.wise_elder]),
-                _ => None,
-            }
-        }
-
-        async fn narrate(&mut self, event: game_engine::orchestrator::NarrationEvent) {
-            self.transforms.push(event);
-        }
-    }
-
-    let mut presenter = ShootWiseElderPresenter {
-        gunner,
-        wise_elder,
-        transforms: vec![],
-    };
+    let mut presenter = Script::new().pick(When::asked(Prompt::GunnerShoot { bullets: 2 }).by(gunner), wise_elder);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
 
@@ -426,16 +202,9 @@ async fn shooting_the_wise_elder_still_kills_them_but_demotes_the_gunner() {
         "the Wise Elder should still die from the shot"
     );
     assert!(
-        presenter.transforms.iter().any(|e| matches!(
-            e,
-            game_engine::orchestrator::NarrationEvent::Transform {
-                player,
-                from: Role::Gunner,
-                to: Role::Villager,
-            } if *player == gunner
-        )),
+        presenter.transformed(gunner, Role::Gunner, Role::Villager),
         "the Gunner should be demoted to Villager for shooting the Wise Elder, got: {:?}",
-        presenter.transforms
+        presenter.narrated
     );
 }
 
@@ -450,65 +219,19 @@ async fn silver_spread_blocks_the_wolf_kill_the_following_night_only() {
     let victim1 = PlayerId(3);
     let victim2 = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: blacksmith,
-            role: Role::Blacksmith,
-        },
-        AlivePlayer {
-            id: victim1,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: victim2,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (blacksmith, Role::Blacksmith),
+        (victim1, Role::Villager),
+        (victim2, Role::Villager),
+    ]);
 
-    struct SilverPresenter {
-        wolf: PlayerId,
-        blacksmith: PlayerId,
-        victim1: PlayerId,
-        victim2: PlayerId,
-        night: u32,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for SilverPresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 || prompt != Prompt::WolfEat || player != self.wolf {
-                return None;
-            }
-            // Eats victim1 night 1 (before any silver is spread), then
-            // tries for victim2 every night after.
-            Some(vec![if self.night <= 1 { self.victim1 } else { self.victim2 }])
-        }
-
-        async fn ask_toggle(&mut self, player: PlayerId, prompt: Prompt) -> bool {
-            prompt == Prompt::BlacksmithSilver && player == self.blacksmith
-        }
-
-        fn advance_round(&mut self) {
-            self.night += 1;
-        }
-    }
-
-    let mut presenter = SilverPresenter {
-        wolf,
-        blacksmith,
-        victim1,
-        victim2,
-        night: 1,
-    };
+    // Eats victim1 night 1 (before any silver is spread), then tries for
+    // victim2 every night after.
+    let mut presenter = Script::new()
+        .pick(When::asked(Prompt::WolfEat).by(wolf).in_round(1), victim1)
+        .pick(When::asked(Prompt::WolfEat).by(wolf), victim2)
+        .yes(When::asked(Prompt::BlacksmithSilver).by(blacksmith));
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
@@ -528,68 +251,17 @@ async fn sandman_sleep_skips_the_next_night() {
     let victim = PlayerId(3);
     let bystander = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: sandman,
-            role: Role::Sandman,
-        },
-        AlivePlayer {
-            id: victim,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: bystander,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: PlayerId(5),
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (sandman, Role::Sandman),
+        (victim, Role::Villager),
+        (bystander, Role::Villager),
+        (PlayerId(5), Role::Villager),
+    ]);
 
-    struct SandmanPresenter {
-        wolf: PlayerId,
-        sandman: PlayerId,
-        victim: PlayerId,
-        wolf_asked: u32,
-        narrated: Vec<NarrationEvent>,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for SandmanPresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 || prompt != Prompt::WolfEat || player != self.wolf {
-                return None;
-            }
-            self.wolf_asked += 1;
-            Some(vec![self.victim])
-        }
-
-        async fn ask_toggle(&mut self, player: PlayerId, prompt: Prompt) -> bool {
-            prompt == Prompt::SandmanSleep && player == self.sandman
-        }
-
-        async fn narrate(&mut self, event: NarrationEvent) {
-            self.narrated.push(event);
-        }
-    }
-
-    let mut presenter = SandmanPresenter {
-        wolf,
-        sandman,
-        victim,
-        wolf_asked: 0,
-        narrated: vec![],
-    };
+    let mut presenter = Script::new()
+        .pick(When::asked(Prompt::WolfEat).by(wolf), victim)
+        .yes(When::asked(Prompt::SandmanSleep).by(sandman));
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
@@ -599,7 +271,8 @@ async fn sandman_sleep_skips_the_next_night() {
         "only night one's kill happens"
     );
     assert_eq!(
-        presenter.wolf_asked, 1,
+        presenter.times_asked(wolf, Prompt::WolfEat),
+        1,
         "the wolf has no menu on the night the Sandman skipped"
     );
     for announcement in [Announcement::SandmanSleepAll { sandman }, Announcement::SandmanNight] {
@@ -614,78 +287,26 @@ async fn a_thief_steals_the_targets_role_and_the_target_becomes_a_villager() {
     let seer = PlayerId(3);
     let bystander = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: thief,
-            role: Role::Thief,
-        },
-        AlivePlayer {
-            id: seer,
-            role: Role::Seer,
-        },
-        AlivePlayer {
-            id: bystander,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (thief, Role::Thief),
+        (seer, Role::Seer),
+        (bystander, Role::Villager),
+    ]);
 
-    struct StealPresenter {
-        thief: PlayerId,
-        seer: PlayerId,
-        transforms: Vec<game_engine::orchestrator::NarrationEvent>,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for StealPresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 {
-                return None;
-            }
-            match prompt {
-                Prompt::ThiefSteal if player == self.thief => Some(vec![self.seer]),
-                _ => None,
-            }
-        }
-
-        async fn narrate(&mut self, event: game_engine::orchestrator::NarrationEvent) {
-            self.transforms.push(event);
-        }
-    }
-
-    let mut presenter = StealPresenter {
-        thief,
-        seer,
-        transforms: vec![],
-    };
+    let mut presenter = Script::new().pick(When::asked(Prompt::ThiefSteal).by(thief), seer);
     let mut rng = SeededRngSource::new(0);
     run_game(&players, &mut presenter, &mut rng, 1).await;
 
     assert!(
-        presenter.transforms.iter().any(|e| matches!(
-            e,
-            game_engine::orchestrator::NarrationEvent::Transform { player, from: Role::Thief, to: Role::Seer }
-                if *player == thief
-        )),
+        presenter.transformed(thief, Role::Thief, Role::Seer),
         "the Thief should become the Seer, got: {:?}",
-        presenter.transforms
+        presenter.narrated
     );
     assert!(
-        presenter.transforms.iter().any(|e| matches!(
-            e,
-            game_engine::orchestrator::NarrationEvent::Transform { player, from: Role::Seer, to: Role::Villager }
-                if *player == seer
-        )),
+        presenter.transformed(seer, Role::Seer, Role::Villager),
         "the stolen-from Seer should become a Villager, got: {:?}",
-        presenter.transforms
+        presenter.narrated
     );
 }
 
@@ -696,51 +317,16 @@ async fn a_harlot_visiting_the_wolves_target_dies_alongside_them() {
     let victim = PlayerId(3);
     let bystander = PlayerId(4);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: harlot,
-            role: Role::Harlot,
-        },
-        AlivePlayer {
-            id: victim,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: bystander,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (harlot, Role::Harlot),
+        (victim, Role::Villager),
+        (bystander, Role::Villager),
+    ]);
 
-    struct HarlotVisitsVictimPresenter {
-        wolf: PlayerId,
-        harlot: PlayerId,
-        victim: PlayerId,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for HarlotVisitsVictimPresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 {
-                return None;
-            }
-            match prompt {
-                Prompt::WolfEat if player == self.wolf => Some(vec![self.victim]),
-                Prompt::HarlotVisit if player == self.harlot => Some(vec![self.victim]),
-                _ => None,
-            }
-        }
-    }
-
-    let mut presenter = HarlotVisitsVictimPresenter { wolf, harlot, victim };
+    let mut presenter = Script::new()
+        .pick(When::asked(Prompt::WolfEat).by(wolf), victim)
+        .pick(When::asked(Prompt::HarlotVisit).by(harlot), victim);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
 
@@ -761,62 +347,13 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
     let bystander = PlayerId(4);
     let another_bystander = PlayerId(5);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: wolf_cub,
-            role: Role::WolfCub,
-        },
-        AlivePlayer {
-            id: bonus_victim,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: bystander,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: another_bystander,
-            role: Role::Villager,
-        },
-    ];
-
-    struct WolfCubBonusPresenter {
-        wolf_cub: PlayerId,
-        wolf: PlayerId,
-        bonus_victim: PlayerId,
-        day: u32,
-    }
-    #[async_trait(?Send)]
-    impl Presenter for WolfCubBonusPresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            _options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if count != 1 {
-                return None;
-            }
-            match prompt {
-                // Only vote to lynch the Wolf Cub on day 1 - by day 2
-                // they're already dead, and options wouldn't include them
-                // in a real presenter, but this scripted one doesn't
-                // check options, so it has to stop asking explicitly.
-                Prompt::LynchVote if self.day == 1 => Some(vec![self.wolf_cub]),
-                Prompt::WolfCubBonusKill if player == self.wolf => Some(vec![self.bonus_victim]),
-                _ => None,
-            }
-        }
-
-        fn advance_round(&mut self) {
-            self.day += 1;
-        }
-    }
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (wolf_cub, Role::WolfCub),
+        (bonus_victim, Role::Villager),
+        (bystander, Role::Villager),
+        (another_bystander, Role::Villager),
+    ]);
 
     // Two rounds: the Wolf Cub is lynched day 1, and the bonus kill only
     // lands the *following* night (Werewolf.cs:3030 sends that night's
@@ -824,12 +361,9 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
     // reading NightCycle directly - so a Wolf Cub who dies during the day
     // can't have already chained the bonus menu into that same day's
     // now-past night).
-    let mut presenter = WolfCubBonusPresenter {
-        wolf_cub,
-        wolf,
-        bonus_victim,
-        day: 1,
-    };
+    let mut presenter = Script::new()
+        .pick(When::asked(Prompt::LynchVote).in_round(1), wolf_cub)
+        .pick(When::asked(Prompt::WolfCubBonusKill).by(wolf), bonus_victim);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
@@ -847,45 +381,20 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
 async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
     // Nobody ever answers anything -> no deaths, ever -> the win
     // condition never resolves. run_game must still terminate.
-    struct SilentPresenter;
-    #[async_trait(?Send)]
-    impl Presenter for SilentPresenter {
-        async fn ask_targets(
-            &mut self,
-            _player: PlayerId,
-            _prompt: Prompt,
-            _options: &[PlayerId],
-            _count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            None
-        }
-    }
-
+    //
     // 1 wolf, 3 villagers: wolves don't outnumber villagers yet, so unlike
     // a 1-wolf-1-villager start (already a resolved "wolves >= others"
     // state before any night even runs), this composition genuinely has
-    // no winner until someone dies - and with SilentPresenter, nobody ever
-    // does.
-    let players = vec![
-        AlivePlayer {
-            id: PlayerId(1),
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: PlayerId(2),
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: PlayerId(3),
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: PlayerId(4),
-            role: Role::Villager,
-        },
-    ];
+    // no winner until someone dies - and with nobody answering, nobody
+    // ever does.
+    let players = roster(&[
+        (PlayerId(1), Role::Wolf),
+        (PlayerId(2), Role::Villager),
+        (PlayerId(3), Role::Villager),
+        (PlayerId(4), Role::Villager),
+    ]);
 
-    let mut presenter = SilentPresenter;
+    let mut presenter = Script::new();
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 3).await;
 
@@ -897,54 +406,23 @@ async fn a_game_that_never_resolves_hits_the_round_cap_instead_of_hanging() {
     );
 }
 
-/// A presenter that reports one player fleeing the very first time it's
-/// polled, then never again - proves `run_game` actually reacts to
-/// `Presenter::drain_fled_players` rather than just compiling against it.
-struct OneTimeFleePresenter {
-    fled: Option<PlayerId>,
-}
-
-#[async_trait(?Send)]
-impl Presenter for OneTimeFleePresenter {
-    async fn ask_targets(
-        &mut self,
-        _player: PlayerId,
-        _prompt: Prompt,
-        _options: &[PlayerId],
-        _count: usize,
-    ) -> Option<Vec<PlayerId>> {
-        None
-    }
-
-    fn drain_fled_players(&mut self) -> Vec<PlayerId> {
-        self.fled.take().into_iter().collect()
-    }
-}
-
+/// `run_game` reacts to `Presenter::drain_fled_players`: one player flees
+/// the first time it is polled.
 #[tokio::test]
 async fn fleeing_mid_game_can_immediately_hand_the_wolves_a_win() {
     let wolf = PlayerId(1);
     let villager1 = PlayerId(2);
     let villager2 = PlayerId(3);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: villager1,
-            role: Role::Villager,
-        },
-        AlivePlayer {
-            id: villager2,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[
+        (wolf, Role::Wolf),
+        (villager1, Role::Villager),
+        (villager2, Role::Villager),
+    ]);
 
     // Fleeing villager1 leaves 1 wolf vs 1 villager - wolves >= others,
     // an immediate win with no night or day ever needing to resolve.
-    let mut presenter = OneTimeFleePresenter { fled: Some(villager1) };
+    let mut presenter = Script::new().flee(villager1);
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 5).await;
 
@@ -953,47 +431,16 @@ async fn fleeing_mid_game_can_immediately_hand_the_wolves_a_win() {
     assert_eq!(outcome.rounds_played, 1);
 }
 
-/// A presenter that reports the game as killed the very first time it's
-/// polled - proves `run_game` actually reacts to `Presenter
-/// ::game_was_killed` rather than just compiling against it.
-struct OneTimeKillPresenter {
-    killed: bool,
-}
-
-#[async_trait(?Send)]
-impl Presenter for OneTimeKillPresenter {
-    async fn ask_targets(
-        &mut self,
-        _player: PlayerId,
-        _prompt: Prompt,
-        _options: &[PlayerId],
-        _count: usize,
-    ) -> Option<Vec<PlayerId>> {
-        None
-    }
-
-    fn game_was_killed(&mut self) -> bool {
-        std::mem::take(&mut self.killed)
-    }
-}
-
+/// `run_game` reacts to `Presenter::game_was_killed`, here true the first
+/// time it is polled.
 #[tokio::test]
 async fn an_admin_killing_the_game_ends_it_with_no_winner() {
     let wolf = PlayerId(1);
     let villager = PlayerId(2);
 
-    let players = vec![
-        AlivePlayer {
-            id: wolf,
-            role: Role::Wolf,
-        },
-        AlivePlayer {
-            id: villager,
-            role: Role::Villager,
-        },
-    ];
+    let players = roster(&[(wolf, Role::Wolf), (villager, Role::Villager)]);
 
-    let mut presenter = OneTimeKillPresenter { killed: true };
+    let mut presenter = Script::new().kill_game();
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 5).await;
 
