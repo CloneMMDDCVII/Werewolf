@@ -27,7 +27,7 @@ pub mod id;
 
 pub use id::LanguageId;
 
-use quick_xml::events::{BytesStart, Event};
+use quick_xml::events::{BytesStart, BytesText, Event};
 use quick_xml::{Reader, Writer};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -216,26 +216,52 @@ fn read_string_body(reader: &mut Reader<&[u8]>) -> Result<Vec<String>, LoadError
 /// align once entity decoding/whitespace trimming are in play. Comments are
 /// dropped rather than round-tripped.
 fn read_raw_inner(reader: &mut Reader<&[u8]>, closing_tag: &[u8]) -> Result<String, LoadError> {
+    // The reader reports `&amp;` and friends as events of their own, so
+    // text is trimmed here per run between tags, not per piece; trimming
+    // each piece would eat the spaces around an entity.
+    reader.config_mut().trim_text(false);
+    let result = replay_inner(reader, closing_tag);
+    reader.config_mut().trim_text(true);
+    result
+}
+
+fn replay_inner(reader: &mut Reader<&[u8]>, closing_tag: &[u8]) -> Result<String, LoadError> {
     let mut depth = 0u32;
     let mut writer = Writer::new(Vec::new());
+    let mut text = Vec::new();
     let mut buf = Vec::new();
 
     loop {
         let event = reader.read_event_into(&mut buf).map_err(LoadError::Xml)?;
+        match event {
+            Event::Text(ref t) => {
+                text.extend_from_slice(t);
+                buf.clear();
+                continue;
+            }
+            Event::GeneralRef(ref r) => {
+                text.push(b'&');
+                text.extend_from_slice(r);
+                text.push(b';');
+                buf.clear();
+                continue;
+            }
+            _ => flush_text(&mut writer, &mut text)?,
+        }
         match event {
             Event::Eof => return Err(LoadError::UnexpectedEof),
             Event::End(ref tag) if depth == 0 && tag.name().as_ref() == closing_tag => break,
             Event::Comment(_) => {}
             Event::Start(_) => {
                 depth += 1;
-                writer.write_event(event).map_err(LoadError::Xml)?;
+                writer.write_event(event).map_err(LoadError::Io)?;
             }
             Event::End(_) => {
                 depth = depth.saturating_sub(1);
-                writer.write_event(event).map_err(LoadError::Xml)?;
+                writer.write_event(event).map_err(LoadError::Io)?;
             }
             _ => {
-                writer.write_event(event).map_err(LoadError::Xml)?;
+                writer.write_event(event).map_err(LoadError::Io)?;
             }
         }
         buf.clear();
@@ -245,6 +271,26 @@ fn read_raw_inner(reader: &mut Reader<&[u8]>, closing_tag: &[u8]) -> Result<Stri
     String::from_utf8(bytes)
         .map(|s| s.trim().to_string())
         .map_err(|_| LoadError::Utf8)
+}
+
+/// Writes one run of text, still escaped as in the source, trimmed of XML
+/// whitespace at both ends; a run of only whitespace is dropped.
+fn flush_text(writer: &mut Writer<Vec<u8>>, text: &mut Vec<u8>) -> Result<(), LoadError> {
+    let is_space = |b: &u8| matches!(b, b' ' | b'\t' | b'\r' | b'\n');
+    let start = text.iter().position(|b| !is_space(b));
+    if let Some(start) = start {
+        let end = text
+            .iter()
+            .rposition(|b| !is_space(b))
+            .expect("a non-space byte exists")
+            + 1;
+        let run = std::str::from_utf8(&text[start..end]).map_err(|_| LoadError::Utf8)?;
+        writer
+            .write_event(Event::Text(BytesText::from_escaped(run)))
+            .map_err(LoadError::Io)?;
+    }
+    text.clear();
+    Ok(())
 }
 
 #[derive(Debug)]

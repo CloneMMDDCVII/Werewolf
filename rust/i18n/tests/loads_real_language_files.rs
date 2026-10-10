@@ -30,6 +30,17 @@ fn preserves_inline_markup_in_values() {
     assert!(found, "expected at least one value to retain <b>...</b> markup");
 }
 
+/// Entities stay escaped and keep the spaces around them; whitespace is
+/// trimmed only at the ends of each run of text between tags.
+#[test]
+fn entities_keep_their_surrounding_spaces() {
+    let pack = i18n::LanguagePack::from_xml(
+        "<strings><language name=\"T\" base=\"T\"/><string key=\"K\"><value> Click &quot;Shout&quot; now <b> x </b> &amp; go </value></string></strings>",
+    )
+    .unwrap();
+    assert_eq!(pack.get("K"), Some("Click &quot;Shout&quot; now<b>x</b>&amp; go"));
+}
+
 #[test]
 fn english_has_expected_keys_and_variants() {
     let catalog = Catalog::load_dir(LANGUAGES_DIR).expect("catalog should load");
