@@ -15,20 +15,24 @@ const USAGE: &str = "\
 Usage: cargo xtask <task>
 
 Tasks:
-  ci              rustfmt --check, clippy -D warnings, then the full test suite
+  ci              rustfmt --check, clippy -D warnings, the full test suite, then
+                  rustdoc -D warnings (broken doc links fail)
   install-hooks   install a git pre-push hook that runs `cargo xtask ci`
   uninstall-hooks remove that hook";
 
-/// One CI step: a label and the cargo arguments that run it.
+/// One CI step: a label, the cargo arguments that run it, and any
+/// environment it needs.
 struct Step {
     label: &'static str,
     args: &'static [&'static str],
+    env: &'static [(&'static str, &'static str)],
 }
 
 const CI_STEPS: &[Step] = &[
     Step {
         label: "rustfmt",
         args: &["fmt", "--all", "--check"],
+        env: &[],
     },
     Step {
         label: "clippy",
@@ -41,10 +45,26 @@ const CI_STEPS: &[Step] = &[
             "-D",
             "warnings",
         ],
+        env: &[],
     },
     Step {
         label: "tests",
         args: &["test", "--workspace", "--locked"],
+        env: &[],
+    },
+    // Fails on a broken intra-doc link, so a role file's links to the
+    // night regions that resolve it can't silently go stale.
+    Step {
+        label: "docs",
+        args: &[
+            "doc",
+            "--workspace",
+            "--no-deps",
+            "--document-private-items",
+            "--locked",
+        ],
+        // Private items are documented, so links to them are fine.
+        env: &[("RUSTDOCFLAGS", "-D warnings -A rustdoc::private_intra_doc_links")],
     },
 ];
 
@@ -88,6 +108,7 @@ fn ci() -> Result<(), String> {
         let step_started = Instant::now();
         let status = Command::new(&cargo)
             .args(step.args)
+            .envs(step.env.iter().copied())
             .current_dir(&workspace)
             .status()
             .map_err(|e| format!("could not run cargo: {e}"))?;

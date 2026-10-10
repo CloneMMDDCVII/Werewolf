@@ -12,7 +12,7 @@
 //! the "fixup" substitutions below. `Shuffle<T>`'s actual algorithm
 //! (Werewolf.cs:12-29 — rejection-sampled bytes from
 //! `RNGCryptoServiceProvider`) is standard Fisher-Yates underneath the
-//! cryptographic sampling; [`shuffle`] ports the algorithm, not the CSPRNG
+//! cryptographic sampling; `shuffle` ports the algorithm, not the CSPRNG
 //! particulars, the same way `RngSource::chance` ports `R.Next(100) <
 //! chance` rather than .NET's specific PRNG.
 //!

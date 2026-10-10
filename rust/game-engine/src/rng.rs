@@ -15,7 +15,7 @@
 //! Threaded through `game::run_game` and the `orchestrator` functions
 //! that need a roll the same way `Presenter` already is: a `&mut dyn
 //! RngSource` parameter, not a global/thread-local, so a test can swap in
-//! [`ScriptedRngSource`] and assert both branches of a roll without
+//! `ScriptedRngSource` (test builds only) and assert both branches of a roll without
 //! depending on statistics.
 //!
 //! **Fixture-replay implication, stated up front so nobody "fixes" a test

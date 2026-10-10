@@ -12,8 +12,9 @@ cargo xtask ci
 ```
 
 That is `cargo fmt --all --check`, `cargo clippy --workspace --all-targets
---locked -- -D warnings`, then `cargo test --workspace --locked`, stopping
-at the first failure. GitHub Actions runs the same command
+--locked -- -D warnings`, `cargo test --workspace --locked`, then
+`cargo doc` with warnings denied (a broken doc link fails), stopping at
+the first failure. GitHub Actions runs the same command
 (`.github/workflows/rust.yml`), so a green local run means a green CI run.
 Set `WEREWOLF_TEST_POSTGRES_URL` to also run the storage tests against
 Postgres, as CI does.

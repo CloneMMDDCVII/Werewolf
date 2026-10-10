@@ -20,7 +20,7 @@ pub struct AccountFacts {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestoreCheck {
-    /// "usage: /restore <oldid> <newid>"
+    /// "usage: /restore &lt;oldid&gt; &lt;newid&gt;"
     Usage,
     NotFound,
     OldAccountBanned,
