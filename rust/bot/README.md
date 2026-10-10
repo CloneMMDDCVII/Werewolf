@@ -29,10 +29,69 @@ setting. The ones you may want to change:
 | `languages_dir` | `Languages` | The community language files. English is built in. |
 | `global_admins` | none | Telegram user ids allowed to run bot-wide admin commands (`/killgame`, bans). |
 | `language_admins` | none | Telegram user ids allowed to check and install language files (`/validatelangs`, `/uploadlang`). |
+| `health_addr` | off | Serve a health check on this address, e.g. `127.0.0.1:8080`. See below. |
 
 Use `--config path/to/werewolf.toml` to keep the config elsewhere (relative
 paths in it are then resolved from that file's folder). Set `RUST_LOG=debug`
 for more detailed logs.
+
+## Operating the bot
+
+Nothing here is needed to run the bot; it is for running it unattended on
+a server.
+
+### Health check
+
+Set `health_addr = "127.0.0.1:8080"` in `werewolf.toml` (or the
+`WEREWOLF_HEALTH_ADDR` environment variable, which wins) and the bot
+answers `GET /healthz` on that address:
+
+    $ curl -i http://127.0.0.1:8080/healthz
+    HTTP/1.1 200 OK
+    Content-Type: application/json
+    ...
+    {"healthy":true,"polling":true,"database":true,"running_games":3,"last_poll_secs":4}
+
+It returns 200 when both checks pass and 503 when either fails:
+
+- `polling`: the bot fetched updates from Telegram successfully in the
+  last two minutes (a fetch normally takes up to 30 seconds).
+  `last_poll_secs` is how long ago that was.
+- `database`: the database answered a `SELECT 1` within three seconds.
+
+`running_games` is for information and never makes the check fail. A
+Telegram outage turns the check red without anything being wrong with the
+bot, so alert on it rather than restarting on it. Use `0.0.0.0:8080` only
+if the monitor is on another machine; the endpoint has no authentication.
+
+### systemd
+
+`deploy/werewolf-bot.service` is a ready-made unit for Linux; the comments
+at its top say how to install it. It uses:
+
+- `Type=notify`: the bot tells systemd it is ready once the database is
+  open and polling has started.
+- `WatchdogSec=180`: the polling loop itself reports in after every fetch
+  from Telegram (about every 30 seconds), so if polling hangs systemd
+  kills the bot, and `Restart=always` starts it again. Games cut off this
+  way are announced when it comes back, as after any crash.
+- `KillSignal=SIGINT`: `systemctl stop` works like the first Ctrl+C, so
+  running games finish first; whatever is still running after
+  `TimeoutStopSec` is killed.
+
+Outside a `Type=notify` unit (the `NOTIFY_SOCKET` environment variable is
+unset), and on Windows, the bot sends systemd nothing.
+
+### Logs
+
+The bot logs to standard error, which systemd sends to the journal:
+
+    journalctl -u werewolf-bot -f
+
+`RUST_LOG` picks how much: `error`, `warn`, `info` (the default), `debug`
+or `trace`, for everything or per module, e.g.
+`RUST_LOG=info,bot::core=debug`. In the unit, set it with
+`Environment=RUST_LOG=debug`.
 
 ## Beta and main bots
 
