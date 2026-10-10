@@ -4,7 +4,7 @@ Feature: Every dimension of the architecture assessment at 5/5
   to alter play, and the bot's engine interfaces keep their paths.
 
   Scenario: Reliability - a panicking game frees its group
-    # not tested: not built yet
+    # covered by: a_game_that_panics_frees_its_group_and_says_why
     Given a game task that panics mid-night
     When the panic unwinds
     Then the group's slot is released by a Drop guard
@@ -13,14 +13,15 @@ Feature: Every dimension of the architecture assessment at 5/5
     And shared std mutexes recover from poisoning instead of cascading
 
   Scenario: Resiliency - an operator can see and restart the bot
-    # not tested: not built yet
+    # covered by: healthy_needs_recent_polling_and_the_database, the_endpoint_reports_over_http, states_arrive_as_datagrams_on_the_socket, an_unreachable_database_is_asked_twice_for_interrupted_games
     Given the bot runs under the shipped systemd unit
-    Then it restarts on exit and reports readiness and liveness
-    And an opt-in health endpoint reports polling, database and games
-    And logs can be emitted as JSON
+    Then it restarts on exit, reports readiness, and feeds the watchdog from the polling loop
+    And an opt-in health endpoint reports polling, database reachability and running games
+    And listing interrupted games at startup is retried once if the database fails
+    And logs go to journald through RUST_LOG, with no separate JSON format
 
   Scenario: Security - no loose ends
-    # not tested: not built yet
+    # covered by: a_database_under_a_path_with_a_quote_is_backed_up, oversized_uploads_are_refused, only_owner_only_modes_keep_the_token_private
     Then VACUUM INTO refuses or escapes a path with a quote
     And /uploadlang rejects files over a size cap
     And startup warns when the config file holding the token is group- or world-readable
@@ -46,5 +47,5 @@ Feature: Every dimension of the architecture assessment at 5/5
     And ARCHITECTURE.md explains re-blessing digests after a rename
 
   Scenario: Performance stays at 5
-    # not tested: not built yet
+    # not tested: a build setting in rust/Cargo.toml
     Then the release profile uses lto, one codegen unit and strip
