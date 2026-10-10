@@ -15,7 +15,7 @@
 //! set needs, so `game::run_game` keeps its own `doused: Vec<PlayerId>`
 //! across rounds instead (the same "cross-round state lives in `run_game`,
 //! not a role file" pattern as `silver_spread_tonight`/
-//! `wolf_cub_bonus_pending`), and `orchestrator::resolve_arsonist_detonation`
+//! `wolf_cub_bonus_pending`), and the Arsonist region of `night::resolve_night_sequence`
 //! turns a `Detonate` action plus that set into `KillMethod::Burn` deaths.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

@@ -251,7 +251,7 @@ pub enum NarrationEvent {
 /// only used for `KillMethod::SerialKilled` specifically, never for a
 /// lynch/eat/etc. death of the same role — `DefaultKilled` covers every
 /// role without its own dedicated key. `KillMethod::VisitWolf` (a Harlot
-/// visiting the wolves' actual target, see `resolve_harlot_visit_deaths`)
+/// visiting the wolves' actual target, see the Harlot region of `night`)
 /// gets the real public death text too (`HarlotFuckedWolfPublic` — yes,
 /// that's the actual legacy key name).
 ///
@@ -291,8 +291,8 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         // (Werewolf.cs:2339-2347's shared `VisitPlayer` gate, reachable
         // for three different visitors this port now models: a Harlot who
         // picked the SK as her target, a wolf who drew the short straw in
-        // `game::resolve_wolf_eat_target`'s dodge check, or the cult's
-        // newbie in `resolve_cultist_conversion`). Genuinely three
+        // the wolves region of `night`, or the cult's
+        // newbie in the cult region of `night`). Genuinely three
         // different real messages depending on the dying role — the
         // "died by visiting" switch (Werewolf.cs:4322-4406) branches on
         // `p.PlayerRole` before it ever looks at `KilledByRole`, so a
@@ -309,6 +309,10 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
             Role::Harlot => "HarlotFuckKillerPublic",
             Role::CultistHunter => "SerialKillerKilledCH",
             Role::Thief => "ThiefStoleKiller",
+            Role::GuardianAngel => "GAGuardedKiller",
+            Role::Chemist => "ChemistSKPublic",
+            // Missing from English.xml, so it shows as a visible gap there.
+            Role::Arsonist => "ArsonistVisitKiller",
             _ => return None,
         }),
         // A Cultist killed by the Cultist Hunter, hunted or while trying
@@ -350,12 +354,7 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
             _ => "DefaultKilled",
         }),
         // Werewolf.cs:4288-4302, the "killed by visiting Grave Digger"
-        // switch. Wolf-team/Cultist/Thief keys are listed for completeness
-        // even though `resolve_grave_digger_falls` can't produce them yet
-        // (see that function's doc for why) - a real, verified mapping
-        // that's momentarily unreachable is still worth having ready for
-        // when the wolf-visitor-identity gap closes, unlike guessing at a
-        // key that doesn't exist.
+        // switch.
         KillMethod::FallGrave => Some(match role {
             Role::Wolf | Role::AlphaWolf | Role::Lycan | Role::WolfCub => "WolfFellPublic",
             Role::Harlot => "HarlotFellPublic",
@@ -363,7 +362,7 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
             Role::Thief => "ThiefFellPublic",
             _ => "DefaultFellPublic",
         }),
-        // `resolve_chemistry` produces this for either the target (success)
+        // The Chemist region of `night` produces this for either the target (success)
         // or the Chemist themself (failure) - two different real messages
         // (Werewolf.cs:3801-3814: `ChemistSuccessPublic`/`ChemistFailPublic`),
         // each needing only the one name involved (unlike `HunterShot`/
@@ -529,15 +528,21 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "BlacksmithKilled",
         "CupidKilled",
         "DefaultKilled",
-        // FallGrave's currently-*reachable* outputs only - "WolfFellPublic"/
-        // "CultistFellPublic"/"ThiefFellPublic" are real, verified mappings
-        // death_locale_key already returns for their roles, but
-        // resolve_grave_digger_falls can't produce a FallGrave death for
-        // any of those roles yet (see its doc), so they'd inflate this
-        // count with something unreachable today - left out until the gap
-        // closes, same discipline as everywhere else in this list.
         "HarlotFellPublic",
         "DefaultFellPublic",
+        "WolfFellPublic",
+        "CultistFellPublic",
+        "ThiefFellPublic",
+        // death_text's night lines.
+        "GAGuardedKiller",
+        "ChemistSKPublic",
+        "WolfVisitBurn",
+        "DefaultVisitBurn",
+        "GAGuardedWolf",
+        "CultConvertWolfPublic",
+        "HarlotFuckedVictimPublic",
+        "KillerSpottedDiggerPublic",
+        "WolvesSpottedDiggerPublic",
         "ChemistSuccessPublic",
         "ChemistFailPublic",
         "Flee",
@@ -1012,7 +1017,6 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
 /// Roles with a yes/no night decision instead of a target pick.
 fn toggle_night_prompt(role: Role) -> Option<Prompt> {
     match role {
-        Role::Sandman => Some(Prompt::SandmanSleep),
         Role::Arsonist => Some(Prompt::ArsonistSpark),
         _ => None,
     }
@@ -1042,7 +1046,7 @@ pub async fn resolve_night_by_actor(
     states: &mut HashMap<PlayerId, RoleState>,
     presenter: &mut dyn Presenter,
 ) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>) {
-    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter).await;
+    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter, &[]).await;
     (actions, wolf_target)
 }
 
@@ -1050,11 +1054,16 @@ pub async fn resolve_night_by_actor(
 /// (`freeze::freeze_question`: the Snow Wolf and who they may freeze) sent
 /// in the same batch as everyone else's night question. Also returns the
 /// freeze picked, as `(snow_wolf, target)`.
+///
+/// Players in `skip` get no menu tonight: drunk wolves, and wolves after
+/// the Blacksmith's silver (Werewolf.cs:5191, 5316). A Chemist who hasn't
+/// brewed brews instead of being asked (Werewolf.cs:5259-5271).
 pub async fn resolve_night_with_freeze(
     players: &[AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
     freeze: Option<(PlayerId, Vec<PlayerId>)>,
     presenter: &mut dyn Presenter,
+    skip: &[PlayerId],
 ) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>, Option<(PlayerId, PlayerId)>) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut actions: Vec<(PlayerId, NightAction)> = vec![];
@@ -1070,8 +1079,15 @@ pub async fn resolve_night_with_freeze(
     let freeze_index = freeze.as_ref().map(|(snow_wolf, options)| batch.targets(*snow_wolf, Prompt::SnowWolfFreeze, options, 1));
     let mut asked = vec![];
     for player in players {
-        if !behavior_for(player.role).requires().is_empty() {
-            continue; // handled in stage 2
+        if !behavior_for(player.role).requires().is_empty() || skip.contains(&player.id) {
+            continue; // handled in stage 2, or not asked
+        }
+        let state = states.entry(player.id).or_default();
+        if player.role == Role::Chemist && !state.primary_used {
+            state.primary_used = true;
+            let note = crate::messages::Note::Night(crate::messages::NightNote::ChemistBrewing);
+            presenter.narrate(NarrationEvent::Private { to: player.id, note }).await;
+            continue;
         }
         let mut a = Asked { player: *player, cupid: None, target: None, toggle: None };
         if player.role == Role::Cupid {
@@ -1204,6 +1220,7 @@ fn toggle_day_prompt(role: Role) -> Option<Prompt> {
         // `roles::blacksmith`'s doc for the earlier wrong assumption this
         // corrects.
         Role::Blacksmith => Some(Prompt::BlacksmithSilver),
+        Role::Sandman => Some(Prompt::SandmanSleep),
         _ => None,
     }
 }
@@ -1389,7 +1406,11 @@ pub async fn resolve_day(
         votes.ask(&mut batch, player, &alive);
         let state = states.entry(player.id).or_default();
         let target = one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &alive, 1));
-        let toggle = toggle_day_prompt(player.role).map(|prompt| batch.toggle(player.id, prompt));
+        // A Sandman who already slept the village isn't asked again
+        // (Werewolf.cs:5070).
+        let toggle = toggle_day_prompt(player.role)
+            .filter(|&prompt| !(prompt == Prompt::SandmanSleep && state.primary_used))
+            .map(|prompt| batch.toggle(player.id, prompt));
         asked.push((player, target, toggle));
     }
     let answers = ask_phase(presenter, Phase::Day, &batch.questions, &mut votes).await;
@@ -1474,7 +1495,8 @@ pub fn apply_day_results(
             | DayAction::Pacify
             | DayAction::Trouble
             | DayAction::Detonate { .. }
-            | DayAction::Snoop { .. } => {}
+            | DayAction::Snoop { .. }
+            | DayAction::Sleep => {}
         }
     }
 
@@ -1663,13 +1685,8 @@ mod apply_day_results_tests {
 /// deduplicating "someone already dead" is future work for whoever
 /// applies this to real running game state.
 ///
-/// Two things can suppress the wolf kill entirely, on top of the heal/
-/// protect cancellation above:
-/// - `actions` containing `NightAction::SandmanSleep` (Werewolf.cs:3011-
-///   3020: the whole night is skipped, `return;` before any night action
-///   resolves) — checked first, and short-circuits everything else this
-///   function does, not just the wolf kill.
-/// - `silver_spread` being `true` (Werewolf.cs:5191: `if (!_silverSpread)
+/// The wolf kill is also suppressed by
+/// `silver_spread` being `true` (Werewolf.cs:5191: `if (!_silverSpread)
 ///   { ...assign wolf targets... }` — nothing runs in the `else`, so the
 ///   wolves simply have no target the night after a Blacksmith uses their
 ///   ability). Passed in rather than derived from `actions` because it's
@@ -1682,10 +1699,6 @@ pub fn apply_night_results(
     silver_spread: bool,
 ) -> Vec<(PlayerId, shared::KillMethod)> {
     let mut deaths = vec![];
-
-    if actions.iter().any(|a| matches!(a, NightAction::SandmanSleep)) {
-        return deaths;
-    }
 
     let healed_target = actions.iter().find_map(|a| match a {
         NightAction::Heal { target } => Some(*target),
@@ -1789,7 +1802,8 @@ pub async fn resolve_hunter_shots_by(
             .find(|&&(id, _)| id == hunter_id)
             .map(|&(_, m)| m)
             .expect("every id in died_with_roles has a matching entry in new_deaths");
-        if method == KillMethod::Eat {
+        // Werewolf.cs passes `hunterFinalShot: false` for these (3419, 3199, 2391).
+        if matches!(method, KillMethod::Eat | KillMethod::Burn | KillMethod::FallGrave) {
             continue;
         }
         let prompt = if method == KillMethod::Lynch {
@@ -1846,97 +1860,6 @@ pub fn resolve_lover_deaths(
     chain
 }
 
-/// Three of `VisitPlayer`'s outcomes for a Harlot, all unconditional (no
-/// RNG involved, unlike most of that function's other branches — the one
-/// coin flip it does roll, Werewolf.cs:2340: `Program.R.Next(100) < 80`,
-/// only applies to a *wolf-team* visitor, gated behind
-/// `!WolfRoles.Contains(visitor.PlayerRole)`, which is always true for a
-/// Harlot):
-///
-/// - Visiting whoever the wolves actually ate that same night kills her
-///   too (Werewolf.cs:2352-2360: `KillMthd.VisitWolf`).
-/// - Visiting the Serial Killer *player themself* kills her
-///   (Werewolf.cs:2339-2345: `visited.PlayerRole == IRole.SerialKiller`
-///   unconditionally reaches `KillMthd.VisitKiller` for a non-wolf
-///   visitor).
-/// - Visiting whoever the Serial Killer separately killed that same
-///   night (a *different* player from the SK themself) also kills her
-///   (Werewolf.cs:3893-3897: the `VisitResult.AlreadyDead` case,
-///   `KillMthd.VisitVictim`, gated on `target.KilledByRole ==
-///   IRole.SerialKiller`).
-///
-/// Takes `night_actions`/`alive` rather than just the two targets because
-/// it needs to find *which* Harlot visited, if any (`NightAction::Visit`
-/// carries her own id), and needs the visited player's *role* to tell
-/// "visited the Serial Killer" apart from "visited the Serial Killer's
-/// victim" — two different keys for two different targets that happen to
-/// share a `killedByRole`.
-pub fn resolve_harlot_visit_deaths(
-    night_actions: &[NightAction],
-    wolf_target: Option<PlayerId>,
-    alive: &[AlivePlayer],
-) -> Vec<(PlayerId, KillMethod)> {
-    let sk_target = night_actions.iter().find_map(|a| match a {
-        NightAction::SerialKillVote { target } => Some(*target),
-        _ => None,
-    });
-
-    night_actions
-        .iter()
-        .filter_map(|a| match a {
-            NightAction::Visit { visitor, target } if Some(*target) == wolf_target => {
-                Some((*visitor, KillMethod::VisitWolf))
-            }
-            NightAction::Visit { visitor, target }
-                if alive.iter().any(|p| p.id == *target && p.role == Role::SerialKiller) =>
-            {
-                Some((*visitor, KillMethod::VisitKiller))
-            }
-            NightAction::Visit { visitor, target } if Some(*target) == sk_target => {
-                Some((*visitor, KillMethod::VisitVictim))
-            }
-            _ => None,
-        })
-        .collect()
-}
-
-/// Arsonist's mass burn (Werewolf.cs:3190-3202): choosing to detonate
-/// (`NightAction::Detonate`, "Spark") kills every currently-doused,
-/// still-alive player at once (`KillMethod::Burn`) — except whoever a
-/// Guardian Angel is protecting this exact night, who's saved instead
-/// (Werewolf.cs:3193-3195: `ga?.Choice == burn.Id` skips the `KillPlayer`
-/// call entirely for that one player, no partial protection for anyone
-/// else in the batch). Unconditional otherwise, no RNG.
-///
-/// Doused status accumulates across nights — `game::run_game` tracks the
-/// full set itself rather than through `RoleState`, since
-/// `arsonist::Arsonist`'s own doc flags that `RoleState::remembered_player`
-/// is a single slot, not the `Vec` this needs. Returns `None` (rather
-/// than an empty `Vec`) when no detonation happened this night, so a
-/// caller can tell "sparked with nobody doused" apart from "didn't spark
-/// at all" — only the latter should leave the doused set untouched for
-/// next night.
-pub fn resolve_arsonist_detonation(
-    night_actions: &[NightAction],
-    doused: &[PlayerId],
-    alive: &[AlivePlayer],
-) -> Option<Vec<(PlayerId, KillMethod)>> {
-    if !night_actions.iter().any(|a| matches!(a, NightAction::Detonate)) {
-        return None;
-    }
-    let protected_target = night_actions.iter().find_map(|a| match a {
-        NightAction::Protect { target } => Some(*target),
-        _ => None,
-    });
-    Some(
-        doused
-            .iter()
-            .filter(|&&p| Some(p) != protected_target && alive.iter().any(|a| a.id == p))
-            .map(|&p| (p, KillMethod::Burn))
-            .collect(),
-    )
-}
-
 /// The percent chance a Grave Digger's trap catches whoever visits them
 /// (Werewolf.cs:2389: `20 + (30 - 30 * 0.5^(dug-1))`, halved for a
 /// Village-team visitor at 2390). Only called with `dug_graves >= 1` —
@@ -1956,111 +1879,6 @@ pub(crate) fn grave_digger_fall_chance_percent(dug_graves: u32, visitor_is_villa
     let chance = 20.0 + (30.0 - 30.0 * 0.5_f64.powi(dug_graves as i32 - 1));
     let chance = if visitor_is_village { chance / 2.0 } else { chance };
     chance.round() as u32
-}
-
-/// Whoever visits a Grave Digger who's dug at least one grave risks
-/// falling in and dying instead of whatever their visit would normally
-/// do (Werewolf.cs:2377-2411, `KillMthd.FallGrave`, always
-/// `hunterFinalShot: false`). Scoped to the two visitor roles this
-/// proof-of-concept can name a single, definite visitor for:
-///
-/// - Harlot (`NightAction::Visit`) — falls into `HarlotFellPublic`.
-/// - Guardian Angel (`NightAction::Protect`) — falls into
-///   `DefaultFellPublic` (not one of the switch's named exceptions,
-///   Werewolf.cs:4297-4300).
-///
-/// **Deliberately not modeled**: a Serial Killer visiting a Grave Digger
-/// never falls at all (Werewolf.cs:2382-2387, `StumbledGrave` is pure
-/// flavor tracking — the visit still resolves as a normal success,
-/// killing the Grave Digger like any other `SerialKillVote` target), so
-/// there's no SK case to add here — this isn't a gap, it's the real rule.
-/// Wolves visiting a Grave Digger *can* fall (Werewolf.cs's `default`
-/// case, `WolfFellPublic`), but the real code picks one specific wolf out
-/// of the voting pack to be "the visitor" (`voteWolves.ElementAt(...)`,
-/// see `RngSource::pick_index`) — this proof-of-concept's wolf-eat vote
-/// only tracks a majority *target*, not which individual wolf cast the
-/// deciding visit, so there's no single identity to attribute the fall
-/// to yet. Left out rather than attributed to an arbitrary wolf.
-///
-/// The Guardian Angel case also skips one real exception
-/// (Werewolf.cs:2385: a GA who already saved the Grave Digger some other
-/// way this exact night is safe) — this proof-of-concept doesn't track
-/// `WasSavedLastNight` outside the wolf-protect check, so it isn't
-/// checked here either; an honest simplification, not an oversight.
-pub fn resolve_grave_digger_falls(
-    night_actions: &[NightAction],
-    dug_graves: u32,
-    alive: &[AlivePlayer],
-    rng: &mut dyn RngSource,
-) -> Vec<(PlayerId, KillMethod)> {
-    if dug_graves < 1 {
-        return vec![];
-    }
-    let chance = grave_digger_fall_chance_percent(dug_graves, true); // both candidate visitors are Village-team
-
-    let is_grave_digger = |id: PlayerId| alive.iter().any(|p| p.id == id && p.role == Role::GraveDigger);
-
-    let mut falls = vec![];
-    for action in night_actions {
-        let visitor = match action {
-            NightAction::Visit { visitor, target } if is_grave_digger(*target) => Some(*visitor),
-            // `Protect` doesn't carry the protector's own id the way
-            // `Visit` does (see `NightAction::Protect`'s doc) - look up
-            // whoever's alive as a Guardian Angel instead, the same "there's
-            // normally only one" reasoning `resolve_wolf_cub_bonus_kill` and
-            // friends already rely on elsewhere in this file.
-            NightAction::Protect { target } if is_grave_digger(*target) => {
-                alive.iter().find(|p| p.role == Role::GuardianAngel).map(|p| p.id)
-            }
-            _ => None,
-        };
-        if let Some(visitor) = visitor {
-            if rng.chance(chance) {
-                falls.push((visitor, KillMethod::FallGrave));
-            }
-        }
-    }
-    falls
-}
-
-/// Chemist's success chance (Werewolf.cs `Settings.cs:105,131`:
-/// `ChemistSuccessChance = 50`) — a per-group setting in the real game,
-/// same "no group settings model, always the real default" reasoning as
-/// `ALPHA_WOLF_CONVERSION_CHANCE_PERCENT` in `game`.
-const CHEMIST_SUCCESS_CHANCE_PERCENT: u32 = 50;
-
-/// The Chemist's nightly gambit (Werewolf.cs:3792-3821): a coin flip on
-/// each `NightAction::Chemistry` — success kills the target
-/// (`KillMthd.Chemistry`), failure kills the Chemist instead (the same
-/// method; the real code passes the Chemist as both victim and killer for
-/// the failure case too, `KillPlayer(chemist, KillMthd.Chemistry, killer:
-/// chemist)`).
-///
-/// Simplified relative to the source in one way, honestly: the real
-/// gambit first runs the target through the generic `VisitPlayer`
-/// (blocked by a wolf/Serial Killer/Grave Digger/burning target, or a
-/// Harlot/Guardian Angel who stepped out), and only rolls the success
-/// chance if that visit itself succeeds. This proof-of-concept has no
-/// generic "was this visit even let through" resolution for an arbitrary
-/// target the way `resolve_grave_digger_falls`/`resolve_harlot_visit_deaths`
-/// narrowly do for their own specific visitor roles — so a Chemist
-/// targeting, say, a wolf or another Grave Digger is treated as an
-/// ordinary successful visit here, which the real game would have
-/// resolved differently. An honest gap, not a silent one.
-pub fn resolve_chemistry(
-    night_actions: &[NightAction],
-    rng: &mut dyn RngSource,
-) -> Vec<(PlayerId, KillMethod)> {
-    night_actions
-        .iter()
-        .filter_map(|a| match a {
-            NightAction::Chemistry { chemist, target } => {
-                let victim = if rng.chance(CHEMIST_SUCCESS_CHANCE_PERCENT) { *target } else { *chemist };
-                Some((victim, KillMethod::Chemistry))
-            }
-            _ => None,
-        })
-        .collect()
 }
 
 /// Spumpkin's day-phase detonation (Werewolf.cs:2901-2930): a 40% chance
@@ -2099,203 +1917,6 @@ pub fn resolve_spumpkin_detonation(
         })
         .flatten()
         .collect()
-}
-
-/// What a resolved cult-conversion attempt did — a converted target
-/// (`transform`), a chained death (`deaths` — the cult's "newbie" member,
-/// the one who does the actual visiting, dying instead of converting
-/// anyone), or neither, never both (matches the real
-/// `ConvertToCult`/`VisitPlayer` interaction: a conversion attempt either
-/// succeeds, fails safely, or gets the visitor killed — it's never a
-/// death *and* a conversion the same night).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CultConversionOutcome {
-    pub transform: Option<PlayerId>,
-    pub deaths: Vec<(PlayerId, KillMethod)>,
-}
-
-/// Every named `*ConversionChance` in Werewolf.cs's `Settings.cs`
-/// (both settings profiles agree on every value). Any role *not* listed
-/// here converts at the real default of 100% (Werewolf.cs:2489:
-/// `ConvertToCult(IPlayer target, ..., int chance = 100)`) — a
-/// Villager/Mason/Prince/Mayor/Gunner/etc. visited by the cult always
-/// converts, no roll needed, matching the C# default parameter rather
-/// than this proof-of-concept inventing its own "usually converts"
-/// number. `Doppelganger`/`Thief`/`Spumpkin`/`Arsonist` are the one
-/// group that goes the *other* way — Werewolf.cs:3729-3745 calls
-/// `ConvertToCult(target, voteCult, 0)` for all four (guaranteed to
-/// fail), so they're listed explicitly at `0` rather than silently
-/// falling into the same "no chance value found" bucket a typo would
-/// produce.
-fn cult_conversion_chance_percent(role: Role) -> u32 {
-    match role {
-        Role::Oracle => 50,
-        Role::Sandman => 60,
-        Role::WiseElder => 30,
-        Role::Pacifist => 80,
-        Role::Augur => 40,
-        Role::Seer => 40,
-        Role::GuardianAngel => 60,
-        Role::Detective => 70,
-        Role::Cursed => 60,
-        Role::Harlot => 70,
-        Role::Sorcerer => 40,
-        Role::Blacksmith => 75,
-        Role::Doppelganger | Role::Thief | Role::Spumpkin | Role::Arsonist => 0,
-        _ => 100,
-    }
-}
-
-/// The cult's nightly recruitment attempt (Werewolf.cs:3591-3757):
-/// majority-tallies `NightAction::ConvertVote` the same way the wolf-eat
-/// vote is tallied, then routes the target through several special cases
-/// before falling back to `cult_conversion_chance_percent`'s per-role
-/// roll. `newbie` — the cult's most-recently-converted member, who does
-/// the actual visiting and is the one who dies if a visit goes wrong
-/// (`voteCult.OrderByDescending(x => x.DayCult).First()`) — is
-/// approximated as *any* alive Cultist here: this proof-of-concept
-/// doesn't track conversion order (`DayCult`), so there's no real
-/// "newest" to pick: an honest simplification, not a bug.
-///
-/// Special cases, in the order the source checks them:
-/// - **Serial Killer** target: the newbie dies unconditionally, no roll —
-///   see the `SerialKiller` branch's own comment for why.
-/// - **Grave Digger** target: subject to the same fall trap
-///   `resolve_grave_digger_falls` models for Harlot/Guardian Angel
-///   (Werewolf.cs's shared `VisitPlayer`, reached before any of the
-///   per-role branches below) — except a Cultist isn't Village-team, so
-///   the halving those two visitors get doesn't apply here
-///   (`grave_digger_fall_chance_percent(dug_graves, false)`).
-/// - **Hunter** target: a nested pair of rolls (`HunterConversionChance`
-///   then, only if that fails, `HunterKillCultChance`) — convert, kill
-///   the newbie, or neither.
-/// - **CultistHunter** target: kills the newbie unconditionally
-///   (Werewolf.cs:3654-3656, `KillMthd.Hunt`) — no roll at all.
-/// - **Wolf-team** target (`Wolf`/`AlphaWolf`/`WolfCub`/`Lycan`): the
-///   newbie only dies if the wolves stayed home that night
-///   (Werewolf.cs:3669: `voteWolves.Any(... Choice ...)` — "did the
-///   wolves go eating"), approximated here as `wolves_went_eating`
-///   (whether the main wolf-eat vote had a target at all, the same
-///   signal `resolve_wolf_eat_target`'s caller already has as
-///   `wolf_target.is_some()`).
-/// - **Snow Wolf** target: the real check is whether *that specific
-///   player* went out freezing someone (Werewolf.cs:3687:
-///   `target.Choice != -1 && != 0`), not the main wolf vote — a
-///   `NightAction::Freeze` in `night_actions` means the house was empty;
-///   otherwise the Snow Wolf was home and kills the newbie.
-/// - Everything else: `cult_conversion_chance_percent(target_role)`.
-pub fn resolve_cultist_conversion(
-    night_actions: &[NightAction],
-    wolves_went_eating: bool,
-    dug_graves: u32,
-    alive: &[AlivePlayer],
-    rng: &mut dyn RngSource,
-) -> CultConversionOutcome {
-    let no_outcome = CultConversionOutcome::default();
-
-    let Some(target) = majority_target(night_actions.iter().filter_map(|a| match a {
-        NightAction::ConvertVote { target } => Some(*target),
-        _ => None,
-    })) else {
-        return no_outcome;
-    };
-    let Some(newbie) = alive.iter().find(|p| p.role == Role::Cultist).map(|p| p.id) else {
-        return no_outcome;
-    };
-    let Some(target_role) = alive.iter().find(|p| p.id == target).map(|p| p.role) else {
-        return no_outcome;
-    };
-
-    // Werewolf.cs:2339-2347, VisitPlayer's own gate, checked before the
-    // per-role conversion switch is ever reached - same "not part of the
-    // switch, structurally earlier" shape as game::resolve_wolf_eat_target's
-    // Serial Killer dodge. A Cultist isn't wolf-team, so the "unless you're
-    // a wolf and very lucky" clause never applies: the newbie dies
-    // unconditionally, no roll at all, and (like the Grave Digger case)
-    // there's no `case IRole.SerialKiller:` in the real conversion switch
-    // for exactly this reason - VisitPlayer never lets it get there.
-    if target_role == Role::SerialKiller {
-        return CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitKiller)] };
-    }
-
-    if target_role == Role::GraveDigger {
-        return if dug_graves >= 1 && rng.chance(grave_digger_fall_chance_percent(dug_graves, false)) {
-            CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::FallGrave)] }
-        } else {
-            no_outcome
-        };
-    }
-
-    const HUNTER_CONVERSION_CHANCE_PERCENT: u32 = 50;
-    const HUNTER_KILL_CULT_CHANCE_PERCENT: u32 = 50;
-
-    match target_role {
-        Role::Hunter => {
-            if rng.chance(HUNTER_CONVERSION_CHANCE_PERCENT) {
-                CultConversionOutcome { transform: Some(target), deaths: vec![] }
-            } else if rng.chance(HUNTER_KILL_CULT_CHANCE_PERCENT) {
-                CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::HunterCult)] }
-            } else {
-                no_outcome
-            }
-        }
-        Role::CultistHunter => CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::Hunt)] },
-        Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan => {
-            if wolves_went_eating {
-                no_outcome
-            } else {
-                CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitWolf)] }
-            }
-        }
-        // An empty house if the Snow Wolf went freezing (Werewolf.cs:3688).
-        Role::SnowWolf if night_actions.iter().any(|a| matches!(a, NightAction::Freeze { .. })) => no_outcome,
-        Role::SnowWolf => CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitWolf)] },
-        _ => {
-            if rng.chance(cult_conversion_chance_percent(target_role)) {
-                CultConversionOutcome { transform: Some(target), deaths: vec![] }
-            } else {
-                no_outcome
-            }
-        }
-    }
-}
-
-/// The wolves' bonus kill after a Wolf Cub dies (Werewolf.cs:1047-1053,
-/// `WolfCubKilled`): every surviving wolf-team member gets asked a second
-/// "who do you want to eat?" question (`Prompt::WolfCubBonusKill`, which
-/// reuses the real `AskEat` text — the legacy code's own comment does
-/// exactly the same reuse, `GetLocaleString("AskEat")`), majority-tallied
-/// the same way the main wolf vote is, excluding wolf-team targets same
-/// as the original.
-///
-/// Called by `run_game` at the *start* of the next night, alongside (not
-/// after) the main wolf vote — confirmed by reading `NightCycle`
-/// directly: `SendNightActions` (which sends that night's menus,
-/// Werewolf.cs:3030) runs before `WolfCubKilled` gets reset
-/// (Werewolf.cs:3235), so a wolf answering the main "who do you eat?"
-/// question is immediately chained into this second question the same
-/// night, off whatever's left over from the last death, and both
-/// answers resolve together at the end of that night. Asking this
-/// *after* the main kill has already resolved — an earlier version of
-/// this call site did exactly that — was the wrong sequencing.
-pub async fn resolve_wolf_cub_bonus_kill(
-    alive: &[AlivePlayer],
-    presenter: &mut dyn Presenter,
-) -> Option<PlayerId> {
-    let non_wolf_ids: Vec<PlayerId> = alive
-        .iter()
-        .filter(|p| !crate::is_wolf_muscle(p.role))
-        .map(|p| p.id)
-        .collect();
-
-    let mut votes = vec![];
-    for player in alive.iter().filter(|p| crate::is_wolf_muscle(p.role)) {
-        if let Some(target) = ask_one(presenter, player.id, Prompt::WolfCubBonusKill, &non_wolf_ids).await {
-            votes.push(target);
-        }
-    }
-
-    majority_target(votes.into_iter())
 }
 
 #[cfg(test)]
@@ -2378,21 +1999,6 @@ mod apply_night_results_tests {
         assert_eq!(
             apply_night_results(&actions, None, false),
             vec![(target, KillMethod::SerialKilled)]
-        );
-    }
-
-    #[test]
-    fn sandman_sleep_cancels_every_death_this_night() {
-        let wolf_target = PlayerId(1);
-        let poisoned = PlayerId(2);
-        let actions = [
-            NightAction::SandmanSleep,
-            NightAction::Poison { target: poisoned },
-        ];
-        assert_eq!(
-            apply_night_results(&actions, Some(wolf_target), false),
-            vec![],
-            "a Sandman sleep should cancel the wolf kill AND anything else that night"
         );
     }
 
@@ -2608,174 +2214,6 @@ mod lover_death_tests {
 }
 
 #[cfg(test)]
-mod cultist_conversion_tests {
-    use super::*;
-    use crate::rng::ScriptedRngSource;
-
-    fn roster() -> Vec<AlivePlayer> {
-        vec![
-            AlivePlayer { id: PlayerId(1), role: Role::Cultist },
-            AlivePlayer { id: PlayerId(2), role: Role::Seer },
-            AlivePlayer { id: PlayerId(3), role: Role::Hunter },
-            AlivePlayer { id: PlayerId(4), role: Role::CultistHunter },
-            AlivePlayer { id: PlayerId(5), role: Role::Wolf },
-            AlivePlayer { id: PlayerId(6), role: Role::SnowWolf },
-            AlivePlayer { id: PlayerId(7), role: Role::GraveDigger },
-            AlivePlayer { id: PlayerId(8), role: Role::Villager },
-        ]
-    }
-
-    fn vote(target: PlayerId) -> Vec<NightAction> {
-        vec![NightAction::ConvertVote { target }]
-    }
-
-    #[test]
-    fn no_votes_means_no_outcome_at_all() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let outcome = resolve_cultist_conversion(&[], true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome::default());
-    }
-
-    #[test]
-    fn a_default_role_always_converts() {
-        let mut rng = ScriptedRngSource::new().with_chance(true);
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(8)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome.transform, Some(PlayerId(8)));
-        assert_eq!(outcome.deaths, vec![]);
-    }
-
-    #[test]
-    fn a_seer_only_converts_on_a_successful_roll() {
-        let mut rng = ScriptedRngSource::new().with_chance(false);
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(2)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome::default());
-    }
-
-    #[test]
-    fn a_hunter_who_converts_never_rolls_the_kill_chance() {
-        let mut rng = ScriptedRngSource::new().with_chance(true);
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(3)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome.transform, Some(PlayerId(3)));
-    }
-
-    #[test]
-    fn a_hunter_who_fails_to_convert_may_kill_the_newbie() {
-        let mut rng = ScriptedRngSource::new().with_chance(false).with_chance(true);
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(3)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::HunterCult)] });
-    }
-
-    #[test]
-    fn a_hunter_who_fails_both_rolls_does_nothing() {
-        let mut rng = ScriptedRngSource::new().with_chance(false).with_chance(false);
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(3)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome::default());
-    }
-
-    #[test]
-    fn a_cultist_hunter_always_kills_the_newbie_no_roll() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(4)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::Hunt)] });
-    }
-
-    #[test]
-    fn visiting_a_wolf_who_went_eating_is_a_safe_empty_visit() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(5)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome::default());
-    }
-
-    #[test]
-    fn visiting_a_wolf_who_stayed_home_kills_the_newbie() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(5)), false, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitWolf)] });
-    }
-
-    #[test]
-    fn visiting_a_snow_wolf_who_stayed_home_kills_the_newbie() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        // even with wolves_went_eating true, SnowWolf isn't part of that vote
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(6)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitWolf)] });
-    }
-
-    #[test]
-    fn a_snow_wolf_out_freezing_leaves_an_empty_house() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let mut actions = vote(PlayerId(6));
-        actions.push(NightAction::Freeze { snow_wolf: PlayerId(6), target: PlayerId(2) });
-        let outcome = resolve_cultist_conversion(&actions, true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome::default());
-    }
-
-    #[test]
-    fn visiting_the_serial_killer_always_kills_the_newbie_no_roll() {
-        let mut roster_with_sk = roster();
-        roster_with_sk.push(AlivePlayer { id: PlayerId(9), role: Role::SerialKiller });
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(9)), true, 0, &roster_with_sk, &mut rng);
-        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitKiller)] });
-    }
-
-    #[test]
-    fn visiting_a_grave_digger_with_no_dug_graves_is_always_safe() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(7)), true, 0, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome::default());
-    }
-
-    #[test]
-    fn visiting_a_grave_digger_can_catch_the_newbie_in_the_trap() {
-        let mut rng = ScriptedRngSource::new().with_chance(true);
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(7)), true, 1, &roster(), &mut rng);
-        assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::FallGrave)] });
-    }
-
-    #[test]
-    fn no_cultists_alive_means_no_outcome() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        let roster_without_cultist: Vec<AlivePlayer> =
-            roster().into_iter().filter(|p| p.role != Role::Cultist).collect();
-        let outcome = resolve_cultist_conversion(&vote(PlayerId(8)), true, 0, &roster_without_cultist, &mut rng);
-        assert_eq!(outcome, CultConversionOutcome::default());
-    }
-}
-
-#[cfg(test)]
-mod chemistry_tests {
-    use super::*;
-    use crate::rng::ScriptedRngSource;
-
-    #[test]
-    fn a_successful_gambit_kills_the_target() {
-        let chemist = PlayerId(1);
-        let target = PlayerId(2);
-        let actions = [NightAction::Chemistry { chemist, target }];
-        let mut rng = ScriptedRngSource::new().with_chance(true);
-
-        assert_eq!(resolve_chemistry(&actions, &mut rng), vec![(target, KillMethod::Chemistry)]);
-    }
-
-    #[test]
-    fn a_failed_gambit_kills_the_chemist_instead() {
-        let chemist = PlayerId(1);
-        let target = PlayerId(2);
-        let actions = [NightAction::Chemistry { chemist, target }];
-        let mut rng = ScriptedRngSource::new().with_chance(false);
-
-        assert_eq!(resolve_chemistry(&actions, &mut rng), vec![(chemist, KillMethod::Chemistry)]);
-    }
-
-    #[test]
-    fn no_chemistry_action_means_no_roll_at_all() {
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-        assert_eq!(resolve_chemistry(&[], &mut rng), vec![]);
-    }
-}
-
-#[cfg(test)]
 mod spumpkin_detonation_tests {
     use super::*;
     use crate::rng::ScriptedRngSource;
@@ -2812,7 +2250,6 @@ mod spumpkin_detonation_tests {
 #[cfg(test)]
 mod grave_digger_fall_tests {
     use super::*;
-    use crate::rng::ScriptedRngSource;
 
     #[test]
     fn fall_chance_matches_the_real_formula_at_one_dig() {
@@ -2837,275 +2274,8 @@ mod grave_digger_fall_tests {
         assert!((49..=50).contains(&chance), "expected ~50, got {chance}");
     }
 
-    fn roster_with_grave_digger() -> Vec<AlivePlayer> {
-        vec![
-            AlivePlayer { id: PlayerId(1), role: Role::Harlot },
-            AlivePlayer { id: PlayerId(2), role: Role::GraveDigger },
-            AlivePlayer { id: PlayerId(3), role: Role::GuardianAngel },
-        ]
-    }
-
-    #[test]
-    fn no_dug_graves_means_no_roll_at_all() {
-        let harlot = PlayerId(1);
-        let grave_digger = PlayerId(2);
-        let actions = [NightAction::Visit { visitor: harlot, target: grave_digger }];
-        // An unscripted ScriptedRngSource would panic if `chance()` were
-        // called at all - proving the "dug_graves < 1" short-circuit.
-        let mut rng = ScriptedRngSource::new();
-
-        let falls = resolve_grave_digger_falls(&actions, 0, &roster_with_grave_digger(), &mut rng);
-
-        assert_eq!(falls, vec![]);
-    }
-
-    #[test]
-    fn a_harlot_who_fails_the_roll_visits_safely() {
-        let harlot = PlayerId(1);
-        let grave_digger = PlayerId(2);
-        let actions = [NightAction::Visit { visitor: harlot, target: grave_digger }];
-        let mut rng = ScriptedRngSource::new().with_chance(false);
-
-        let falls = resolve_grave_digger_falls(&actions, 1, &roster_with_grave_digger(), &mut rng);
-
-        assert_eq!(falls, vec![]);
-    }
-
-    #[test]
-    fn a_harlot_who_fails_the_trap_falls_in_and_dies() {
-        let harlot = PlayerId(1);
-        let grave_digger = PlayerId(2);
-        let actions = [NightAction::Visit { visitor: harlot, target: grave_digger }];
-        let mut rng = ScriptedRngSource::new().with_chance(true);
-
-        let falls = resolve_grave_digger_falls(&actions, 1, &roster_with_grave_digger(), &mut rng);
-
-        assert_eq!(falls, vec![(harlot, KillMethod::FallGrave)]);
-    }
-
-    #[test]
-    fn a_guardian_angel_protecting_the_grave_digger_can_also_fall() {
-        let ga = PlayerId(3);
-        let grave_digger = PlayerId(2);
-        let actions = [NightAction::Protect { target: grave_digger }];
-        let mut rng = ScriptedRngSource::new().with_chance(true);
-
-        let falls = resolve_grave_digger_falls(&actions, 1, &roster_with_grave_digger(), &mut rng);
-
-        assert_eq!(falls, vec![(ga, KillMethod::FallGrave)]);
-    }
-
-    #[test]
-    fn visiting_someone_who_isnt_the_grave_digger_never_rolls() {
-        let harlot = PlayerId(1);
-        let ga = PlayerId(3);
-        let actions = [NightAction::Visit { visitor: harlot, target: ga }];
-        let mut rng = ScriptedRngSource::new(); // panics if consulted
-
-        let falls = resolve_grave_digger_falls(&actions, 3, &roster_with_grave_digger(), &mut rng);
-
-        assert_eq!(falls, vec![]);
-    }
 }
 
-#[cfg(test)]
-mod arsonist_detonation_tests {
-    use super::*;
-
-    fn roster() -> Vec<AlivePlayer> {
-        vec![
-            AlivePlayer { id: PlayerId(1), role: Role::Arsonist },
-            AlivePlayer { id: PlayerId(2), role: Role::Villager },
-            AlivePlayer { id: PlayerId(3), role: Role::Seer },
-        ]
-    }
-
-    #[test]
-    fn detonating_burns_every_doused_player() {
-        let doused = [PlayerId(2), PlayerId(3)];
-        let actions = [NightAction::Detonate];
-        let deaths = resolve_arsonist_detonation(&actions, &doused, &roster());
-        assert_eq!(
-            deaths,
-            Some(vec![(PlayerId(2), KillMethod::Burn), (PlayerId(3), KillMethod::Burn)])
-        );
-    }
-
-    #[test]
-    fn not_detonating_is_none_not_an_empty_batch() {
-        let doused = [PlayerId(2)];
-        let actions = [NightAction::Douse { target: PlayerId(2) }];
-        assert_eq!(resolve_arsonist_detonation(&actions, &doused, &roster()), None);
-    }
-
-    #[test]
-    fn a_guardian_angels_protection_saves_exactly_one_doused_player() {
-        let doused = [PlayerId(2), PlayerId(3)];
-        let actions = [NightAction::Detonate, NightAction::Protect { target: PlayerId(2) }];
-        let deaths = resolve_arsonist_detonation(&actions, &doused, &roster());
-        assert_eq!(deaths, Some(vec![(PlayerId(3), KillMethod::Burn)]));
-    }
-
-    #[test]
-    fn an_already_dead_doused_player_is_skipped() {
-        let doused = [PlayerId(2), PlayerId(99)]; // 99 isn't in the roster
-        let actions = [NightAction::Detonate];
-        let deaths = resolve_arsonist_detonation(&actions, &doused, &roster());
-        assert_eq!(deaths, Some(vec![(PlayerId(2), KillMethod::Burn)]));
-    }
-}
-
-#[cfg(test)]
-mod harlot_visit_tests {
-    use super::*;
-
-    fn roster() -> Vec<AlivePlayer> {
-        vec![
-            AlivePlayer { id: PlayerId(1), role: Role::Harlot },
-            AlivePlayer { id: PlayerId(2), role: Role::Villager },
-            AlivePlayer { id: PlayerId(3), role: Role::Villager },
-            AlivePlayer { id: PlayerId(4), role: Role::SerialKiller },
-        ]
-    }
-
-    #[test]
-    fn visiting_the_wolves_actual_target_kills_the_harlot() {
-        let harlot = PlayerId(1);
-        let victim = PlayerId(2);
-        let actions = [NightAction::Visit {
-            visitor: harlot,
-            target: victim,
-        }];
-        assert_eq!(
-            resolve_harlot_visit_deaths(&actions, Some(victim), &roster()),
-            vec![(harlot, KillMethod::VisitWolf)]
-        );
-    }
-
-    #[test]
-    fn visiting_someone_else_is_safe() {
-        let harlot = PlayerId(1);
-        let elsewhere = PlayerId(3);
-        let wolf_target = PlayerId(2);
-        let actions = [NightAction::Visit {
-            visitor: harlot,
-            target: elsewhere,
-        }];
-        assert_eq!(resolve_harlot_visit_deaths(&actions, Some(wolf_target), &roster()), vec![]);
-    }
-
-    #[test]
-    fn no_wolf_target_means_no_visit_death() {
-        let harlot = PlayerId(1);
-        let target = PlayerId(2);
-        let actions = [NightAction::Visit {
-            visitor: harlot,
-            target,
-        }];
-        assert_eq!(resolve_harlot_visit_deaths(&actions, None, &roster()), vec![]);
-    }
-
-    #[test]
-    fn no_harlot_in_play_means_no_visit_death() {
-        assert_eq!(resolve_harlot_visit_deaths(&[], Some(PlayerId(2)), &roster()), vec![]);
-    }
-
-    #[test]
-    fn visiting_the_serial_killer_directly_kills_the_harlot() {
-        let harlot = PlayerId(1);
-        let sk = PlayerId(4);
-        let actions = [NightAction::Visit {
-            visitor: harlot,
-            target: sk,
-        }];
-        assert_eq!(
-            resolve_harlot_visit_deaths(&actions, None, &roster()),
-            vec![(harlot, KillMethod::VisitKiller)]
-        );
-    }
-
-    #[test]
-    fn visiting_the_serial_killers_own_target_kills_the_harlot() {
-        let harlot = PlayerId(1);
-        let sk_target = PlayerId(3);
-        let actions = [
-            NightAction::SerialKillVote { target: sk_target },
-            NightAction::Visit {
-                visitor: harlot,
-                target: sk_target,
-            },
-        ];
-        assert_eq!(
-            resolve_harlot_visit_deaths(&actions, None, &roster()),
-            vec![(harlot, KillMethod::VisitVictim)]
-        );
-    }
-}
-
-#[cfg(test)]
-mod wolf_cub_bonus_kill_tests {
-    use super::*;
-    use async_trait::async_trait;
-
-    struct ScriptedWolfPresenter {
-        answer: Option<PlayerId>,
-        asked: Vec<(PlayerId, Vec<PlayerId>)>,
-    }
-
-    #[async_trait(?Send)]
-    impl Presenter for ScriptedWolfPresenter {
-        async fn ask_targets(
-            &mut self,
-            player: PlayerId,
-            prompt: Prompt,
-            options: &[PlayerId],
-            count: usize,
-        ) -> Option<Vec<PlayerId>> {
-            if prompt != Prompt::WolfCubBonusKill || count != 1 {
-                return None;
-            }
-            self.asked.push((player, options.to_vec()));
-            self.answer.map(|t| vec![t])
-        }
-    }
-
-    #[tokio::test]
-    async fn every_surviving_wolf_is_asked_for_a_bonus_target() {
-        let wolf = PlayerId(1);
-        let villager = PlayerId(2);
-        let alive = vec![
-            AlivePlayer { id: wolf, role: Role::Wolf },
-            AlivePlayer { id: villager, role: Role::Villager },
-        ];
-        let mut presenter = ScriptedWolfPresenter {
-            answer: Some(villager),
-            asked: vec![],
-        };
-
-        let target = resolve_wolf_cub_bonus_kill(&alive, &mut presenter).await;
-
-        assert_eq!(target, Some(villager));
-        assert_eq!(presenter.asked.len(), 1);
-        assert_eq!(presenter.asked[0].0, wolf);
-        assert!(
-            !presenter.asked[0].1.contains(&wolf),
-            "the bonus kill's options should never include a wolf-team player"
-        );
-    }
-
-    #[tokio::test]
-    async fn declining_the_bonus_kill_kills_nobody() {
-        let alive = vec![
-            AlivePlayer { id: PlayerId(1), role: Role::Wolf },
-            AlivePlayer { id: PlayerId(2), role: Role::Villager },
-        ];
-        let mut presenter = ScriptedWolfPresenter {
-            answer: None,
-            asked: vec![],
-        };
-        assert_eq!(resolve_wolf_cub_bonus_kill(&alive, &mut presenter).await, None);
-    }
-}
 
 #[cfg(test)]
 mod day_tests {

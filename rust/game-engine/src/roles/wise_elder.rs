@@ -14,7 +14,7 @@
 //!   (Werewolf.cs:3392-3406, guarded by `target.HasUsedAbility`) — the
 //!   wolves are told they failed and the Wise Elder is warned, then a
 //!   *second* attempt falls through to a normal kill (`goto default`).
-//!   See `game::resolve_wolf_eat_target`, which tracks this with the same
+//!   See the wolves region of `night::resolve_night_sequence`, which tracks this with the same
 //!   `RoleState::primary_used` one-shot flag every other "first time
 //!   only" role uses.
 

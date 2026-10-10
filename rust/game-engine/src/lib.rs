@@ -12,6 +12,7 @@ pub mod freeze;
 pub mod game;
 pub mod game_end;
 pub mod messages;
+pub mod night;
 pub mod reveals;
 pub mod orchestrator;
 pub mod player_list;
@@ -19,7 +20,6 @@ pub mod rng;
 pub mod roles;
 pub mod rules;
 pub mod summary;
-pub mod visits;
 
 pub use game::{run_game, run_game_with_role_pool, run_game_with_rules, GameOutcome};
 

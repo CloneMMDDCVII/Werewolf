@@ -267,6 +267,8 @@ pub enum KillMethod {
     Eat,
     VisitWolf,
     VisitVictim,
+    /// A Guardian Angel killed by the wolf they guarded (Werewolf.cs:2369).
+    GuardWolf,
     VisitKiller,
     VisitBurning,
     Shoot,

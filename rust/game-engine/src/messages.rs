@@ -53,6 +53,9 @@ pub enum MessageArg {
     Reveal { player: PlayerId, role: Role },
     /// "{role} is dead" (Werewolf.cs:4348).
     RoleIsDead(Role),
+    /// One `Reveal` per line (the Arsonist's "Burning" list,
+    /// Werewolf.cs:4201).
+    Reveals(Vec<(PlayerId, Role)>),
     /// Nothing: a reveal left out because roles are hidden.
     Empty,
 }
@@ -80,6 +83,10 @@ pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: 
             MessageArg::Reveal { player, role } => {
                 let was = lookup("Was").unwrap_or_else(|| "was".to_string());
                 format!("{} {was} {}", name(*player), role_name(*role))
+            }
+            MessageArg::Reveals(list) => {
+                let was = lookup("Was").unwrap_or_else(|| "was".to_string());
+                list.iter().map(|&(p, r)| format!("{} {was} {}", name(p), role_name(r))).collect::<Vec<_>>().join("\n")
             }
             MessageArg::RoleIsDead(role) => {
                 format!("{} {}", role_name(*role), lookup("IsDead").unwrap_or_else(|| "is dead".to_string()))
@@ -140,6 +147,11 @@ pub enum Note {
     CHHuntedYou,
     HunterFailedToFind { target: PlayerId },
     HunterVisitDead { target: PlayerId },
+    /// A plain Thief who picked nobody, or a dead player, is given a
+    /// random target (Werewolf.cs:2449, 4155).
+    ThiefStealChosen { target: PlayerId },
+    /// Everything else the night tells one player.
+    Night(NightNote),
 }
 
 /// Which flavour of freeze notice the frozen player gets — the legacy
@@ -172,6 +184,84 @@ pub enum DiggerVisitor {
     GuardianAngel,
     Harlot,
     Thief,
+    Chemist,
+    Arsonist,
+}
+
+/// Declares `NightNote`: each variant is named after its locale key, and
+/// its players fill `{0}`, `{1}` in order.
+macro_rules! night_notes {
+    (plain: [$($plain:ident),* $(,)?], one: [$($one:ident),* $(,)?], two: [$($two:ident),* $(,)?] $(,)?) => {
+        /// What the night tells one player privately, from the regions in
+        /// `night` (Werewolf.cs:3186-4130). Variants are named after their
+        /// locale key.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum NightNote {
+            $($plain,)*
+            $($one(PlayerId),)*
+            $($two(PlayerId, PlayerId),)*
+            /// The visiting cultist, then how many cultists are left
+            /// (Werewolf.cs:3660).
+            CultHunterKilledCultVisit(PlayerId, u32),
+        }
+
+        impl NightNote {
+            pub fn locale_key(&self) -> &'static str {
+                match self {
+                    $(NightNote::$plain => stringify!($plain),)*
+                    $(NightNote::$one(_) => stringify!($one),)*
+                    $(NightNote::$two(..) => stringify!($two),)*
+                    NightNote::CultHunterKilledCultVisit(..) => "CultHunterKilledCultVisit",
+                }
+            }
+
+            pub fn args(&self) -> Vec<MessageArg> {
+                use MessageArg::Player;
+                match *self {
+                    $(NightNote::$plain => vec![],)*
+                    $(NightNote::$one(a) => vec![Player(a)],)*
+                    $(NightNote::$two(a, b) => vec![Player(a), Player(b)],)*
+                    NightNote::CultHunterKilledCultVisit(a, n) => vec![Player(a), MessageArg::Number(n as i64)],
+                }
+            }
+
+            /// One of each variant, for the locale coverage check.
+            pub fn samples() -> Vec<NightNote> {
+                let p = PlayerId(0);
+                vec![
+                    $(NightNote::$plain,)*
+                    $(NightNote::$one(p),)*
+                    $(NightNote::$two(p, p),)*
+                    NightNote::CultHunterKilledCultVisit(p, 0),
+                ]
+            }
+        }
+    };
+}
+
+night_notes! {
+    plain: [
+        Burn, WolvesEatYou, WolvesAteWiseElderPM, WolvesSpottedYou, SerialKillerKilledYou,
+        SerialKillerSpottedYou, CultAttempt, ChemistBrewing, ChemistVisitYouSuccess, HarlotVisitYou,
+        GuardSavedYouFromFire, GuardSavedYou, GuardWolf, GuardKiller, PlayerBitten,
+    ],
+    one: [
+        Doused, GuardBlockedWolf, WolvesEatDrunk, WolvesTriedToEatWiseElder, HarlotNotHome,
+        GraveDiggerNotHome, WolvesSpotted, KillerStumbled, GuardBlockedKiller, GuardBlockedRandomKiller,
+        SerialKillerSpotted, CultTargetDead, ChemistSuccess, ChemistFail, ChemistTargetDead,
+        ChemistTargetEmpty, ChemistSK, ChemistFell, ChemistVisitYouFail, ChemistVisitYouSK,
+        HarlotDiscoverCult, HarlotVisitNonWolf, HarlotFuckWolf, HarlotFuckKiller, HarlotFell,
+        HarlotVisitNotHome, HarlotVisitDigger, GuardSavedFromFire, GuardSaved, CleanDoused,
+        GuardNoAttack, GuardEmptyHouse, GAFell,
+    ],
+    // (drunk, second victim), (target, visitor), (digger, visitor),
+    // (target, alpha), (old target, new victim), then (visitor, target)
+    // for the cult's lines.
+    two: [
+        WolvesEatDrunkBlockSecondKill, WolvesVisitBurn, WolfFellWolves, PlayerBittenWolves,
+        KillerRandomKill, CultUnableToConvert, CultConvertHunter, CultConvertCultHunter,
+        CultVisitEmpty, CultConvertWolf, CultConvertSerialKiller, CultConvertGraveDigger,
+    ],
 }
 
 /// Something announced to the whole group.
@@ -226,6 +316,12 @@ pub enum Announcement {
     /// A neutral role left at a no-winner ending: `SorcererEnd`,
     /// `ThiefEnd`, `DoppelgangerEnd` or `TannerEnd` (Werewolf.cs:4696-4806).
     NeutralEnd { player: PlayerId, role: Role },
+    /// Werewolf.cs:4437, a night nobody died.
+    NoAttack,
+    /// Werewolf.cs:957, when the Sandman acts.
+    SandmanSleepAll { sandman: PlayerId },
+    /// Werewolf.cs:3017, in place of the night the Sandman skipped.
+    SandmanNight,
 }
 
 /// One line of the secret lynch results.
@@ -275,11 +371,15 @@ impl Note {
                 DiggerVisitor::GuardianAngel => "GAFellDigger",
                 DiggerVisitor::Harlot => "HarlotFellDigger",
                 DiggerVisitor::Thief => "ThiefFellDigger",
+                DiggerVisitor::Chemist => "ChemistFellDigger",
+                DiggerVisitor::Arsonist => "ArsonistFellDigger",
             },
             Note::HunterFindCultist { .. } => "HunterFindCultist",
             Note::CHHuntedYou => "CHHuntedYou",
             Note::HunterFailedToFind { .. } => "HunterFailedToFind",
             Note::HunterVisitDead { .. } => "HunterVisitDead",
+            Note::ThiefStealChosen { .. } => "ThiefStealChosen",
+            Note::Night(note) => note.locale_key(),
         }
     }
 
@@ -303,7 +403,9 @@ impl Note {
             | Note::ThiefStoleRole { target }
             | Note::HunterFindCultist { target }
             | Note::HunterFailedToFind { target }
-            | Note::HunterVisitDead { target } => vec![Player(target)],
+            | Note::HunterVisitDead { target }
+            | Note::ThiefStealChosen { target } => vec![Player(target)],
+            Note::Night(note) => note.args(),
             Note::FellDigger { visitor, .. } => vec![Player(visitor)],
             Note::AugurSees { role } => vec![R(role)],
             Note::DetectiveCaught { detective } => vec![Player(detective)],
@@ -351,6 +453,9 @@ impl Announcement {
                 Role::Doppelganger => "DoppelgangerEnd",
                 _ => "TannerEnd",
             },
+            Announcement::NoAttack => "NoAttack",
+            Announcement::SandmanSleepAll { .. } => "SandmanSleepAll",
+            Announcement::SandmanNight => "SandmanNight",
         }
     }
 
@@ -362,7 +467,8 @@ impl Announcement {
             | Announcement::PacifistNoLynch { pacifist: one }
             | Announcement::BlacksmithSpreadSilver { blacksmith: one }
             | Announcement::PrinceLynched { prince: one }
-            | Announcement::HunterSkipChoice { hunter: one, .. } => vec![Player(*one)],
+            | Announcement::HunterSkipChoice { hunter: one, .. }
+            | Announcement::SandmanSleepAll { sandman: one } => vec![Player(*one)],
             Announcement::HunterKilledWiseElder { hunter: a, elder: b }
             | Announcement::HunterKillsWolfEnd { hunter: a, wolf: b }
             | Announcement::WolfKillsHunterEnd { hunter: a, wolf: b }
@@ -392,7 +498,9 @@ impl Announcement {
             Announcement::LynchTie
             | Announcement::NoLynchVotes
             | Announcement::TroubleDoubleLynchNow
-            | Announcement::PacifistNoLynchNow => vec![],
+            | Announcement::PacifistNoLynchNow
+            | Announcement::NoAttack
+            | Announcement::SandmanNight => vec![],
         }
     }
 
@@ -446,6 +554,9 @@ pub fn all_message_keys() -> Vec<&'static str> {
         Note::CHHuntedYou,
         Note::HunterFailedToFind { target: p },
         Note::HunterVisitDead { target: p },
+        Note::ThiefStealChosen { target: p },
+        Note::FellDigger { visitor: p, by: DiggerVisitor::Chemist },
+        Note::FellDigger { visitor: p, by: DiggerVisitor::Arsonist },
     ]
     .iter()
     .chain(notices.iter().map(|&n| Note::Frozen(n)).collect::<Vec<_>>().iter())
@@ -482,11 +593,15 @@ pub fn all_message_keys() -> Vec<&'static str> {
             Announcement::NeutralEnd { player: p, role: Role::Thief },
             Announcement::NeutralEnd { player: p, role: Role::Doppelganger },
             Announcement::NeutralEnd { player: p, role: Role::Tanner },
+            Announcement::NoAttack,
+            Announcement::SandmanSleepAll { sandman: p },
+            Announcement::SandmanNight,
         ]
         .iter()
         .map(Announcement::locale_key),
     );
-    keys.extend(["SecretLynchResultEach", "SecretLynchResultNumber"]);
+    keys.extend(NightNote::samples().iter().map(NightNote::locale_key));
+    keys.extend(["SecretLynchResultEach", "SecretLynchResultNumber", "Burning", "ChemistKillWiseElder"]);
     keys.extend(crate::summary::SUMMARY_KEYS);
     keys
 }

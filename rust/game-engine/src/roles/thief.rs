@@ -7,7 +7,7 @@
 //!
 //! In `ThiefFull` mode (`GameRules::thief_full`) `run_game` clears
 //! `primary_used` every night so the Thief can try again, and resolves the
-//! steal at the end of the night through `visits::resolve_full_steal`
+//! steal at the end of the night through the Thief region of `night::resolve_night_sequence`
 //! instead (Werewolf.cs:4164-4189). The swap itself is
 //! `game::swap_roles` in both modes.
 

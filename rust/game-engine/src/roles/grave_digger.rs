@@ -6,7 +6,7 @@
 //! belonging to whichever visiting role's action gets applied, not
 //! something this passive role's own `RoleBehavior` can express — same
 //! "the effect lives on the other side" shape as `wolf_man::WolfMan`'s
-//! Seer false-positive. See `orchestrator::resolve_grave_digger_falls`
+//! Seer false-positive. See `night::resolve_night_sequence`
 //! (Harlot/Guardian Angel — the two cases with a single, nameable
 //! visitor) and `game::run_game`'s `dug_graves` tracking, which counts
 //! deaths since the last time this role's grave count was computed

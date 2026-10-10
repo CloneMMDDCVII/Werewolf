@@ -66,7 +66,8 @@ impl ScriptedPresenter {
                     | Announcement::Day { .. }
                     | Announcement::LynchTime { .. }
                     | Announcement::PlayerVotedLynch { .. }
-                    | Announcement::PlayerVoteCounts { .. },
+                    | Announcement::PlayerVoteCounts { .. }
+                    | Announcement::NoAttack,
                 ) => None,
                 NarrationEvent::Announce(a) => Some(a.clone()),
                 _ => None,

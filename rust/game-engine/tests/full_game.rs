@@ -3,7 +3,8 @@
 //! integration test in this crate has been building toward.
 
 use async_trait::async_trait;
-use game_engine::orchestrator::{AlivePlayer, Presenter, Prompt};
+use game_engine::messages::Announcement;
+use game_engine::orchestrator::{AlivePlayer, NarrationEvent, Presenter, Prompt};
 use game_engine::roles::PlayerId;
 use game_engine::rng::SeededRngSource;
 use game_engine::{run_game, WinOutcome};
@@ -474,9 +475,9 @@ async fn silver_spread_blocks_the_wolf_kill_the_following_night_only() {
 }
 
 #[tokio::test]
-async fn sandman_sleep_cancels_the_whole_nights_deaths() {
-    // Sandman puts everyone to sleep the same night the wolf tries to
-    // eat someone - the kill should never happen.
+async fn sandman_sleep_skips_the_next_night() {
+    // The Sandman puts everyone to sleep by day; the following night
+    // nobody is asked anything and nobody dies (Werewolf.cs:3011-3020).
     let wolf = PlayerId(1);
     let sandman = PlayerId(2);
     let victim = PlayerId(3);
@@ -487,12 +488,15 @@ async fn sandman_sleep_cancels_the_whole_nights_deaths() {
         AlivePlayer { id: sandman, role: Role::Sandman },
         AlivePlayer { id: victim, role: Role::Villager },
         AlivePlayer { id: bystander, role: Role::Villager },
+        AlivePlayer { id: PlayerId(5), role: Role::Villager },
     ];
 
     struct SandmanPresenter {
         wolf: PlayerId,
         sandman: PlayerId,
         victim: PlayerId,
+        wolf_asked: u32,
+        narrated: Vec<NarrationEvent>,
     }
     #[async_trait(?Send)]
     impl Presenter for SandmanPresenter {
@@ -506,23 +510,28 @@ async fn sandman_sleep_cancels_the_whole_nights_deaths() {
             if count != 1 || prompt != Prompt::WolfEat || player != self.wolf {
                 return None;
             }
+            self.wolf_asked += 1;
             Some(vec![self.victim])
         }
 
         async fn ask_toggle(&mut self, player: PlayerId, prompt: Prompt) -> bool {
             prompt == Prompt::SandmanSleep && player == self.sandman
         }
+
+        async fn narrate(&mut self, event: NarrationEvent) {
+            self.narrated.push(event);
+        }
     }
 
-    let mut presenter = SandmanPresenter { wolf, sandman, victim };
+    let mut presenter = SandmanPresenter { wolf, sandman, victim, wolf_asked: 0, narrated: vec![] };
     let mut rng = SeededRngSource::new(0);
-    let outcome = run_game(&players, &mut presenter, &mut rng, 1).await;
+    let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
-    assert_eq!(
-        outcome.deaths,
-        vec![],
-        "a Sandman sleep should cancel the wolf's kill entirely, end to end"
-    );
+    assert_eq!(outcome.deaths, vec![(victim, KillMethod::Eat)], "only night one's kill happens");
+    assert_eq!(presenter.wolf_asked, 1, "the wolf has no menu on the night the Sandman skipped");
+    for announcement in [Announcement::SandmanSleepAll { sandman }, Announcement::SandmanNight] {
+        assert!(presenter.narrated.contains(&NarrationEvent::Announce(announcement)));
+    }
 }
 
 #[tokio::test]
@@ -642,7 +651,7 @@ async fn a_harlot_visiting_the_wolves_target_dies_alongside_them() {
     deaths.sort_by_key(|(id, _)| id.0);
     assert_eq!(
         deaths,
-        vec![(harlot, KillMethod::VisitWolf), (victim, KillMethod::Eat)],
+        vec![(harlot, KillMethod::VisitVictim), (victim, KillMethod::Eat)],
         "visiting the wolves' actual target should kill the Harlot too"
     );
 }

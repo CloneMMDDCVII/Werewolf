@@ -3,7 +3,7 @@
 //! .Chemistry`), failure kills the Chemist instead. Unlike Gunner/Witch,
 //! there's no per-game usage limit — the coin flip is the only gate — so
 //! this file only validates "is this a living, non-self target." The coin
-//! flip itself is modeled in `orchestrator::resolve_chemistry`, not here —
+//! flip itself is modeled in the Chemist region of `night::resolve_night_sequence`, not here —
 //! same "propose the target, someone else resolves the RNG" split as
 //! every other gambit in this crate.
 

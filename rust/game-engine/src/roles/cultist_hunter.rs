@@ -1,6 +1,6 @@
 //! Cultist Hunter checks one player overnight, hunting specifically for
 //! Cultists (Werewolf.cs:3559 onward). The hunt itself, killing a Cultist
-//! or reporting a miss, is `visits::resolve_hunt`.
+//! or reporting a miss, is the Cultist Hunter region of `night::resolve_night_sequence`.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

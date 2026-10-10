@@ -85,7 +85,7 @@ pub enum NightAction {
     LinkLovers { a: PlayerId, b: PlayerId },
     /// Harlot visiting a target overnight (Werewolf.cs:2358-2360,
     /// 2424-2428). Carries `visitor` (not just `target`) so
-    /// `orchestrator::resolve_harlot_visit_deaths` can kill the right
+    /// the Harlot region of `night::resolve_night_sequence` can kill the right
     /// player: visiting whoever the wolves' actually ate that same night
     /// kills the Harlot (Werewolf.cs:2352-2360, `KillMthd.VisitWolf`,
     /// unconditional — no RNG involved). Being unable to visit someone
@@ -118,12 +118,6 @@ pub enum NightAction {
     /// Killer, so there's no consensus to tally — `apply_night_results`
     /// applies this as a direct, unconditional kill.
     SerialKillVote { target: PlayerId },
-    /// Sandman choosing to put everyone to sleep tonight
-    /// (Werewolf.cs:950-961: `_sandmanSleep = true`), a once-per-game
-    /// no-target toggle rather than picking a player. What "asleep"
-    /// actually suppresses (other roles' actions) is resolution logic
-    /// this proof-of-concept doesn't attempt.
-    SandmanSleep,
     /// Thief stealing a target's role, night 1 only (Werewolf.cs:4132-4163:
     /// `StealRole(thief, target)`). Unlike Doppelganger's `ChooseRoleModel`
     /// (which waits for the role model to die), the steal is immediate —
@@ -138,7 +132,7 @@ pub enum NightAction {
     /// Chemist's nightly gambit (Werewolf.cs:3792-3821): visit a target,
     /// with an RNG chance of killing them (`KillMthd.Chemistry`) or, on
     /// failure, killing the Chemist instead — see
-    /// `orchestrator::resolve_chemistry`, which needs `chemist`'s own id
+    /// the Chemist region of `night::resolve_night_sequence`, which needs `chemist`'s own id
     /// for exactly that self-kill case, the same reasoning `Shoot` and
     /// `StealRole` already carry their actor's id for.
     Chemistry { chemist: PlayerId, target: PlayerId },
@@ -153,7 +147,7 @@ pub enum NightAction {
     /// Arsonist choosing to detonate ("Spark", Werewolf.cs:1013,
     /// `player.Choice = -2`) instead of dousing this night: burns every
     /// doused player at once (`KillMthd.Burn`, Werewolf.cs:3198-3202) — see
-    /// `orchestrator::resolve_arsonist_detonation`, which `game::run_game`
+    /// the Arsonist region of `night::resolve_night_sequence`, which `game::run_game`
     /// calls with this action and the cross-round doused set it keeps.
     Detonate,
     /// The Snow Wolf going out to freeze a target (Werewolf.cs:3092-3184).
@@ -254,6 +248,9 @@ pub enum DayAction {
     /// Detective snooping on a target by day (Werewolf.cs:2933-2953). What
     /// they learn is sent by `reveals::resolve_detective`.
     Snoop { detective: PlayerId, target: PlayerId },
+    /// Sandman putting everyone to sleep, once: the next night is skipped
+    /// (Werewolf.cs:950-961, 3011-3020).
+    Sleep,
 }
 
 /// Same shape as `NightContext`, for the day phase. Kept as its own type

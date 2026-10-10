@@ -8,7 +8,7 @@
 //! it's unconditional — no `KillPlayer` call at all, not even a chance
 //! roll — whenever the wolves' eat target happens to be Cursed, they
 //! become Wolf instead of dying. See
-//! `game::resolve_wolf_eat_target`, which `run_game` calls for both the
+//! the wolves region of `night::resolve_night_sequence`, which handles both the
 //! primary wolf-eat target and the Wolf Cub's bonus-kill target (both
 //! funnel through the same switch in the real code, Werewolf.cs:3239-3270)
 //! before either is turned into a death.

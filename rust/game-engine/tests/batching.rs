@@ -146,7 +146,7 @@ async fn the_snow_wolfs_freeze_goes_out_with_the_night() {
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
     let freeze = Some((PlayerId(6), vec![SEER, ANGEL, VILLAGER]));
-    let (_, _, frozen) = resolve_night_with_freeze(&roster, &mut states, freeze, &mut presenter).await;
+    let (_, _, frozen) = resolve_night_with_freeze(&roster, &mut states, freeze, &mut presenter, &[]).await;
 
     assert_eq!(presenter.batches.len(), 1);
     assert_eq!(presenter.batches[0].1[0].prompt(), Prompt::SnowWolfFreeze);

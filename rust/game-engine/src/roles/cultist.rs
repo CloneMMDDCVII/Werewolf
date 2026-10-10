@@ -2,7 +2,7 @@
 //! Same "validate a target, emit the proposal" shape as Wolf's `EatVote` —
 //! the real per-target-role resolution (RNG conversion chance, the
 //! Hunter/CultistHunter/wolf-team/Grave-Digger special cases) lives in
-//! `orchestrator::resolve_cultist_conversion`, not here, the same split as
+//! the cult region of `night::resolve_night_sequence`, not here, the same split as
 //! every other role whose payoff isn't decided by this file alone. Unlike
 //! Wolf, there's no `NightFact` dependency here: the cult doesn't need
 //! anyone else's decision resolved first (though the *resolution* does

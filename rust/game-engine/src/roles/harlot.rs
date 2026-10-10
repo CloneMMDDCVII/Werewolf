@@ -4,7 +4,7 @@
 //!
 //! Dying if the target turns out to be the wolves' actual victim that
 //! same night **is** modeled (Werewolf.cs:2358-2360) — see
-//! `orchestrator::resolve_harlot_visit_deaths`, which needs `self_id` on
+//! the Harlot region of `night::resolve_night_sequence`, which needs `self_id` on
 //! the `Visit` action to know who to kill. Being unable to visit someone
 //! already occupied (Werewolf.cs:2424-2428) is resolution logic across
 //! multiple players' actions this proof-of-concept still doesn't attempt.

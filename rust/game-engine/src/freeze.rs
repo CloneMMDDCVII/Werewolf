@@ -100,6 +100,9 @@ pub struct FreezeOutcome {
     pub events: Vec<NarrationEvent>,
     /// The Snow Wolf, if the visit killed them.
     pub deaths: Vec<(PlayerId, KillMethod)>,
+    /// Whoever a Guardian Angel kept from being frozen, who counts as
+    /// saved tonight (Werewolf.cs:3109).
+    pub saved: Option<PlayerId>,
 }
 
 /// Resolves the freeze picked by `ask_freeze` and removes the frozen
@@ -140,6 +143,7 @@ pub fn apply_freeze(
             .any(|(_, a)| matches!(a, NightAction::Protect { target: t } if *t == target)) =>
         {
             outcome.events.push(tell(snow_wolf, Note::GuardBlockedSnowWolf { target }));
+            outcome.saved = Some(target);
             return outcome;
         }
         Role::Hunter => {
