@@ -42,6 +42,7 @@ use game_engine::balancing::{balance, BalanceError};
 use game_engine::orchestrator::AlivePlayer;
 use game_engine::rng::RngSource;
 use game_engine::roles::PlayerId;
+use crate::group_config::{GroupSettings, Toggle};
 use shared::{GameMode, Role};
 use std::collections::HashSet;
 
@@ -137,6 +138,9 @@ pub enum ExtendError {
     /// game (`HaveExtended`); admins can extend as many times as they
     /// like.
     AlreadyExtended,
+    /// `GameCommands.cs:176`: the group turned `AllowExtend` off, so only
+    /// admins can extend.
+    ExtendDisabled,
 }
 
 /// A single group's pre-game roster and join-phase rules. One `Lobby`
@@ -169,6 +173,13 @@ pub struct Lobby {
     /// assigned - so `game_mode()` has nothing downstream to affect
     /// until it exists. An honest placeholder, not a finished feature.
     game_mode: GameMode,
+    /// The group's `MaxExtend` (`GameCommands.cs:178`).
+    max_extend_seconds: i32,
+    /// The group's `AllowExtend` (`GameCommands.cs:176`).
+    allow_extend: bool,
+    /// Passed to `balance` by `assign_roles` (`Werewolf.cs:1457-1458`).
+    disabled_roles: Vec<Role>,
+    burning_overkill: bool,
 }
 
 impl Lobby {
@@ -193,7 +204,28 @@ impl Lobby {
             close_requested: false,
             have_extended: HashSet::new(),
             game_mode,
+            max_extend_seconds: DEFAULT_MAX_EXTEND_SECONDS,
+            allow_extend: true,
+            disabled_roles: vec![],
+            burning_overkill: false,
         }
+    }
+
+    /// A lobby following one group's settings: its player cap, extend
+    /// rules, disabled roles and burning overkill, with the game mode the
+    /// group allows for a game started as `requested_mode`
+    /// (`Werewolf.cs:150-216`).
+    pub fn from_group_settings(settings: &GroupSettings, requested_mode: GameMode) -> Self {
+        let mut lobby = Self::with_limits_and_mode(
+            DEFAULT_MIN_PLAYERS,
+            settings.max_players as usize,
+            settings.mode.resolve(requested_mode),
+        );
+        lobby.max_extend_seconds = settings.max_extend_seconds as i32;
+        lobby.allow_extend = settings.is_on(Toggle::AllowExtend);
+        lobby.disabled_roles = settings.disabled_roles_for_balancing();
+        lobby.burning_overkill = settings.is_on(Toggle::BurningOverkill);
+        lobby
     }
 
     pub fn state(&self) -> LobbyState {
@@ -202,6 +234,18 @@ impl Lobby {
 
     pub fn game_mode(&self) -> GameMode {
         self.game_mode
+    }
+
+    pub fn max_players(&self) -> usize {
+        self.max_players
+    }
+
+    pub fn disabled_roles(&self) -> &[Role] {
+        &self.disabled_roles
+    }
+
+    pub fn burning_overkill(&self) -> bool {
+        self.burning_overkill
     }
 
     pub fn players(&self) -> &[Candidate] {
@@ -276,23 +320,13 @@ impl Lobby {
     /// caller's real timer loop should apply to its own countdown - this
     /// `Lobby` has no countdown of its own to adjust (see module doc).
     ///
-    /// `max_extend_seconds` is a parameter rather than a hardcoded
-    /// constant since it's genuinely a per-group setting in the source
-    /// (`grp.MaxExtend ?? Settings.MaxExtend`, `GameCommands.cs:178`) -
-    /// unlike most settings elsewhere in this port, a caller here already
-    /// has to look up *something* group-specific to build a full `/extend`
-    /// handler (whether the group even allows extending at all,
-    /// `GroupConfig.AllowExtend`, isn't modeled here either - same
-    /// "no group config store yet" gap `evaluate_winner_with_kills` and
-    /// friends already have), so plumbing the one number through costs
-    /// nothing extra.
-    pub fn extend_time(
-        &mut self,
-        requester_id: i64,
-        is_admin: bool,
-        requested_seconds: i32,
-        max_extend_seconds: i32,
-    ) -> Result<i32, ExtendError> {
+    /// The cap and whether non-admins may extend at all are per-group
+    /// settings (`GameCommands.cs:176-178`), taken from the
+    /// `GroupSettings` the lobby was built with (see
+    /// [`Lobby::from_group_settings`]); the plain constructors keep the
+    /// legacy 60-second cap and allow extending.
+    pub fn extend_time(&mut self, requester_id: i64, is_admin: bool, requested_seconds: i32) -> Result<i32, ExtendError> {
+        let max_extend_seconds = self.max_extend_seconds;
         if self.state != LobbyState::Joining {
             return Err(ExtendError::NotJoining);
         }
@@ -309,6 +343,9 @@ impl Lobby {
         }
         if requested_seconds < 0 && !is_admin {
             return Err(ExtendError::NegativeRequiresAdmin);
+        }
+        if !is_admin && !self.allow_extend {
+            return Err(ExtendError::ExtendDisabled);
         }
         if !is_admin && self.have_extended.contains(&requester_id) {
             return Err(ExtendError::AlreadyExtended);
@@ -378,17 +415,18 @@ impl Lobby {
     /// isn't a real question the source ever asks either (`Balance` is
     /// called from deep inside the same `IsInitializing` block that
     /// already passed the `MinPlayers` check).
-    pub fn assign_roles(
-        &self,
-        disabled_roles: &[Role],
-        burning_overkill: bool,
-        rng: &mut dyn RngSource,
-    ) -> Result<Vec<AlivePlayer>, AssignRolesError> {
+    pub fn assign_roles(&self, rng: &mut dyn RngSource) -> Result<Vec<AlivePlayer>, AssignRolesError> {
         if self.state != LobbyState::Started {
             return Err(AssignRolesError::NotStarted);
         }
 
-        let roles = balance(self.players.len(), self.game_mode == GameMode::Chaos, disabled_roles, burning_overkill, rng)?;
+        let roles = balance(
+            self.players.len(),
+            self.game_mode == GameMode::Chaos,
+            &self.disabled_roles,
+            self.burning_overkill,
+            rng,
+        )?;
 
         Ok(self
             .players
@@ -582,21 +620,21 @@ mod tests {
     fn a_joined_player_can_extend_the_timer() {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
-        assert_eq!(lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
+        assert_eq!(lobby.extend_time(1, false, 30), Ok(30));
     }
 
     #[test]
     fn extend_is_clamped_to_max_extend_seconds() {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
-        assert_eq!(lobby.extend_time(1, false, 999, DEFAULT_MAX_EXTEND_SECONDS), Ok(60));
+        assert_eq!(lobby.extend_time(1, false, 999), Ok(60));
     }
 
     #[test]
     fn a_negative_extend_is_also_clamped() {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
-        assert_eq!(lobby.extend_time(1, true, -999, DEFAULT_MAX_EXTEND_SECONDS), Ok(-60));
+        assert_eq!(lobby.extend_time(1, true, -999), Ok(-60));
     }
 
     #[test]
@@ -604,7 +642,7 @@ mod tests {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
         assert_eq!(
-            lobby.extend_time(1, false, -10, DEFAULT_MAX_EXTEND_SECONDS),
+            lobby.extend_time(1, false, -10),
             Err(ExtendError::NegativeRequiresAdmin)
         );
     }
@@ -613,7 +651,7 @@ mod tests {
     fn an_admin_can_extend_negatively() {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
-        assert_eq!(lobby.extend_time(1, true, -10, DEFAULT_MAX_EXTEND_SECONDS), Ok(-10));
+        assert_eq!(lobby.extend_time(1, true, -10), Ok(-10));
     }
 
     #[test]
@@ -621,7 +659,7 @@ mod tests {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
         assert_eq!(
-            lobby.extend_time(99, true, 30, DEFAULT_MAX_EXTEND_SECONDS),
+            lobby.extend_time(99, true, 30),
             Err(ExtendError::NotInGame)
         );
     }
@@ -630,9 +668,9 @@ mod tests {
     fn a_non_admin_can_only_extend_once() {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
-        assert_eq!(lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
+        assert_eq!(lobby.extend_time(1, false, 30), Ok(30));
         assert_eq!(
-            lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS),
+            lobby.extend_time(1, false, 30),
             Err(ExtendError::AlreadyExtended)
         );
     }
@@ -641,8 +679,8 @@ mod tests {
     fn an_admin_can_extend_repeatedly() {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
-        assert_eq!(lobby.extend_time(1, true, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
-        assert_eq!(lobby.extend_time(1, true, 30, DEFAULT_MAX_EXTEND_SECONDS), Ok(30));
+        assert_eq!(lobby.extend_time(1, true, 30), Ok(30));
+        assert_eq!(lobby.extend_time(1, true, 30), Ok(30));
     }
 
     #[test]
@@ -651,7 +689,7 @@ mod tests {
         lobby.join(candidate(1, "Alice")).unwrap();
         lobby.try_start();
         assert_eq!(
-            lobby.extend_time(1, false, 30, DEFAULT_MAX_EXTEND_SECONDS),
+            lobby.extend_time(1, false, 30),
             Err(ExtendError::NotJoining)
         );
     }
@@ -688,14 +726,14 @@ mod tests {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
         let mut rng = game_engine::rng::SeededRngSource::new(0);
-        assert_eq!(lobby.assign_roles(&[], true, &mut rng).unwrap_err(), AssignRolesError::NotStarted);
+        assert_eq!(lobby.assign_roles(&mut rng).unwrap_err(), AssignRolesError::NotStarted);
     }
 
     #[test]
     fn assigns_a_role_to_every_joined_player() {
         let lobby = started_lobby(6);
         let mut rng = game_engine::rng::SeededRngSource::new(0);
-        let roster = lobby.assign_roles(&[], true, &mut rng).expect("6p game should balance");
+        let roster = lobby.assign_roles(&mut rng).expect("6p game should balance");
 
         assert_eq!(roster.len(), 6);
         let mut ids: Vec<_> = roster.iter().map(|p| p.id.0).collect();
@@ -714,7 +752,7 @@ mod tests {
             lobby
         };
         let mut rng = game_engine::rng::SeededRngSource::new(0);
-        let roster = lobby.assign_roles(&[], true, &mut rng).expect("8p chaos game should balance");
+        let roster = lobby.assign_roles(&mut rng).expect("8p chaos game should balance");
         assert_eq!(roster.len(), 8);
     }
 }

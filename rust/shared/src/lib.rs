@@ -115,6 +115,60 @@ pub const ALL_ROLES: &[Role] = &[
 ];
 
 impl Role {
+    /// `Shared/Roles.cs:16-142`: the `[Role("emoji")]` attribute each legacy
+    /// role carries, shown on the group `/config` role toggles. `None` for
+    /// the roles this port added (Chef, Barkeep, Witch), which have no
+    /// legacy attribute and are never handed out by balancing.
+    pub fn emoji(self) -> Option<&'static str> {
+        use Role::*;
+        Some(match self {
+            Villager => "👱",
+            Drunk => "🍻",
+            Harlot => "💋",
+            Seer => "👳",
+            Traitor => "🖕",
+            GuardianAngel => "👼",
+            Detective => "🕵",
+            Wolf => "🐺",
+            Cursed => "😾",
+            Gunner => "🔫",
+            Tanner => "👺",
+            Fool => "🃏",
+            WildChild => "👶",
+            Beholder => "👁",
+            ApprenticeSeer => "🙇",
+            Cultist => "👤",
+            CultistHunter => "💂",
+            Mason => "👷",
+            Doppelganger => "🎭",
+            Cupid => "🏹",
+            Hunter => "🎯",
+            SerialKiller => "🔪",
+            Sorcerer => "🔮",
+            AlphaWolf => "⚡️",
+            WolfCub => "🐶",
+            Blacksmith => "⚒",
+            ClumsyGuy => "🤕",
+            Mayor => "🎖",
+            Prince => "👑",
+            Lycan => "🐺🌝",
+            Pacifist => "☮️",
+            WiseElder => "📚",
+            Oracle => "🌀",
+            Sandman => "💤",
+            WolfMan => "👱🌚",
+            Thief => "😈",
+            Troublemaker => "🤯",
+            Chemist => "👨‍🔬",
+            SnowWolf => "🐺☃️",
+            GraveDigger => "☠️",
+            Augur => "🦅",
+            Arsonist => "🔥",
+            Spumpkin => "🎃",
+            Chef | Barkeep | Witch => return None,
+        })
+    }
+
     /// Mirrors `Werewolf.cs::SetTeam` (Werewolf Node/Werewolf.cs:1546-1610).
     /// Chef/Barkeep (beta-only roles) verified against GreyWolfDev/Werewolf@beta.
     pub fn team(self) -> Team {

@@ -6,6 +6,7 @@
 //! task dies with it.
 
 pub mod capacity;
+pub mod group_config;
 pub mod lobby;
 pub mod restart;
 
