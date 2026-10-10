@@ -271,8 +271,21 @@ pub struct GameSetup {
     pub seed: u64,
     pub handle: Arc<GameHandle>,
     pub clicks: mpsc::UnboundedReceiver<Click>,
-    /// Called last, from the game's thread, whatever the outcome.
+    /// Called last, from the game's thread, whatever the outcome, even
+    /// if the game panics.
     pub on_finish: Box<dyn FnOnce() + Send>,
+}
+
+/// Calls `on_finish` when dropped, so a panic unwinding through [`play`]
+/// still frees the group.
+struct Finish(Option<Box<dyn FnOnce() + Send>>);
+
+impl Drop for Finish {
+    fn drop(&mut self) {
+        if let Some(on_finish) = self.0.take() {
+            on_finish();
+        }
+    }
 }
 
 pub fn unix_now() -> i64 {
@@ -300,6 +313,7 @@ pub async fn play(setup: GameSetup) {
         clicks,
         on_finish,
     } = setup;
+    let finish = Finish(Some(on_finish));
     let lang = settings.language.clone();
     let mut rng = SeededRngSource::new(seed);
 
@@ -330,7 +344,7 @@ pub async fn play(setup: GameSetup) {
                     None,
                 )
                 .await;
-            on_finish();
+            drop(finish);
             return;
         }
     };
@@ -442,7 +456,7 @@ pub async fn play(setup: GameSetup) {
             log::error!("group {group_id}: could not record game end: {e}");
         }
     }
-    on_finish();
+    drop(finish);
 }
 
 /// The C#'s one-tap abilities: a single button with this label instead
