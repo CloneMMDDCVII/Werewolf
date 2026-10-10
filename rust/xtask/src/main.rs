@@ -15,17 +15,20 @@ const USAGE: &str = "\
 Usage: cargo xtask <task>
 
 Tasks:
-  ci              rustfmt --check, clippy -D warnings, the full test suite, then
-                  rustdoc -D warnings (broken doc links fail)
+  ci              rustfmt --check, clippy -D warnings, the full test suite,
+                  rustdoc -D warnings (broken doc links fail), then
+                  cargo deny check advisories when cargo-deny is installed
   install-hooks   install a git pre-push hook that runs `cargo xtask ci`
   uninstall-hooks remove that hook";
 
-/// One CI step: a label, the cargo arguments that run it, and any
-/// environment it needs.
+/// One CI step: a label, the cargo arguments that run it, any
+/// environment it needs, and an optional cargo subcommand it depends on
+/// (with what it checks), skipped when that isn't installed.
 struct Step {
     label: &'static str,
     args: &'static [&'static str],
     env: &'static [(&'static str, &'static str)],
+    requires: Option<(&'static str, &'static str)>,
 }
 
 const CI_STEPS: &[Step] = &[
@@ -33,6 +36,7 @@ const CI_STEPS: &[Step] = &[
         label: "rustfmt",
         args: &["fmt", "--all", "--check"],
         env: &[],
+        requires: None,
     },
     Step {
         label: "clippy",
@@ -46,11 +50,13 @@ const CI_STEPS: &[Step] = &[
             "warnings",
         ],
         env: &[],
+        requires: None,
     },
     Step {
         label: "tests",
         args: &["test", "--workspace", "--locked"],
         env: &[],
+        requires: None,
     },
     // Fails on a broken intra-doc link, so a role file's links to the
     // night regions that resolve it can't silently go stale.
@@ -65,6 +71,15 @@ const CI_STEPS: &[Step] = &[
         ],
         // Private items are documented, so links to them are fine.
         env: &[("RUSTDOCFLAGS", "-D warnings -A rustdoc::private_intra_doc_links")],
+        requires: None,
+    },
+    // Known vulnerabilities in the dependency tree (policy in deny.toml).
+    // Optional locally; CI installs cargo-deny so it always runs there.
+    Step {
+        label: "deny",
+        args: &["deny", "check", "advisories"],
+        env: &[],
+        requires: Some(("cargo-deny", "check advisories")),
     },
 ];
 
@@ -97,7 +112,16 @@ fn ci() -> Result<(), String> {
     let workspace = workspace_root();
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let started = Instant::now();
+    let mut skipped = vec![];
     for (i, step) in CI_STEPS.iter().enumerate() {
+        if let Some((tool, purpose)) = step.requires {
+            if !installed(tool) {
+                let line = format!("==> {} skipped: install {tool} to {purpose}", step.label);
+                println!("{line}");
+                skipped.push(line);
+                continue;
+            }
+        }
         println!(
             "==> [{}/{}] {}: cargo {}",
             i + 1,
@@ -126,7 +150,20 @@ fn ci() -> Result<(), String> {
         );
     }
     println!("==> CI passed in {:.1}s", started.elapsed().as_secs_f64());
+    // Repeated so a green run says what it did not check.
+    for line in skipped {
+        println!("{line}");
+    }
     Ok(())
+}
+
+/// Whether `tool` (a cargo subcommand binary such as `cargo-deny`) is on
+/// PATH.
+fn installed(tool: &str) -> bool {
+    Command::new(tool)
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
 
 fn install_hooks() -> Result<(), String> {

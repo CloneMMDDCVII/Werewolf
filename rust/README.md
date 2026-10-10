@@ -14,9 +14,14 @@ cargo xtask ci
 
 That is `cargo fmt --all --check`, `cargo clippy --workspace --all-targets
 --locked -- -D warnings`, `cargo test --workspace --locked`, then
-`cargo doc` with warnings denied (a broken doc link fails), stopping at
-the first failure. GitHub Actions runs the same command
-(`.github/workflows/rust.yml`), so a green local run means a green CI run.
+`cargo doc` with warnings denied (a broken doc link fails), then
+`cargo deny check advisories` (RustSec advisories against `Cargo.lock`,
+policy in `deny.toml`), stopping at the first failure. GitHub Actions runs
+the same command (`.github/workflows/rust.yml`) with cargo-deny installed.
+Locally the advisory check runs only if `cargo-deny` is on your PATH
+(`cargo install --locked cargo-deny`); otherwise it is skipped and the run
+ends by saying so, so a green local run without it does not cover
+advisories.
 Set `WEREWOLF_TEST_POSTGRES_URL` to also run the storage tests against
 Postgres, as CI does.
 

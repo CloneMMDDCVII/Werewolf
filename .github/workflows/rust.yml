@@ -41,8 +41,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+      # So xtask's advisory check always runs here instead of being skipped.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
       # The same entry point developers run locally and the pre-push hook
-      # runs: rustfmt --check, clippy -D warnings, the full test suite.
+      # runs: rustfmt --check, clippy -D warnings, the full test suite,
+      # rustdoc, cargo deny check advisories.
       - run: cargo xtask ci
 
   # The bot as a single download per platform: unzip, run, follow the
