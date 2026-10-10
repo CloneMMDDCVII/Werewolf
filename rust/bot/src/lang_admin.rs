@@ -14,6 +14,10 @@ use std::sync::Arc;
 /// Telegram's limit is 4096 characters; leave room for the markup.
 const CHUNK: usize = 3500;
 
+/// The largest language file shipped is about 0.5 MiB; anything far past
+/// that is not one, and is refused before it is held and parsed.
+const MAX_UPLOAD_BYTES: usize = 2 * 1024 * 1024;
+
 impl BotCore {
     fn is_language_admin(&self, user: i64) -> bool {
         self.config.language_admins.contains(&user) || self.config.global_admins.contains(&user)
@@ -65,7 +69,15 @@ impl BotCore {
         }
         let doc = doc.expect("checked above");
         let file_name = doc.file_name.clone().unwrap_or_default();
+        if doc.file_size.is_some_and(|n| n as usize > MAX_UPLOAD_BYTES) {
+            self.say(cmd.chat.id, admin::TOO_LARGE).await;
+            return;
+        }
         let bytes = match self.telegram.download(&doc.file_id).await {
+            Ok(b) if b.len() > MAX_UPLOAD_BYTES => {
+                self.say(cmd.chat.id, admin::TOO_LARGE).await;
+                return;
+            }
             Ok(b) => b,
             Err(e) => {
                 self.say(

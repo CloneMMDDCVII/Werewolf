@@ -446,6 +446,7 @@ pub const MUST_BE_XML: &str = "The file must be an XML file! (*.xml)";
 pub const KEEP_WHICH: &str = "Which file do you want to keep?";
 pub const CANNOT_UPLOAD: &str = "Fatal errors present, cannot upload.";
 pub const KEPT_OLD: &str = "No action taken.";
+pub const TOO_LARGE: &str = "The file is too large to be a language file.";
 
 /// `/uploadlang`'s first checks (AdminCommands.cs:102-129): the command
 /// must reply to a document, and that document must be `.xml`.

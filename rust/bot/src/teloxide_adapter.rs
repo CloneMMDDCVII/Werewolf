@@ -285,6 +285,8 @@ pub fn command_from_message(m: &Message, bot_username: &str) -> Option<Command> 
     let replied_document = m.reply_to_message().and_then(|r| r.document()).map(|d| Document {
         file_id: d.file.id.0.clone(),
         file_name: d.file_name.clone(),
+        // teloxide fills in u32::MAX when Telegram leaves the size out.
+        file_size: (d.file.size != u32::MAX).then_some(d.file.size),
     });
     Some(Command {
         chat: chat(&m.chat),

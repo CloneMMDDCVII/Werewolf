@@ -1006,6 +1006,7 @@ async fn language_admins_upload_and_install_a_file() {
         let doc = bot::telegram::Document {
             file_id,
             file_name: Some("Deutsch.xml".into()),
+            file_size: None,
         };
         bot.core.handle(reply(Some(doc))).await;
         let pm = bot.tg.transcript(LANG_ADMIN);
@@ -1022,6 +1023,40 @@ async fn language_admins_upload_and_install_a_file() {
         // The new language is offered right away.
         bot.cmd(7, 7, "/getlang").await;
         assert!(bot.tg.find_button(7, "Deutsch").is_some());
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn oversized_uploads_are_refused() {
+    local!(async {
+        let bot = Bot::new(1).await;
+        let reply = |doc: bot::telegram::Document| {
+            let mut c = Command::new(private_chat(LANG_ADMIN), user(LANG_ADMIN), "uploadlang", "");
+            c.replied_document = Some(doc);
+            Incoming::Command(c)
+        };
+        // Telegram reports the size: refused without downloading (there is
+        // no such file to download).
+        bot.core
+            .handle(reply(bot::telegram::Document {
+                file_id: "missing".into(),
+                file_name: Some("Deutsch.xml".into()),
+                file_size: Some(20 * 1024 * 1024),
+            }))
+            .await;
+        assert_eq!(bot.tg.last(LANG_ADMIN).unwrap().text, i18n::admin::TOO_LARGE);
+
+        // It doesn't: refused once downloaded.
+        let file_id = bot.tg.add_file(vec![b' '; 3 * 1024 * 1024]);
+        bot.core
+            .handle(reply(bot::telegram::Document {
+                file_id,
+                file_name: Some("Deutsch.xml".into()),
+                file_size: None,
+            }))
+            .await;
+        assert_eq!(bot.tg.last(LANG_ADMIN).unwrap().text, i18n::admin::TOO_LARGE);
+        assert!(bot.tg.find_button(LANG_ADMIN, "New").is_none());
     })
 }
 

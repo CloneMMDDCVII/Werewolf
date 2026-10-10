@@ -243,6 +243,8 @@ pub struct Command {
 pub struct Document {
     pub file_id: String,
     pub file_name: Option<String>,
+    /// As Telegram reports it, when it does.
+    pub file_size: Option<u32>,
 }
 
 impl Command {
