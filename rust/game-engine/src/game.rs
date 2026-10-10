@@ -16,7 +16,7 @@ use crate::rng::RngSource;
 use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
 use shared::{KillMethod, Role, Team};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameOutcome {
@@ -373,10 +373,13 @@ async fn apply_fled_players(
     kills: &mut Vec<KillEvent>,
     deaths: &mut Vec<(PlayerId, KillMethod)>,
 ) {
+    // One player can be reported twice in a window (a `/flee` and an
+    // admin's `/smite`, or a smite naming them twice); they still die once.
+    let mut seen = HashSet::new();
     let fled_deaths: Vec<(PlayerId, KillMethod)> = presenter
         .drain_fled_players()
         .into_iter()
-        .filter(|id| alive.iter().any(|p| p.id == *id))
+        .filter(|id| alive.iter().any(|p| p.id == *id) && seen.insert(*id))
         .map(|id| (id, KillMethod::Flee))
         .collect();
     if !fled_deaths.is_empty() {

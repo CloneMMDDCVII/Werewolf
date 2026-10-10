@@ -724,6 +724,7 @@ dependencies = [
 name = "moderation"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "serde",
 ]
 

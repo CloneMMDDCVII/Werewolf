@@ -1,40 +1,29 @@
-//! Moderation: fresh mechanism, preserved history.
+//! Moderation: who may run which command, global bans, and the admin
+//! commands built on them (`/smite`, `/getban`, `/permban`, `/remban`).
 //!
-//! The legacy schema (`GlobalBan`, `GroupAdmin`, `ContestTerms` in
-//! werewolf.sql) is retired as-is, but its data is migrated in — a
-//! `GlobalBan` row becomes a `Ban` with `source: BanSource::Migrated`, so
-//! historic bans keep working without carrying forward the old table
-//! shape or its coupling to the website's admin login flow.
+//! Fresh mechanism, preserved history: the legacy `GlobalBan` table is
+//! retired, but its rows migrate in (`LegacyGlobalBan` into `Ban` with
+//! `BanSource::Migrated`), so historic bans keep working without carrying
+//! the old table shape or its coupling to the website's admin login.
 //!
-//! Not yet implemented: the actual redesign of *how* bans get issued
-//! (currently pending — this crate only fixes the data model and
-//! migration path so that work has somewhere to land).
+//! Nothing here talks to Telegram or a database: commands take an
+//! already-parsed `CommandMessage` plus a `PlayerDirectory` and `BanList`,
+//! and return the replies to send. Bans are still issued the way the C#
+//! issued them (`/permban`); a redesign would replace that, not the rest.
+
+pub mod ban;
+pub mod commands;
+pub mod gate;
+pub mod target;
+pub mod time;
+
+pub use ban::{Ban, BanIssuer, BanList, BanSource, LegacyGlobalBan};
+pub use commands::{escape_html, getban_report, issuer_name, permban, remban, smite_targets, BanReport};
+pub use gate::{check, policy_for, BlockedChat, Chat, CommandPolicy, GateDecision, Invocation, Refusal, Sender};
+pub use target::{resolve_target, CommandMessage, Mention, PlayerDirectory, PlayerRecord, ReplyTo};
+pub use time::Timestamp;
 
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ban {
-    pub telegram_id: i64,
-    pub reason: String,
-    pub issued_by: BanIssuer,
-    pub issued_at: String,
-    pub expires_at: Option<String>,
-    pub source: BanSource,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum BanIssuer {
-    Admin { telegram_id: i64 },
-    System { rule: String },
-}
-
-/// Distinguishes bans carried over from the legacy DB from ones issued
-/// under the new mechanism, so we can tell them apart during/after migration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BanSource {
-    Migrated,
-    Native,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupAdmin {
