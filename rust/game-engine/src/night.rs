@@ -74,6 +74,25 @@ fn cult_conversion_chance_percent(role: Role) -> u32 {
     }
 }
 
+/// The legacy wolf vote count: most votes wins, ties go to whoever comes
+/// first in the player list (Werewolf.cs:3246-3260). `players` is that
+/// list, in order.
+pub(crate) fn wolf_vote_winner(
+    players: impl Iterator<Item = PlayerId>,
+    votes: impl Iterator<Item = PlayerId>,
+) -> Option<PlayerId> {
+    let votes: Vec<PlayerId> = votes.collect();
+    let count = |id: PlayerId| votes.iter().filter(|&&v| v == id).count();
+    let mut best: Option<(PlayerId, usize)> = None;
+    for id in players {
+        let n = count(id);
+        if n > 0 && best.is_none_or(|(_, b)| n > b) {
+            best = Some((id, n));
+        }
+    }
+    best.map(|(id, _)| id)
+}
+
 /// What the night remembers until the next one.
 #[derive(Debug, Default, Clone)]
 pub struct NightMemory {
@@ -482,19 +501,8 @@ impl Night<'_, '_> {
         }
     }
 
-    /// The legacy vote count: most votes wins, ties go to whoever comes
-    /// first in the player list (Werewolf.cs:3246-3260).
     fn top_voted(&self, votes: impl Iterator<Item = PlayerId>) -> Option<PlayerId> {
-        let votes: Vec<PlayerId> = votes.collect();
-        let count = |id: PlayerId| votes.iter().filter(|&&v| v == id).count();
-        let mut best: Option<(PlayerId, usize)> = None;
-        for p in self.alive.iter() {
-            let n = count(p.id);
-            if n > 0 && best.is_none_or(|(_, b)| n > b) {
-                best = Some((p.id, n));
-            }
-        }
-        best.map(|(id, _)| id)
+        wolf_vote_winner(self.alive.iter().map(|p| p.id), votes)
     }
 
     fn vote_wolves(&self, wolves: &[PlayerId]) -> Vec<PlayerId> {

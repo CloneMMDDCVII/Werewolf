@@ -168,7 +168,7 @@ Mechanics the briefing listed as unported, scoped in
 | Lynch tie / no votes announcements (no re-vote: `RandomLynch` is `false`) | ✅ | `orchestrator::LynchResult` |
 | Clumsy Guy vote redirect | ✅ | `orchestrator::LynchVotes` |
 | Revealed Mayor's vote counts double on every later lynch | ✅ | `orchestrator::tally_lynch` |
-| Hunter domino chains; a last shot skipped (`HunterSkipChoice*`) told apart from one never taken (`HunterNoChoice*`) | ✅ | `game::process_deaths_and_hunter_shots`, `orchestrator::resolve_hunter_shots_by` |
+| Hunter domino chains; a last shot skipped (`HunterSkipChoice*`) told apart from one never taken (`HunterNoChoice*`) | ✅ | `game::process_deaths_and_hunter_shots`, `orchestrator::resolve_hunter_shots` |
 | Gunner bullet count shown and carried over a Thief steal | ✅ | `roles::gunner::bullets_left`, `night::Night::thief` |
 | Thief full mode: a try every night, 50% to land, never on wolves or Cultists, victim becomes the Thief, frozen Thief blocked, SK/Grave Digger/away Harlot or GA | ✅ | `night::Night::thief` |
 | Cultist Hunter kills a hunted Cultist (before the cult converts), reports misses and dead targets, dies at the SK | ✅ | `night::Night::cultist_hunter` |

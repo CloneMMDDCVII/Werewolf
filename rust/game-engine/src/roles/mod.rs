@@ -137,8 +137,7 @@ pub enum NightAction {
     },
     /// The Serial Killer's personal kill choice (Werewolf.cs:2340-2348,
     /// 2380 onward). Unlike `EatVote`, there's normally only one Serial
-    /// Killer, so there's no consensus to tally — `apply_night_results`
-    /// applies this as a direct, unconditional kill.
+    /// Killer, so there's no consensus to tally.
     SerialKillVote {
         target: PlayerId,
     },
@@ -252,8 +251,8 @@ pub enum DayAction {
     /// it as `{ target: PlayerId }`). The effect lands the *following*
     /// night: every wolf-team role gets no valid targets at all
     /// (Werewolf.cs:5191: `if (!_silverSpread) { ...assign wolf targets...
-    /// }` — nothing runs in the `else`), which `orchestrator
-    /// ::apply_night_results` applies via its `silver_spread` parameter.
+    /// }` — nothing runs in the `else`), so `game::run_game_with_rules`
+    /// skips the wolves that night.
     SpreadSilver,
     /// Mayor publicly revealing their role, once
     /// (Werewolf.cs:899-908). Purely informational on its own — the real

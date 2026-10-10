@@ -13,7 +13,7 @@ use crate::messages::{Announcement, Message, MessageArg, NightNote, Note};
 use crate::night::{resolve_night_sequence, NightInput, NightMemory};
 use crate::orchestrator::game_over_message;
 use crate::orchestrator::{
-    apply_day_results, last_day_veto, resolve_day, resolve_hunter_shots_by, resolve_lover_deaths, resolve_lynch_vote,
+    apply_day_results, last_day_veto, resolve_day, resolve_hunter_shots, resolve_lover_deaths, resolve_lynch_vote,
     resolve_night_with_freeze, resolve_spumpkin_detonation, AlivePlayer, Answer, NarrationEvent, Phase, Presenter,
     Prompt, Question, TeamVotes,
 };
@@ -112,7 +112,7 @@ pub async fn run_game_with_rules(
     let mut deaths: Vec<(PlayerId, KillMethod)> = vec![];
     let mut lovers = LoversState::default();
     // Set by a Blacksmith's SpreadSilver the day before, consumed by the
-    // *next* night's apply_night_results call, then reset - cross-round
+    // *next* night's wolf skip, then reset - cross-round
     // state the same way LoversState is, just a plain bool instead of a
     // whole struct since there's only ever one thing to remember.
     let mut silver_spread_tonight = false;
@@ -704,7 +704,7 @@ async fn process_deaths_and_hunter_shots(
                 presenter.narrate(NarrationEvent::Announce(announcement)).await;
             }
         }
-        by = resolve_hunter_shots_by(&processed, &died_with_roles, alive, presenter).await;
+        by = resolve_hunter_shots(&processed, &died_with_roles, alive, presenter).await;
         batch = by.iter().map(|&(target, _)| (target, KillMethod::HunterShot)).collect();
     }
     wolf_cub_died
@@ -1000,7 +1000,7 @@ async fn demote_gunner_if_shot_a_wise_elder(
 
 /// Turns every player bitten last night (Werewolf.cs:2988-2998,
 /// `TransformationMethod.AlphaBitten`) into a Wolf, at the very start of
-/// this night — before `resolve_night` asks anyone anything, matching the
+/// this night — before `resolve_night_with_freeze` asks anyone anything, matching the
 /// real timing (the transform runs during `NightCycle`'s opening
 /// per-player reset loop, before `SendNightActions`). A bitten player who
 /// died some other way during the day in between (e.g. lynched) is simply

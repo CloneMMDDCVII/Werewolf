@@ -7,14 +7,25 @@
 use async_trait::async_trait;
 use game_engine::messages::Announcement;
 use game_engine::orchestrator::{
-    resolve_day, resolve_night, resolve_night_with_freeze, AlivePlayer, Answer, LynchResult, NarrationEvent, OnAnswer,
-    Phase, Presenter, Prompt, Question,
+    resolve_day, resolve_night_with_freeze, AlivePlayer, Answer, LynchResult, NarrationEvent, OnAnswer, Phase,
+    Presenter, Prompt, Question,
 };
 use game_engine::rng::SeededRngSource;
 use game_engine::roles::{NightAction, PlayerId, RoleState};
 use game_engine::rules::GameRules;
 use shared::Role;
 use std::collections::HashMap;
+
+/// Asks one night with no freeze, skips or doused houses, and drops each
+/// action's actor.
+async fn ask_night(
+    players: &[AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+) -> (Vec<NightAction>, Option<PlayerId>) {
+    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter, &[], &[]).await;
+    (actions.into_iter().map(|(_, action)| action).collect(), wolf_target)
+}
 
 const WOLF_A: PlayerId = PlayerId(1);
 const WOLF_B: PlayerId = PlayerId(2);
@@ -86,7 +97,7 @@ async fn a_night_asks_every_independent_role_in_one_batch() {
     let mut presenter = BatchRecorder::default();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
-    let (actions, wolf_target) = resolve_night(&players(), &mut states, &mut presenter).await;
+    let (actions, wolf_target) = ask_night(&players(), &mut states, &mut presenter).await;
 
     assert_eq!(presenter.batches.len(), 1, "no stage-2 role, so one batch");
     let (phase, questions) = &presenter.batches[0];
@@ -115,7 +126,7 @@ async fn the_witch_is_asked_in_a_second_batch_after_the_wolves() {
     let mut presenter = BatchRecorder::default();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
-    resolve_night(&roster, &mut states, &mut presenter).await;
+    ask_night(&roster, &mut states, &mut presenter).await;
 
     assert_eq!(presenter.batches.len(), 2);
     let second: Vec<Prompt> = presenter.batches[1].1.iter().map(Question::prompt).collect();
@@ -202,7 +213,7 @@ impl Presenter for GarbageBatch {
 async fn malformed_or_missing_batch_answers_count_as_no_answer() {
     let mut presenter = GarbageBatch;
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
-    let (actions, wolf_target) = resolve_night(&players(), &mut states, &mut presenter).await;
+    let (actions, wolf_target) = ask_night(&players(), &mut states, &mut presenter).await;
     assert_eq!(wolf_target, None);
     assert!(!actions.iter().any(|a| matches!(a, NightAction::EatVote { .. })));
 }

@@ -68,8 +68,8 @@ async fn wolves_win_once_they_outnumber_the_village() {
     // The wolf eats victim1 every night; the village (mis-)votes to lynch
     // victim2 every day. After night 1 + day 1: wolf, bystander alive (2
     // players, 1 wolf) - not yet a majority. The scripts keep targeting
-    // players who are already dead once they're gone, which resolve_night/
-    // resolve_day naturally drop (dead players aren't in the alive roster
+    // players who are already dead once they're gone, which the night and
+    // day questions naturally drop (dead players aren't in the alive roster
     // asked from), so the game converges to wolf vs. bystander and the
     // wolf wins by outnumbering (1 wolf >= 1 other).
     let mut presenter = FixedScriptPresenter {

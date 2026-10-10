@@ -2,14 +2,25 @@
 //! works, not just that individual role files do. Uses a small scripted
 //! `Presenter` — standing in for the same role `sim`'s test-double
 //! presenter or a real Telegram presenter would play — to drive a full
-//! night: two Wolves vote, the orchestrator tallies a majority target,
-//! and only then asks Witch her heal question with that target filled in.
+//! night: two Wolves vote, the orchestrator tallies their target, and
+//! only then asks Witch her heal question with that target filled in.
 
 use async_trait::async_trait;
-use game_engine::orchestrator::{resolve_night, AlivePlayer, Presenter, Prompt};
+use game_engine::orchestrator::{resolve_night_with_freeze, AlivePlayer, Presenter, Prompt};
 use game_engine::roles::{NightAction, PlayerId, RoleState};
 use shared::Role;
 use std::collections::HashMap;
+
+/// Asks one night with no freeze, skips or doused houses, and drops each
+/// action's actor.
+async fn ask_night(
+    players: &[AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+) -> (Vec<NightAction>, Option<PlayerId>) {
+    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter, &[], &[]).await;
+    (actions.into_iter().map(|(_, action)| action).collect(), wolf_target)
+}
 
 /// A presenter with every answer decided in advance, keyed by (player,
 /// prompt). Standing in for wherever real answers would come from —
@@ -87,9 +98,9 @@ async fn witch_is_asked_only_after_the_wolves_target_resolves() {
     };
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
-    let (actions, wolf_target) = resolve_night(&players, &mut states, &mut presenter).await;
+    let (actions, wolf_target) = ask_night(&players, &mut states, &mut presenter).await;
 
-    assert_eq!(wolf_target, Some(VICTIM), "majority wolf vote should resolve");
+    assert_eq!(wolf_target, Some(VICTIM), "the wolf vote should resolve");
 
     assert!(
         actions.contains(&NightAction::EatVote { target: VICTIM }),
@@ -133,7 +144,7 @@ async fn witch_heal_does_not_fire_if_her_choice_disagrees_with_the_resolved_wolf
     };
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
-    let (actions, wolf_target) = resolve_night(&players, &mut states, &mut presenter).await;
+    let (actions, wolf_target) = ask_night(&players, &mut states, &mut presenter).await;
 
     assert_eq!(wolf_target, Some(VICTIM));
     assert!(
@@ -142,8 +153,10 @@ async fn witch_heal_does_not_fire_if_her_choice_disagrees_with_the_resolved_wolf
     );
 }
 
+/// The legacy count (Werewolf.cs:3246-3260): a tie goes to whoever is
+/// first in the player list.
 #[tokio::test]
-async fn a_tied_wolf_vote_resolves_to_no_target() {
+async fn a_tied_wolf_vote_goes_to_the_first_player_in_the_list() {
     let wolf_c = PlayerId(6);
     let other_victim = PlayerId(7);
     let players = vec![
@@ -175,8 +188,8 @@ async fn a_tied_wolf_vote_resolves_to_no_target() {
     };
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
-    let (_actions, wolf_target) = resolve_night(&players, &mut states, &mut presenter).await;
-    assert_eq!(wolf_target, None, "a tied vote should not resolve to either target");
+    let (_actions, wolf_target) = ask_night(&players, &mut states, &mut presenter).await;
+    assert_eq!(wolf_target, Some(VICTIM), "a tie goes to the first of the tied players");
 }
 
 /// Proves the distinctness check lives in the orchestrator's shared
@@ -203,7 +216,7 @@ async fn cupid_link_is_rejected_if_the_presenter_returns_a_duplicate_target() {
     };
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
-    let (actions, _) = resolve_night(&players, &mut states, &mut presenter).await;
+    let (actions, _) = ask_night(&players, &mut states, &mut presenter).await;
     assert!(
         !actions.iter().any(|a| matches!(a, NightAction::LinkLovers { .. })),
         "a duplicate-target answer should never produce a LinkLovers action: {actions:?}"

@@ -1,7 +1,7 @@
 //! Serial Killer kills a target overnight, personally and directly
 //! (Werewolf.cs:2340-2348, 2380 onward) — normally the only one of their
 //! kind, so unlike `wolf::Wolf`'s `EatVote` there's no consensus to tally.
-//! `apply_night_results` applies this as an unconditional kill.
+//! The kill is resolved in the Serial Killer region of `night`.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

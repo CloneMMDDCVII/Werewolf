@@ -10,8 +10,8 @@
 //!
 //! The payoff — every wolf-team role finds no valid targets the
 //! *following* night (Werewolf.cs:5191) — isn't this file's job any more
-//! than Sandman's "everyone sleeps" payoff is `sandman::Sandman`'s: see
-//! `orchestrator::apply_night_results`'s `silver_spread` parameter.
+//! than Sandman's "everyone sleeps" payoff is `sandman::Sandman`'s: the
+//! wolves are skipped in `game::run_game_with_rules`.
 
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

@@ -101,9 +101,9 @@ pub enum Prompt {
     /// that's what the legacy code itself does (`GetLocaleString("AskEat")`
     /// again, not a distinct key).
     WolfCubBonusKill,
-    /// Snow Wolf's nightly freeze target (Werewolf.cs:5273-5277). Asked
-    /// by `freeze::ask_freeze`, not `resolve_night`, because its options
-    /// depend on who was frozen last night.
+    /// Snow Wolf's nightly freeze target (Werewolf.cs:5273-5277). Built
+    /// by `freeze::freeze_question`, because its options depend on who was
+    /// frozen last night, then sent in the night batch.
     SnowWolfFreeze,
 }
 
@@ -281,11 +281,9 @@ pub enum NarrationEvent {
 /// `Mason`, `Seer`, `Sorcerer`, `WildChild`), `GuardianAngel` gets
 /// `"GuardianEaten"` (not `"GuardianAngelEaten"` — checked, that key
 /// doesn't exist), and everyone else falls through to `"DefaultEaten"`.
-/// Every one of these is reachable today: `apply_night_results` already
-/// produces plain `KillMethod::Eat` deaths for the main wolf-eat and
-/// Wolf Cub's bonus kill alike, and neither is a "visiting" death (that's
-/// `VisitWolf`, the Harlot's own separate case below), matching this
-/// branch's guard exactly.
+/// The wolves' kill and the Wolf Cub's bonus kill are both plain
+/// `KillMethod::Eat`, not a "visiting" death (that's `VisitWolf`, the
+/// Harlot's own case below), matching this branch's guard exactly.
 pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> {
     match method {
         KillMethod::Lynch => Some("LynchKill"),
@@ -445,7 +443,7 @@ pub fn game_over_message(outcome: &crate::WinOutcome, several_wolves: bool) -> O
 /// nothing computes this automatically today (there's no exhaustive
 /// `Role`/`KillMethod` iterator to drive `death_locale_key` with yet, the
 /// same "two hardcoded levels are enough until a second case shows up"
-/// tradeoff as `resolve_night`'s dependency resolution), so this is
+/// tradeoff as the night's two-batch dependency resolution), so this is
 /// hand-kept in sync rather than derived — small enough today that a
 /// missed update would be obvious in the coverage number itself.
 pub fn all_mapped_locale_keys() -> Vec<&'static str> {
@@ -1068,8 +1066,8 @@ fn toggle_answer(answers: &[Answer], index: Option<usize>) -> bool {
 }
 
 /// What every alive player brings into either phase: who they are and
-/// what role they're currently playing. Shared by `resolve_night` and
-/// `resolve_day` — a player's identity and role don't change between the
+/// what role they're currently playing. Shared by `resolve_night_with_freeze`
+/// and `resolve_day` — a player's identity and role don't change between the
 /// two, only which questions get asked.
 #[derive(Debug, Clone, Copy)]
 pub struct AlivePlayer {
@@ -1126,38 +1124,16 @@ fn toggle_night_prompt(role: Role) -> Option<Prompt> {
     }
 }
 
-/// Resolves one full night: asks every independent role first, tallies
-/// the wolves' target, then asks dependent roles (currently just Witch)
-/// with that fact available. Returns every `NightAction` produced, plus
-/// the resolved wolf target for the orchestrator's caller to apply deaths
-/// with (that application step — actually killing someone — is future
-/// work; this function only resolves *decisions*).
-pub async fn resolve_night(
-    players: &[AlivePlayer],
-    states: &mut HashMap<PlayerId, RoleState>,
-    presenter: &mut dyn Presenter,
-) -> (Vec<NightAction>, Option<PlayerId>) {
-    let (tagged, wolf_target) = resolve_night_by_actor(players, states, presenter).await;
-    (tagged.into_iter().map(|(_, action)| action).collect(), wolf_target)
-}
-
-/// `resolve_night`, but with each action paired with the player who took
-/// it, so a later step can cancel one player's actions (the Snow Wolf's
-/// freeze, see `freeze::apply_freeze`) without every `NightAction`
-/// variant having to carry its actor.
-pub async fn resolve_night_by_actor(
-    players: &[AlivePlayer],
-    states: &mut HashMap<PlayerId, RoleState>,
-    presenter: &mut dyn Presenter,
-) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>) {
-    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter, &[], &[]).await;
-    (actions, wolf_target)
-}
-
-/// `resolve_night_by_actor`, with the Snow Wolf's freeze question
-/// (`freeze::freeze_question`: the Snow Wolf and who they may freeze) sent
-/// in the same batch as everyone else's night question. Also returns the
-/// freeze picked, as `(snow_wolf, target)`.
+/// Asks every night question and turns the answers into `NightAction`s,
+/// each paired with the player who took it (so the Snow Wolf's freeze,
+/// `freeze::apply_freeze`, can cancel one player's actions). The Snow
+/// Wolf's freeze question (`freeze::freeze_question`) goes out in the same
+/// batch as everyone else's. Returns the actions, the wolves' target (the
+/// legacy count, `night::wolf_vote_winner`), and the freeze picked as
+/// `(snow_wolf, target)`. What the actions do is `night::resolve_night_sequence`.
+///
+/// Roles that `requires` a fact from this batch (the Witch, who needs the
+/// wolves' target) are asked in a second batch once it is known.
 ///
 /// Players in `skip` get no menu tonight: drunk wolves, and wolves after
 /// the Blacksmith's silver (Werewolf.cs:5191, 5316). A Chemist who hasn't
@@ -1266,13 +1242,13 @@ pub async fn resolve_night_with_freeze(
         );
     }
 
-    // Tally the wolves' target: majority vote among EatVote actions, tie
-    // or no votes resolves to None. Real tie-breaking rules (if any) are
-    // future work — this is enough to unblock stage 2's dependency.
-    let wolf_target = majority_target(actions.iter().filter_map(|(_, a)| match a {
-        NightAction::EatVote { target } => Some(*target),
-        _ => None,
-    }));
+    let wolf_target = crate::night::wolf_vote_winner(
+        players.iter().map(|p| p.id),
+        actions.iter().filter_map(|(_, a)| match a {
+            NightAction::EatVote { target } => Some(*target),
+            _ => None,
+        }),
+    );
 
     // --- Stage 2: roles depending on a fact produced above, asked
     // together once that fact is known ---
@@ -1316,13 +1292,10 @@ pub async fn resolve_night_with_freeze(
     (actions, wolf_target, freeze)
 }
 
-/// The one place "tally votes, find the majority, ties resolve to no
-/// winner" is defined. Both the wolves' eat vote and the day's lynch vote
-/// need exactly this; it very nearly got copy-pasted a second time when
-/// `resolve_day` was added, which is the same duplication mistake as
-/// `ask_target`/`ask_two_targets` in miniature — caught before it existed
-/// this time instead of after.
-fn majority_target(votes: impl Iterator<Item = PlayerId>) -> Option<PlayerId> {
+/// The lynch count: most votes wins, and a tie lynches nobody
+/// (Werewolf.cs:2690-2711). The wolves count differently, see
+/// `night::wolf_vote_winner`.
+fn lynch_majority(votes: impl Iterator<Item = PlayerId>) -> Option<PlayerId> {
     let mut counts: HashMap<PlayerId, usize> = HashMap::new();
     for v in votes {
         *counts.entry(v).or_insert(0) += 1;
@@ -1659,7 +1632,7 @@ fn tally_lynch(
         };
         std::iter::repeat_n(target, weight)
     });
-    match majority_target(votes) {
+    match lynch_majority(votes) {
         Some(target) => LynchResult::Lynched(target),
         None => LynchResult::Tie,
     }
@@ -1691,8 +1664,8 @@ pub async fn resolve_lynch_vote(
 
 /// Resolves one full day: every alive player casts a lynch vote (universal
 /// — unlike night actions, this isn't gated by role at all), plus whatever
-/// role-specific day actions apply. Like `resolve_night`, this only
-/// resolves *decisions* — see `apply_day_results` for turning them into
+/// role-specific day actions apply. Like `resolve_night_with_freeze`, this
+/// only resolves *decisions* — see `apply_day_results` for turning them into
 /// deaths.
 pub async fn resolve_day(
     players: &[AlivePlayer],
@@ -1787,9 +1760,8 @@ pub fn last_day_veto(day_actions: &[DayAction]) -> Option<DayAction> {
         .copied()
 }
 
-/// Turns resolved day decisions into actual deaths — the day-phase twin of
-/// `apply_night_results`. Two things can cancel the lynch entirely, unlike
-/// `apply_night_results` where only Witch's heal can cancel a death:
+/// Turns resolved day decisions into actual deaths. Two things can cancel
+/// the lynch entirely:
 ///
 /// - Pacifist's `Pacify` action vetoes the *entire* day's lynch
 ///   (Werewolf.cs:913-925) — checked first, since it overrides everything,
@@ -1797,10 +1769,7 @@ pub fn last_day_veto(day_actions: &[DayAction]) -> Option<DayAction> {
 /// - Prince's first lynch is survived, not fatal (Werewolf.cs:2745-2751:
 ///   `!lynched.HasUsedAbility`). This needs `lynch_target_role` (who the
 ///   target actually is) and `states` (to check/spend the one-time
-///   immunity via `RoleState::primary_used`) — parameters
-///   `apply_night_results` doesn't need, since nothing on the night side
-///   has this "am I this specific role, and have I used my one save yet"
-///   shape.
+///   immunity via `RoleState::primary_used`).
 ///
 /// Gunner's `Shoot` target dies of `KillMethod::Shoot` independently of
 /// either check above. `SpreadSilver`/`Reveal` have no death consequence.
@@ -2026,84 +1995,8 @@ mod apply_day_results_tests {
     }
 }
 
-/// Turns resolved night decisions into actual deaths — the step
-/// `resolve_night`'s own doc comment flagged as future work. Deliberately
-/// narrow: only the two cases this codebase's role logic actually models
-/// resolve to a death.
-///
-/// - The wolves' `wolf_target` dies of `KillMethod::Eat`, **unless**
-///   Witch's `Heal` action or Guardian Angel's `Protect` action names that
-///   exact same player (Werewolf.cs:3280-3286: `if (ga?.Choice ==
-///   target.Id) { ... target.WasSavedLastNight = true; }` — the wolf kill
-///   simply never happens, the same shape as the heal potion, which is
-///   why they share one cancellation check below rather than each role
-///   getting its own).
-/// - Witch's `Poison` target dies of `KillMethod::Poison`, unconditionally
-///   and independently of the wolf kill.
-/// - The Serial Killer's `SerialKillVote` target dies of
-///   `KillMethod::SerialKilled`, unconditionally — same "no consensus
-///   needed" reasoning as the role file itself.
-///
-/// Everything else this proof-of-concept resolves as a *decision*
-/// (`Visit`, `Investigate`, `CheckTeam`, `ChooseRoleModel`, `ConvertVote`)
-/// has no death consequence modeled yet — Harlot dying from visiting a
-/// wolf, the Guardian Angel herself risking death instead of the target
-/// (Werewolf.cs:2361-2372), cult conversion's RNG resolution, are real
-/// legacy mechanics (see `harlot`/`guardian_angel`/`cultist` module docs)
-/// that need cross-player resolution logic this function doesn't attempt.
-/// If several causes target the same player, they appear once per cause —
-/// deduplicating "someone already dead" is future work for whoever
-/// applies this to real running game state.
-///
-/// The wolf kill is also suppressed by
-/// `silver_spread` being `true` (Werewolf.cs:5191: `if (!_silverSpread)
-///   { ...assign wolf targets... }` — nothing runs in the `else`, so the
-///   wolves simply have no target the night after a Blacksmith uses their
-///   ability). Passed in rather than derived from `actions` because it's
-///   cross-round state (the Blacksmith's decision was a *day* action the
-///   round before) that `run_game` is responsible for carrying forward,
-///   not something this single night's actions could know on their own.
-pub fn apply_night_results(
-    actions: &[NightAction],
-    wolf_target: Option<PlayerId>,
-    silver_spread: bool,
-) -> Vec<(PlayerId, shared::KillMethod)> {
-    let mut deaths = vec![];
-
-    let healed_target = actions.iter().find_map(|a| match a {
-        NightAction::Heal { target } => Some(*target),
-        _ => None,
-    });
-    let protected_target = actions.iter().find_map(|a| match a {
-        NightAction::Protect { target } => Some(*target),
-        _ => None,
-    });
-
-    if !silver_spread {
-        if let Some(target) = wolf_target {
-            if healed_target != Some(target) && protected_target != Some(target) {
-                deaths.push((target, shared::KillMethod::Eat));
-            }
-        }
-    }
-
-    for action in actions {
-        match action {
-            NightAction::Poison { target } => {
-                deaths.push((*target, shared::KillMethod::Poison));
-            }
-            NightAction::SerialKillVote { target } => {
-                deaths.push((*target, shared::KillMethod::SerialKilled));
-            }
-            _ => {}
-        }
-    }
-
-    deaths
-}
-
-/// The "a death can trigger one more question" case `apply_night_results`/
-/// `apply_day_results` can't express by themselves — they only ever turn
+/// The "a death can trigger one more question" case
+/// `night::resolve_night_sequence` and `apply_day_results` can't express — they only ever turn
 /// already-made decisions into deaths, never ask a new one afterward
 /// (Werewolf.cs:5420-5484: `HunterFinalShot`, called the moment a Hunter
 /// dies, by *any* method). Called by `run_game` right after a batch of
@@ -2137,24 +2030,11 @@ pub fn apply_night_results(
 /// shot landing on *another* Hunter, Werewolf.cs:5480-5481) are handled by
 /// `game::process_deaths_and_hunter_shots` calling this again on the
 /// shots' own deaths.
-pub async fn resolve_hunter_shots(
-    new_deaths: &[(PlayerId, KillMethod)],
-    died_with_roles: &[(PlayerId, Role)],
-    alive: &[AlivePlayer],
-    presenter: &mut dyn Presenter,
-) -> Vec<(PlayerId, KillMethod)> {
-    resolve_hunter_shots_by(new_deaths, died_with_roles, alive, presenter)
-        .await
-        .into_iter()
-        .map(|(target, _)| (target, KillMethod::HunterShot))
-        .collect()
-}
-
-/// `resolve_hunter_shots`, as `(target, hunter)` pairs. Announces a
+/// Returns `(target, hunter)` pairs. Announces a
 /// Hunter who shoots nobody (Werewolf.cs:5462) and one who shoots the
 /// Wise Elder (Werewolf.cs:5473); a shot that kills is announced with the
 /// death itself (`death_text`).
-pub async fn resolve_hunter_shots_by(
+pub async fn resolve_hunter_shots(
     new_deaths: &[(PlayerId, KillMethod)],
     died_with_roles: &[(PlayerId, Role)],
     alive: &[AlivePlayer],
@@ -2300,105 +2180,6 @@ pub fn resolve_spumpkin_detonation(day_actions: &[DayAction], rng: &mut dyn RngS
 }
 
 #[cfg(test)]
-mod apply_night_results_tests {
-    use super::*;
-    use shared::KillMethod;
-
-    #[test]
-    fn wolf_target_dies_when_nobody_heals() {
-        let target = PlayerId(1);
-        let deaths = apply_night_results(&[], Some(target), false);
-        assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
-    }
-
-    #[test]
-    fn heal_on_the_wolf_target_cancels_the_kill() {
-        let target = PlayerId(1);
-        let actions = [NightAction::Heal { target }];
-        let deaths = apply_night_results(&actions, Some(target), false);
-        assert_eq!(deaths, vec![], "healing the wolf's own target should cancel it");
-    }
-
-    #[test]
-    fn protecting_the_wolf_target_also_cancels_the_kill() {
-        let target = PlayerId(1);
-        let actions = [NightAction::Protect { target }];
-        let deaths = apply_night_results(&actions, Some(target), false);
-        assert_eq!(
-            deaths,
-            vec![],
-            "Guardian Angel protecting the wolves' actual target should cancel it, same as Witch's heal"
-        );
-    }
-
-    #[test]
-    fn protecting_someone_else_does_not_cancel_the_wolf_kill() {
-        let target = PlayerId(1);
-        let actions = [NightAction::Protect { target: PlayerId(2) }];
-        let deaths = apply_night_results(&actions, Some(target), false);
-        assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
-    }
-
-    #[test]
-    fn heal_on_someone_else_does_not_cancel_the_wolf_kill() {
-        let target = PlayerId(1);
-        let actions = [NightAction::Heal { target: PlayerId(2) }];
-        let deaths = apply_night_results(&actions, Some(target), false);
-        assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
-    }
-
-    #[test]
-    fn poison_kills_independently_of_the_wolf_target() {
-        let wolf_target = PlayerId(1);
-        let poisoned = PlayerId(2);
-        let actions = [NightAction::Poison { target: poisoned }];
-        let mut deaths = apply_night_results(&actions, Some(wolf_target), false);
-        deaths.sort_by_key(|(id, _)| id.0);
-        assert_eq!(
-            deaths,
-            vec![(wolf_target, KillMethod::Eat), (poisoned, KillMethod::Poison)]
-        );
-    }
-
-    #[test]
-    fn no_wolf_target_means_no_eat_death() {
-        assert_eq!(apply_night_results(&[], None, false), vec![]);
-    }
-
-    #[test]
-    fn serial_kill_vote_kills_unconditionally() {
-        let target = PlayerId(5);
-        let actions = [NightAction::SerialKillVote { target }];
-        assert_eq!(
-            apply_night_results(&actions, None, false),
-            vec![(target, KillMethod::SerialKilled)]
-        );
-    }
-
-    #[test]
-    fn silver_spread_cancels_only_the_wolf_kill() {
-        let wolf_target = PlayerId(1);
-        let poisoned = PlayerId(2);
-        let actions = [NightAction::Poison { target: poisoned }];
-        let deaths = apply_night_results(&actions, Some(wolf_target), true);
-        assert_eq!(
-            deaths,
-            vec![(poisoned, KillMethod::Poison)],
-            "silver should block the wolf kill but not an unrelated Poison"
-        );
-    }
-
-    #[test]
-    fn without_silver_spread_the_wolf_kill_proceeds_normally() {
-        let target = PlayerId(1);
-        assert_eq!(
-            apply_night_results(&[], Some(target), false),
-            vec![(target, KillMethod::Eat)]
-        );
-    }
-}
-
-#[cfg(test)]
 mod hunter_shot_tests {
     use super::*;
     use async_trait::async_trait;
@@ -2428,6 +2209,18 @@ mod hunter_shot_tests {
         }
     }
 
+    async fn shots(
+        new_deaths: &[(PlayerId, KillMethod)],
+        died_with_roles: &[(PlayerId, Role)],
+        presenter: &mut ScriptedHunterPresenter,
+    ) -> Vec<(PlayerId, KillMethod)> {
+        resolve_hunter_shots(new_deaths, died_with_roles, &alive_roster(), presenter)
+            .await
+            .into_iter()
+            .map(|(target, _)| (target, KillMethod::HunterShot))
+            .collect()
+    }
+
     fn alive_roster() -> Vec<AlivePlayer> {
         vec![
             AlivePlayer {
@@ -2452,7 +2245,7 @@ mod hunter_shot_tests {
         let new_deaths = [(hunter, KillMethod::Lynch)];
         let died_with_roles = [(hunter, Role::Hunter)];
 
-        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+        let shots = shots(&new_deaths, &died_with_roles, &mut presenter).await;
 
         assert_eq!(shots, vec![(target, KillMethod::HunterShot)]);
         assert_eq!(presenter.asked.len(), 1);
@@ -2474,7 +2267,7 @@ mod hunter_shot_tests {
         let new_deaths = [(hunter, KillMethod::Poison)];
         let died_with_roles = [(hunter, Role::Hunter)];
 
-        resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+        shots(&new_deaths, &died_with_roles, &mut presenter).await;
 
         assert_eq!(presenter.asked[0].1, Prompt::HunterFinalShotKilled);
     }
@@ -2492,7 +2285,7 @@ mod hunter_shot_tests {
         let new_deaths = [(hunter, KillMethod::Eat)];
         let died_with_roles = [(hunter, Role::Hunter)];
 
-        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+        let shots = shots(&new_deaths, &died_with_roles, &mut presenter).await;
 
         assert_eq!(shots, vec![]);
         assert!(
@@ -2511,7 +2304,7 @@ mod hunter_shot_tests {
         let new_deaths = [(hunter, KillMethod::Lynch)];
         let died_with_roles = [(hunter, Role::Hunter)];
 
-        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+        let shots = shots(&new_deaths, &died_with_roles, &mut presenter).await;
 
         assert_eq!(shots, vec![]);
     }
@@ -2526,7 +2319,7 @@ mod hunter_shot_tests {
         let new_deaths = [(villager, KillMethod::Lynch)];
         let died_with_roles = [(villager, Role::Villager)];
 
-        let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
+        let shots = shots(&new_deaths, &died_with_roles, &mut presenter).await;
 
         assert_eq!(shots, vec![]);
         assert!(
