@@ -1,7 +1,8 @@
 //! Every Scenario in the .feature files names what checks it.
 //!
-//! The .feature files (`rust/features`, `rust/control/features`) are the
-//! approval documents written before the code. Directly under each
+//! The .feature files (every `features/` directory under `rust/`: the
+//! workspace-wide `rust/features` and each crate's `<crate>/features`) are
+//! the approval documents written before the code. Directly under each
 //! `Scenario:` or `Scenario Outline:` line comes one of
 //!
 //! ```text
@@ -39,6 +40,23 @@ fn files(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Every directory named `features` under `dir`, skipping `target`.
+fn feature_dirs(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name() else { continue };
+        if !path.is_dir() || name == "target" || name == ".git" {
+            continue;
+        }
+        if name == "features" {
+            out.push(path);
+        } else {
+            feature_dirs(&path, out);
+        }
+    }
+}
+
 #[test]
 fn every_scenario_is_claimed() {
     let root = rust_root();
@@ -50,9 +68,12 @@ fn every_scenario_is_claimed() {
         .collect::<Vec<_>>()
         .join("\n");
 
+    let mut dirs = vec![];
+    feature_dirs(&root, &mut dirs);
     let mut features = vec![];
-    files(&root.join("features"), "feature", &mut features);
-    files(&root.join("control/features"), "feature", &mut features);
+    for dir in &dirs {
+        files(dir, "feature", &mut features);
+    }
     features.sort();
     assert!(!features.is_empty(), "no .feature files found under {}", root.display());
 
