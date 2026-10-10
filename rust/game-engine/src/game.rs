@@ -128,7 +128,7 @@ pub async fn run_game_with_rules(
 /// One running game: what is fixed for the whole game (the starting
 /// roster, the role pool, the group's rules), the presenter and dice, and
 /// everything that carries from one phase to the next.
-struct Game<'a> {
+pub(crate) struct Game<'a> {
     /// The starting roster, in join order.
     players: &'a [AlivePlayer],
     role_pool: &'a [Role],
@@ -573,7 +573,7 @@ impl<'a> Game<'a> {
         }
     }
 
-    fn lynched_tanner(&self) -> bool {
+    pub(crate) fn lynched_tanner(&self) -> bool {
         self.kills
             .iter()
             .any(|k| k.method == KillMethod::Lynch && k.victim_role == Role::Tanner)
@@ -822,7 +822,7 @@ impl<'a> Game<'a> {
     }
 
     /// Werewolf.cs:2745-2748: a Prince who survives their first lynch says so.
-    async fn announce_prince(
+    pub(crate) async fn announce_prince(
         &mut self,
         target: Option<PlayerId>,
         target_role: Option<Role>,
@@ -873,7 +873,7 @@ async fn narrate_all(events: Vec<NarrationEvent>, presenter: &mut dyn Presenter)
 /// unconditionally after the Wise Elder case), but it demotes the
 /// *Gunner* to Villager. Checked before `apply_day_results` turns
 /// `day_actions` into deaths, while `alive` still has the target's role.
-async fn demote_gunner_if_shot_a_wise_elder(
+pub(crate) async fn demote_gunner_if_shot_a_wise_elder(
     day_actions: &[DayAction],
     alive: &mut [AlivePlayer],
     presenter: &mut dyn Presenter,
@@ -915,7 +915,7 @@ async fn demote_gunner_if_shot_a_wise_elder(
 /// into the one specific role `IRole.Wolf` either (today's wolf-eat never
 /// targets a wolf-team player in the first place, so this is a belt-and-
 /// suspenders match to the source rather than a reachable case).
-async fn apply_pending_alpha_bites(
+pub(crate) async fn apply_pending_alpha_bites(
     bitten_pending: &[PlayerId],
     alive: &mut [AlivePlayer],
     presenter: &mut dyn Presenter,
@@ -950,7 +950,7 @@ async fn apply_pending_alpha_bites(
 /// Werewolf.cs:1753-1779: a Wild Child or Doppelganger who didn't pick a
 /// role model on the first night is given a random one, and isn't asked
 /// again.
-fn pick_missing_role_models(
+pub(crate) fn pick_missing_role_models(
     alive: &[AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
     rng: &mut dyn RngSource,
@@ -979,7 +979,7 @@ fn pick_missing_role_models(
 /// The wolves' second kill after a Wolf Cub died, asked alongside the
 /// first (Werewolf.cs:1047-1053, 3249-3260). Only wolves with a menu
 /// tonight are asked; their votes are tallied by `night`.
-async fn ask_wolf_cub_votes(
+pub(crate) async fn ask_wolf_cub_votes(
     alive: &[AlivePlayer],
     skip: &[PlayerId],
     presenter: &mut dyn Presenter,
@@ -1085,7 +1085,7 @@ fn tells_for_transform(
 /// be captured before it's overwritten), but *telling* a presenter is a
 /// separate concern the caller (`run_game`) owns, same as it does for
 /// deaths.
-fn apply_transforms(
+pub(crate) fn apply_transforms(
     alive: &mut [AlivePlayer],
     states: &HashMap<PlayerId, RoleState>,
     just_died: &[(PlayerId, Role)],

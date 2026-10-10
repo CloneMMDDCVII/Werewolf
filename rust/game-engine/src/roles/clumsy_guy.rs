@@ -1,7 +1,10 @@
-//! Passive — ClumsyGuy has no night action. Their lynch vote has a 50%
-//! chance of being redirected to a random living player
-//! (Werewolf.cs:999-1011); that is vote-tallying interference, so it lives
-//! with the vote in `orchestrator::ask_lynch_vote` rather than here.
+//! ClumsyGuy has no action. Half the time their lynch vote lands on a random
+//! living player instead (Werewolf.cs:999-1011).
+//!
+//! Resolved in:
+//! - [`orchestrator::resolve_day`](crate::orchestrator::resolve_day) and
+//!   [`orchestrator::resolve_lynch_vote`](crate::orchestrator::resolve_lynch_vote)
+//!   (a Troublemaker's second lynch): the redirected vote.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

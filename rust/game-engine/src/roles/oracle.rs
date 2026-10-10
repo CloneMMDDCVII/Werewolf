@@ -1,8 +1,8 @@
-//! Oracle checks one player overnight — a "negative" Seer, revealing a
-//! decoy role that isn't the target's (Werewolf.cs:4021-4034) rather than
-//! the target's actual team. Same shape as every other investigate-style
-//! role: validate a target, emit `Investigate`; what comes back is
-//! resolution/display logic this file doesn't attempt.
+//! Oracle checks one player overnight and is told a role the target does not
+//! have (Werewolf.cs:4021-4034).
+//!
+//! Resolved in:
+//! - [`reveals::resolve_night_readings`](crate::reveals::resolve_night_readings): the reading.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

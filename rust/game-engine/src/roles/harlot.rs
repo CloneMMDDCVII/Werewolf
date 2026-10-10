@@ -1,13 +1,10 @@
-//! Harlot visits one player overnight (Werewolf.cs:3172-3175, `AskVisit`).
-//! Visiting is allowed on herself (staying home) as well as any other
-//! living player.
+//! Harlot visits one player overnight, or stays home by picking herself
+//! (Werewolf.cs:3172-3175). She dies visiting a wolf or the wolves' victim
+//! (Werewolf.cs:2358-2360), and she is not home if the wolves come for her.
 //!
-//! Dying if the target turns out to be the wolves' actual victim that
-//! same night **is** modeled (Werewolf.cs:2358-2360) — see
-//! the Harlot region of `night::resolve_night_sequence`, which needs `self_id` on
-//! the `Visit` action to know who to kill. Being unable to visit someone
-//! already occupied (Werewolf.cs:2424-2428) is resolution logic across
-//! multiple players' actions this proof-of-concept still doesn't attempt.
+//! Resolved in:
+//! - [`Night::harlot`](crate::night::Night::harlot): the visit;
+//! - [`Night::wolves`](crate::night::Night::wolves) and [`Night::visit`](crate::night::Night::visit): not being home.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

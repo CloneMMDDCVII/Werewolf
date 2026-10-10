@@ -1,8 +1,9 @@
-//! Pacifist chooses whether to veto the day's lynch entirely, once
-//! (Werewolf.cs:913-925: `_pacifistUsed = true`) — a yes/no toggle, same
-//! shape as `mayor::Mayor`'s reveal. Unlike Reveal, `Pacify` **does**
-//! affect a death outcome: `orchestrator::apply_day_results` cancels the
-//! resolved lynch target whenever this action is present.
+//! Pacifist may cancel the day's lynch, once (Werewolf.cs:913-925). A
+//! Troublemaker on the same day cancels it back; the last one to answer wins.
+//!
+//! Resolved in:
+//! - [`orchestrator::last_day_veto`](crate::orchestrator::last_day_veto): which veto stands;
+//! - [`orchestrator::apply_day_results`](crate::orchestrator::apply_day_results): cancelling the lynch.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

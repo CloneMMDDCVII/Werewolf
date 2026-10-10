@@ -1,24 +1,13 @@
-//! Grave Digger has no action of their own — the whole role is a passive
-//! trap sprung on whoever *visits* them (Werewolf.cs:2377-2411): a wolf,
-//! Harlot, or Guardian Angel visiting a Grave Digger who's dug at least
-//! one grave risks falling in and dying instead (`KillMthd.FallGrave`),
-//! rather than the visit resolving normally. That's resolution logic
-//! belonging to whichever visiting role's action gets applied, not
-//! something this passive role's own `RoleBehavior` can express — same
-//! "the effect lives on the other side" shape as `wolf_man::WolfMan`'s
-//! Seer false-positive. See `night::resolve_night_sequence`
-//! (Harlot/Guardian Angel — the two cases with a single, nameable
-//! visitor) and `game::run_game`'s `dug_graves` tracking, which counts
-//! deaths since the last time this role's grave count was computed
-//! (Werewolf.cs:5294-5299) the same way every night, whether or not this
-//! role is even alive to look. A Serial Killer visiting a Grave Digger
-//! never falls at all (Werewolf.cs:2382-2387 — it's the one case in the
-//! whole trap that isn't RNG, so it isn't a gap here). Wolves visiting a
-//! Grave Digger *can* fall too, but the real code attributes the fall to
-//! one specific wolf picked at random out of the voting pack
-//! (`voteWolves.ElementAt(...)`) — this proof-of-concept's wolf-eat vote
-//! only tracks a majority target, not individual visitor identity, so
-//! that case is left out rather than guessed at.
+//! Grave Digger has no action. Once they have dug a grave, anyone visiting
+//! them at night may fall in and die (Werewolf.cs:2377-2411). A Serial
+//! Killer never falls in (Werewolf.cs:2382-2387) but stumbles, which costs
+//! them a later night.
+//!
+//! Resolved in:
+//! - [`Night::visit`](crate::night::Night::visit): every fall;
+//! - [`Night::spot_grave_digger`](crate::night::Night::spot_grave_digger): the wolves spotting the digger instead;
+//! - the night step of [`game::run_game_with_rules`](crate::game::run_game_with_rules): counting dug graves
+//!   (Werewolf.cs:5294-5299).
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

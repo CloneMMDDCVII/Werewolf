@@ -1,11 +1,10 @@
-//! Chemist visits a target every night, gambling on a kill
-//! (Werewolf.cs:3792-3821): success kills the target (`KillMthd
-//! .Chemistry`), failure kills the Chemist instead. Unlike Gunner/Witch,
-//! there's no per-game usage limit — the coin flip is the only gate — so
-//! this file only validates "is this a living, non-self target." The coin
-//! flip itself is modeled in the Chemist region of `night::resolve_night_sequence`, not here —
-//! same "propose the target, someone else resolves the RNG" split as
-//! every other gambit in this crate.
+//! Chemist brews one night, then visits a target the next with two potions,
+//! one lethal (Werewolf.cs:3792-3821): either the target or the Chemist dies.
+//! There is no limit on how often.
+//!
+//! Resolved in:
+//! - [`orchestrator::resolve_night_with_freeze`](crate::orchestrator::resolve_night_with_freeze): brewing instead of asking;
+//! - [`Night::chemist`](crate::night::Night::chemist) and [`Night::chemist_killed_wise_elder`](crate::night::Night::chemist_killed_wise_elder): the gamble.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

@@ -1,9 +1,10 @@
-//! Cultist proposes a conversion target overnight (Werewolf.cs:3591-3757).
-//! Same "validate a target, emit the proposal" shape as Wolf's `EatVote` —
-//! the real per-target-role resolution (RNG conversion chance, the
-//! Hunter/CultistHunter/wolf-team/Grave-Digger special cases) lives in
-//! the cult region of `night::resolve_night_sequence`, not here, the same split as
-//! every other role whose payoff isn't decided by this file alone.
+//! Cultists vote overnight on one player to convert (Werewolf.cs:3591-3757).
+//! Whether the conversion lands depends on the target's role
+//! (`RoleDef::cult_conversion` on each role).
+//!
+//! Resolved in:
+//! - [`Night::cult`](crate::night::Night::cult), [`Night::vote_cult`](crate::night::Night::vote_cult) and [`Night::convert`](crate::night::Night::convert): the vote, the target's
+//!   resistance and the newest Cultist's risky visit.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};

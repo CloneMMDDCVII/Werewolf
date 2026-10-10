@@ -1,9 +1,11 @@
-//! Guardian Angel protects one player overnight (Werewolf.cs:3091,
-//! `AskGuard`). Self-protection is allowed.
+//! Guardian Angel protects one player overnight, possibly themselves
+//! (Werewolf.cs:3091).
 //!
-//! What the protection does (saving the wolves' target, the GA's risk
-//! guarding a wolf, blocking the Snow Wolf's freeze) is resolved in the
-//! Guardian Angel region of `night` and in `freeze`.
+//! Resolved in:
+//! - [`Night::guardian_angel`](crate::night::Night::guardian_angel): the protection and the risk of guarding a wolf;
+//! - [`Night::wolves_attack`](crate::night::Night::wolves_attack), [`Night::serial_killer`](crate::night::Night::serial_killer) and [`Night::arsonist`](crate::night::Night::arsonist): the attacks
+//!   it stops;
+//! - [`freeze::apply_freeze`](crate::freeze::apply_freeze): blocking the Snow Wolf.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

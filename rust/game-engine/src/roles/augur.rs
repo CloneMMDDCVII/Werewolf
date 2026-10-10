@@ -1,10 +1,9 @@
-//! Augur has no choice to make at all (Werewolf.cs:4044-4060): every night
-//! they're automatically told one role that is *not* in the game (picked
-//! at random from the game's role pool, among roles not yet shown and not
-//! held by any surviving player), or told nothing new once every such role
-//! has been shown. There's no target and no toggle, so this role is
-//! passive from `RoleBehavior`'s perspective; the reading and the
-//! `SawRoles` memory live in `reveals::resolve_night_readings`.
+//! Augur makes no choice: each night they are told one role that is not in
+//! the game, or nothing once every such role has been shown
+//! (Werewolf.cs:4044-4060).
+//!
+//! Resolved in:
+//! - [`reveals::resolve_night_readings`](crate::reveals::resolve_night_readings): the reading and its memory.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

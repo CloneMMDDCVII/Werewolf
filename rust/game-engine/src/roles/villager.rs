@@ -1,8 +1,5 @@
-//! The template for a role that does nothing special. If you're adding a
-//! new role and it has no night action, copy this file: rename the type,
-//! keep `team()`, delete nothing else. `night_action` is left at its
-//! default (no actions) rather than overridden here on purpose, so this
-//! stays the shortest possible example of "a role that just exists."
+//! Villager has no action and no ability. A new role with no action can start
+//! from this file: the default `RoleBehavior` methods do nothing.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

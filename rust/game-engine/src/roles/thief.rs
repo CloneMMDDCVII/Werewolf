@@ -1,15 +1,9 @@
-//! Thief steals a target's role, night 1 only, in the base (non-`ThiefFull`)
-//! mode this proof-of-concept models (Werewolf.cs:4136-4163: `if (GameDay
-//! == 1)`). Same one-shot shape as `doppelganger::Doppelganger`
-//! (`RoleState::primary_used`), but the payoff is immediate rather than
-//! waiting on a death — see `NightAction::StealRole`'s doc for why that
-//! earned its own action variant instead of reusing `ChooseRoleModel`.
+//! Thief steals a player's role on the first night (Werewolf.cs:4136-4163).
+//! In `ThiefFull` mode (`GameRules::thief_full`) the Thief tries every night,
+//! with a chance of failing (Werewolf.cs:4164-4189).
 //!
-//! In `ThiefFull` mode (`GameRules::thief_full`) `run_game` clears
-//! `primary_used` every night so the Thief can try again, and resolves the
-//! steal at the end of the night through the Thief region of `night::resolve_night_sequence`
-//! instead (Werewolf.cs:4164-4189). The swap itself is
-//! `game::swap_roles` in both modes.
+//! Resolved in:
+//! - [`Night::thief`](crate::night::Night::thief) and [`Night::steal`](crate::night::Night::steal): the steal, in both modes.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

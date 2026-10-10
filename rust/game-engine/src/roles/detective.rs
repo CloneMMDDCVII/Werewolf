@@ -1,11 +1,9 @@
 //! Detective investigates one player by day and learns their exact role
-//! (Werewolf.cs:2933-2953), unlike Seer, who only learns a team at night.
-//! The legacy game resolves it at the end of the day phase, before the
-//! lynch, so this is a `day_action`. The per-day chance that the wolves
-//! learn who the Detective is (Werewolf.cs:2937:
-//! `Settings.ChanceDetectiveCaught`) and the result message are sent by
-//! `reveals::resolve_detective`; this file only covers "is this a valid
-//! target to snoop on."
+//! (Werewolf.cs:2933-2953). Some days the wolves learn who the Detective is
+//! (`Settings.ChanceDetectiveCaught`, Werewolf.cs:2937).
+//!
+//! Resolved in:
+//! - [`reveals::resolve_detective`](crate::reveals::resolve_detective): the result and the chance of being caught.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

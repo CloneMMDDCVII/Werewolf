@@ -1,19 +1,9 @@
-//! WolfCub is wolf-team muscle (`WolfRoles`, Werewolf.cs:48) and shares the
-//! same night eat vote as `wolf::Wolf`/`alpha_wolf::AlphaWolf` — identical
-//! validation logic, same `EatVote` action.
+//! Wolf Cub votes with the pack like `wolf::Wolf` (Werewolf.cs:48). When the
+//! Wolf Cub dies, the wolves kill twice the next night (Werewolf.cs:1047-1053).
 //!
-//! The real distinguishing ability — if WolfCub dies, the wolves get a
-//! bonus kill the following night (Werewolf.cs:1047-1053) — **is**
-//! modeled, in `game::ask_wolf_cub_votes` plus a
-//! `wolf_cub_bonus_pending` flag `game::run_game` carries across rounds,
-//! not here: it's triggered by a death, not by anything this
-//! passive-otherwise role does while alive, same reasoning as Hunter's
-//! revenge shot living in the orchestrator rather than in
-//! `roles::hunter`. See `game::ask_wolf_cub_votes`'s doc for exactly
-//! when the bonus question gets asked (same night as the main wolf vote,
-//! confirmed against `NightCycle` directly, not assumed). Team is
-//! already correct (`shared::Role::WolfCub` maps to `Team::Wolf`, and
-//! `Role::is_wolf` already counts WolfCub as wolf muscle).
+//! Resolved in:
+//! - [`game::ask_wolf_cub_votes`](crate::game::ask_wolf_cub_votes): the second vote;
+//! - [`Night::wolves`](crate::night::Night::wolves): the second attack.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};

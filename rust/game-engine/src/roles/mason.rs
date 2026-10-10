@@ -1,7 +1,7 @@
-//! Passive during the night — Masons have no night action. The real
-//! ability (knowing who the other Masons are, Werewolf.cs:1660-1664) is
-//! purely informational, same category as `beholder::Beholder`. Nothing
-//! to model beyond `team()`.
+//! Mason has no action. Masons know each other (Werewolf.cs:1660-1664).
+//!
+//! Resolved in:
+//! - [`role_info::role_info`](crate::role_info::role_info): the other Masons' names.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

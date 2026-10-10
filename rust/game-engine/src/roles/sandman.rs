@@ -1,10 +1,9 @@
-//! Sandman chooses by day, once per game, whether to put everyone to
-//! sleep (Werewolf.cs:950-961, asked at 5070-5080) — a yes/no toggle, not
-//! a target pick, hence `DayContext::toggle_choice`.
+//! Sandman may put everyone to sleep, once, by day (Werewolf.cs:950-961). The
+//! next night nobody is asked anything and nothing happens
+//! (Werewolf.cs:3011-3020).
 //!
-//! The following night is skipped outright: nobody is asked anything and
-//! nothing resolves (Werewolf.cs:3011-3020). `game::run_game` does that
-//! when it sees `DayAction::Sleep`.
+//! Resolved in:
+//! - [`game::run_game_with_rules`](crate::game::run_game_with_rules): the skipped night.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

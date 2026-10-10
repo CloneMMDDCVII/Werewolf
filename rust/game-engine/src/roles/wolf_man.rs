@@ -1,12 +1,8 @@
-//! Wolf Man is Village team and has no action of his own — his entire
-//! gimmick is that other roles get the *wrong* answer about him
-//! (Werewolf.cs:3946: "poor wolf man, is just a villager!"). The Seer
-//! and Fool both see him reported as `Wolf` (Werewolf.cs:3946-3948,
-//! 4008), a false positive, not a real detection ability of his own.
-//! That's a display-layer effect on *other* roles' `Investigate`/
-//! `CheckTeam` results, which this proof-of-concept doesn't model (same
-//! category of gap as `lycan::Lycan`'s reverse case: a real Wolf who
-//! reads as Villager).
+//! Wolf Man is on the village team and has no action. The Seer and the Fool
+//! see him as a Wolf (Werewolf.cs:3946-3948, 4008).
+//!
+//! Resolved in:
+//! - `DEF.seer_sees`, read by [`reveals::resolve_night_readings`](crate::reveals::resolve_night_readings).
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

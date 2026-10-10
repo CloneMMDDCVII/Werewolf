@@ -1,11 +1,9 @@
-//! Passive — Prince has no action of their own, day or night. The real
-//! ability is entirely reactive: the *first* time Prince is lynched, they
-//! survive instead of dying (Werewolf.cs:2745-2751: `!lynched.HasUsedAbility`
-//! guards the kill). That's not something Prince decides via `day_action`
-//! — it's `orchestrator::apply_day_results` checking, at the moment the
-//! lynch would apply, whether the target is a Prince who hasn't spent
-//! their immunity yet (`RoleState::primary_used`), same "one-shot survival"
-//! shape as Witch's heal canceling the wolf kill.
+//! Prince has no action. The first time the Prince is lynched they survive
+//! and are revealed (Werewolf.cs:2745-2751).
+//!
+//! Resolved in:
+//! - [`orchestrator::apply_day_results`](crate::orchestrator::apply_day_results): the survival;
+//! - [`Game::announce_prince`](crate::game::Game::announce_prince): the reveal.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

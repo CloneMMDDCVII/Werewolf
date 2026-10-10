@@ -1,8 +1,8 @@
-//! Sorcerer checks one player overnight, specifically hunting for the Seer
-//! (Werewolf.cs:3958-3975) — same action shape as Detective/Fool
-//! (validate a target, emit `Investigate`), just a different question
-//! being asked. What information comes back is resolution logic this
-//! file doesn't attempt, same as the other investigate-shaped roles.
+//! Sorcerer checks one player overnight but only recognises wolves and the
+//! Seer (Werewolf.cs:3958-3975; `RoleDef::sorcerer_sees` on each role).
+//!
+//! Resolved in:
+//! - [`reveals::resolve_night_readings`](crate::reveals::resolve_night_readings): the reading.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

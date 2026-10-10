@@ -1,7 +1,10 @@
-//! Passive role, no night action — mechanically identical to `Villager`.
-//! In the legacy game the only "Drunk" behavior is a display-layer joke
-//! (shown a wrong role hint), which affects messaging, not game state, so
-//! there's nothing to port here beyond `team()`.
+//! Drunk has no action. Wolves who eat the Drunk lose their second kill and
+//! their next night's menu (Werewolf.cs:3321, 5316).
+//!
+//! Resolved in:
+//! - [`Night::wolves_attack`](crate::night::Night::wolves_attack): eating the Drunk;
+//! - the night step of [`game::run_game_with_rules`](crate::game::run_game_with_rules): the drunk wolves are
+//!   skipped through [`NightMemory::drunk`](crate::night::NightMemory::drunk).
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

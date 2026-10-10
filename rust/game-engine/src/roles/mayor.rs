@@ -1,10 +1,10 @@
-//! Mayor chooses whether to publicly reveal their role, once
-//! (Werewolf.cs:899-908) — a yes/no toggle, not a target pick, hence
-//! `DayContext::toggle_choice`. The reveal itself is purely informational;
-//! the real payoff (their lynch vote counting twice afterward,
-//! Werewolf.cs:2649-2652) is handled by `orchestrator::resolve_day`
-//! directly when tallying votes, since it's a change to vote *weight*,
-//! not something this file's `DayAction::Reveal` needs to carry.
+//! Mayor may reveal their role once, by day (Werewolf.cs:899-908). After that
+//! their lynch vote counts twice (Werewolf.cs:2649-2652).
+//!
+//! Resolved in:
+//! - [`orchestrator::resolve_day`](crate::orchestrator::resolve_day) and
+//!   [`orchestrator::resolve_lynch_vote`](crate::orchestrator::resolve_lynch_vote)
+//!   (a Troublemaker's second lynch): the double vote.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

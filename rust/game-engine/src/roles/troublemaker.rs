@@ -1,9 +1,9 @@
-//! Troublemaker's once-per-game day toggle (Werewolf.cs:965-973): force a
-//! second lynch vote today. Same shape as `mayor::Mayor`/
-//! `pacifist::Pacifist` — a yes/no via `DayContext::toggle_choice`, gated
-//! by `RoleState::primary_used`. Trouble and a same-day Pacifist veto
-//! cancel each other, and whichever came last wins
-//! (`orchestrator::last_day_veto`); `game::run_game` holds the second vote.
+//! Troublemaker may force a second lynch today, once (Werewolf.cs:965-973). A
+//! Pacifist on the same day cancels it; the last one to answer wins.
+//!
+//! Resolved in:
+//! - [`orchestrator::last_day_veto`](crate::orchestrator::last_day_veto): which veto stands;
+//! - [`game::run_game_with_rules`](crate::game::run_game_with_rules): the second lynch.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

@@ -1,6 +1,6 @@
-//! Barkeep, like `chef::Chef`, doesn't exist in this project's
-//! `Werewolf.cs` — same beta-fork-only status, same honest "no source, no
-//! invented mechanic" treatment.
+//! Barkeep is not in this project's `Werewolf.cs`; it comes from the
+//! GreyWolfDev/Werewolf beta fork. It has a team and no mechanic, rather than an
+//! invented one, and is not dealt.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

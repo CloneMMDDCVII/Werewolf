@@ -1,17 +1,10 @@
-//! Blacksmith spreads protective silver over the whole village, once,
-//! via a yes/no menu during the day (Werewolf.cs:5083-5092: `SpreadDust`)
-//! — not a target pick. An earlier version of this file modeled it as a
-//! Gunner-shaped "pick a target" action; that was wrong, caught by
-//! reading `SendDayActions` directly rather than assuming the shape from
-//! the `AskBlacksmithSilver`-style name. Same once-per-game gate
-//! (`RoleState::primary_used`) as before, just triggered by
-//! `ctx.toggle_choice` like `sandman::Sandman`/`pacifist::Pacifist`
-//! instead of `ctx.chosen_target`.
+//! Blacksmith spreads silver over the village once, by day, through a yes/no
+//! question (Werewolf.cs:5083-5092). The next night the wolves get no menu and
+//! the Snow Wolf no freeze (Werewolf.cs:5191).
 //!
-//! The payoff — every wolf-team role finds no valid targets the
-//! *following* night (Werewolf.cs:5191) — isn't this file's job any more
-//! than Sandman's "everyone sleeps" payoff is `sandman::Sandman`'s: the
-//! wolves are skipped in `game::run_game_with_rules`.
+//! Resolved in:
+//! - the day and night steps of [`game::run_game_with_rules`](crate::game::run_game_with_rules):
+//!   recording the silver, then skipping the wolves.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

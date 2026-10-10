@@ -1,7 +1,9 @@
-//! Serial Killer kills a target overnight, personally and directly
-//! (Werewolf.cs:2340-2348, 2380 onward) — normally the only one of their
-//! kind, so unlike `wolf::Wolf`'s `EatVote` there's no consensus to tally.
-//! The kill is resolved in the Serial Killer region of `night`.
+//! Serial Killer kills one player overnight (Werewolf.cs:2340-2348, 2380
+//! onward). Anyone who visits the Serial Killer usually dies.
+//!
+//! Resolved in:
+//! - [`Night::serial_killer`](crate::night::Night::serial_killer): the kill;
+//! - [`Night::visit`](crate::night::Night::visit): visitors dying.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

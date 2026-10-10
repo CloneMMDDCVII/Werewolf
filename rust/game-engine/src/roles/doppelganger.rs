@@ -1,12 +1,9 @@
-//! Doppelganger picks a "role model" player once, typically the first
-//! night (Werewolf.cs:1927-1938) — same shape and same `RoleState`
-//! fields (`primary_used`, `remembered_player`) as `wild_child::WildChild`.
+//! Doppelganger picks a role model on the first night (Werewolf.cs:1927-1938).
+//! When the role model dies, the Doppelganger takes their role.
 //!
-//! The payoff differs from Wild Child's, though: when the role model dies,
-//! Doppelganger doesn't always turn Wolf — they copy whatever role the
-//! dead player actually had (`Transform(p, rm.PlayerRole, ...)`,
-//! Werewolf.cs:1936-1937). `game::apply_transforms` handles this using the
-//! role-at-death information `game::record_deaths` already tracks.
+//! Resolved in:
+//! - [`game::pick_missing_role_models`](crate::game::pick_missing_role_models): a random model when none was chosen;
+//! - [`game::apply_transforms`](crate::game::apply_transforms): copying the dead model's role.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

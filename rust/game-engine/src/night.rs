@@ -117,7 +117,7 @@ pub struct NightOutcome {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Visit {
+pub(crate) enum Visit {
     Success,
     VisitorDied,
     Fail,
@@ -195,7 +195,7 @@ pub fn resolve_night_sequence(
     }
 }
 
-struct Night<'a, 'b> {
+pub(crate) struct Night<'a, 'b> {
     input: &'b NightInput<'b>,
     /// Everyone alive as the night began, with the roles they had then.
     start: Vec<AlivePlayer>,
@@ -316,7 +316,7 @@ impl Night<'_, '_> {
     }
 
     /// `VisitPlayer` (Werewolf.cs:2323-2430).
-    fn visit(&mut self, visitor: PlayerId, target: PlayerId) -> Visit {
+    pub(crate) fn visit(&mut self, visitor: PlayerId, target: PlayerId) -> Visit {
         let (Some(visitor_role), Some(target_role)) = (self.role(visitor), self.role(target)) else {
             return Visit::AlreadyDead;
         };
@@ -433,7 +433,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:3186-3227.
-    fn arsonist(&mut self) {
+    pub(crate) fn arsonist(&mut self) {
         let Some(arsonist) = self.first_living(Role::Arsonist) else {
             return;
         };
@@ -483,7 +483,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:3231-3494.
-    fn wolves(&mut self) {
+    pub(crate) fn wolves(&mut self) {
         let wolves = self.living(Role::is_eating_wolf);
         self.memory.drunk.clear();
         if wolves.is_empty() {
@@ -532,7 +532,7 @@ impl Night<'_, '_> {
     }
 
     /// One wolf attack that got through the door (Werewolf.cs:3281-3438).
-    fn wolves_attack(&mut self, target: PlayerId, wolves: &[PlayerId], second: Option<PlayerId>) {
+    pub(crate) fn wolves_attack(&mut self, target: PlayerId, wolves: &[PlayerId], second: Option<PlayerId>) {
         let pack = self.vote_wolves(wolves);
         if self.ga.map(|(_, t)| t) == Some(target) {
             self.tell_all(&pack, NightNote::GuardBlockedWolf(target));
@@ -591,7 +591,7 @@ impl Night<'_, '_> {
         }
     }
 
-    fn eat(&mut self, target: PlayerId, pack: &[PlayerId]) {
+    pub(crate) fn eat(&mut self, target: PlayerId, pack: &[PlayerId]) {
         // The Witch's potion (a role legacy never had) stops the wolves too.
         if self
             .input
@@ -606,7 +606,7 @@ impl Night<'_, '_> {
     }
 
     /// `BitePlayer` (Werewolf.cs:1943-1950).
-    fn bite(&mut self, target: PlayerId, alpha: PlayerId) {
+    pub(crate) fn bite(&mut self, target: PlayerId, alpha: PlayerId) {
         self.outcome.bitten.push(target);
         let pack = self.living(Role::is_wolf);
         self.tell_all(&pack, NightNote::PlayerBittenWolves(target, alpha));
@@ -615,7 +615,7 @@ impl Night<'_, '_> {
     /// After each wolf attack and after the Serial Killer, the killers may
     /// spot a Grave Digger who dug last night, on half the fall chance
     /// (Werewolf.cs:3471-3482, 3537-3547). Returns the digger if spotted.
-    fn spot_grave_digger(&mut self, spotter: Option<PlayerId>, killed_by: Role) -> Option<PlayerId> {
+    pub(crate) fn spot_grave_digger(&mut self, spotter: Option<PlayerId>, killed_by: Role) -> Option<PlayerId> {
         let gd = self.first_living(Role::GraveDigger)?;
         let dug = self.input.dug_graves;
         if dug < 1 || !self.roll(grave_digger_fall_chance_percent(dug, true)) {
@@ -626,7 +626,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:3497-3549.
-    fn serial_killer(&mut self) {
+    pub(crate) fn serial_killer(&mut self) {
         let Some(sk) = self.first_living(Role::SerialKiller) else {
             return;
         };
@@ -675,7 +675,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:3556-3587.
-    fn cultist_hunter(&mut self) {
+    pub(crate) fn cultist_hunter(&mut self) {
         let Some(hunter) = self.first_living(Role::CultistHunter) else {
             return;
         };
@@ -699,7 +699,7 @@ impl Night<'_, '_> {
     }
 
     /// The cultists who act tonight: alive and not frozen.
-    fn vote_cult(&self) -> Vec<PlayerId> {
+    pub(crate) fn vote_cult(&self) -> Vec<PlayerId> {
         let frozen = self.input.frozen;
         self.living(|r| r == Role::Cultist)
             .into_iter()
@@ -708,7 +708,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:3591-3757.
-    fn cult(&mut self) {
+    pub(crate) fn cult(&mut self) {
         let cult = self.vote_cult();
         if cult.is_empty() {
             return;
@@ -818,7 +818,7 @@ impl Night<'_, '_> {
     }
 
     /// `ConvertToCult` (Werewolf.cs:2489-2509).
-    fn convert(&mut self, target: PlayerId, chance: u32, newbie: PlayerId) {
+    pub(crate) fn convert(&mut self, target: PlayerId, chance: u32, newbie: PlayerId) {
         if self.roll(chance) {
             self.transform(target, Role::Cultist, Cause::ConvertToCult);
             self.memory.cult_joined.insert(target, self.input.night);
@@ -830,7 +830,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:3792-3838.
-    fn chemist(&mut self) {
+    pub(crate) fn chemist(&mut self) {
         let Some(chemist) = self.first_living(Role::Chemist) else {
             return;
         };
@@ -876,7 +876,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:3843-3918.
-    fn harlot(&mut self) {
+    pub(crate) fn harlot(&mut self) {
         let Some(harlot) = self.first_living(Role::Harlot) else {
             return;
         };
@@ -939,7 +939,7 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:4065-4125: the GA hears how the night went for their
     /// charge, and scrubs off any kerosene.
-    fn guardian_angel(&mut self) {
+    pub(crate) fn guardian_angel(&mut self) {
         let Some((ga, charge)) = self.ga else { return };
         match self.visit(ga, charge) {
             Visit::AlreadyDead | Visit::Success => {
@@ -973,7 +973,7 @@ impl Night<'_, '_> {
     }
 
     /// Werewolf.cs:4132-4190.
-    fn thief(&mut self) {
+    pub(crate) fn thief(&mut self) {
         let Some(thief) = self.first_living(Role::Thief) else {
             return;
         };
@@ -1034,7 +1034,7 @@ impl Night<'_, '_> {
     /// `StealRole` (Werewolf.cs:2432-2487): the Thief takes the target's
     /// role, used abilities and bullets, and the target becomes a Villager,
     /// or the new Thief in full mode.
-    fn steal(&mut self, thief: PlayerId, mut target: PlayerId) {
+    pub(crate) fn steal(&mut self, thief: PlayerId, mut target: PlayerId) {
         if self.is_dead(target) {
             self.note(thief, Note::ThiefStealDead { target });
             let Some(other) = self.random_other(thief) else { return };
@@ -1064,7 +1064,7 @@ impl Night<'_, '_> {
     }
 
     /// The Witch's poison, a role this port added.
-    fn witch(&mut self) {
+    pub(crate) fn witch(&mut self) {
         let poisoned: Vec<PlayerId> = self
             .input
             .actions
@@ -1083,7 +1083,7 @@ impl Night<'_, '_> {
     /// before the Guardian Angel (Werewolf.cs, `NightCycle`), so a reader
     /// killed earlier tonight learns nothing and the readings arrive
     /// before the morning's death notices.
-    fn seers(&mut self) {
+    pub(crate) fn seers(&mut self) {
         let survivors: Vec<AlivePlayer> = self.alive.iter().filter(|p| !self.is_dead(p.id)).copied().collect();
         let readings = resolve_night_readings(
             self.input.actions,
@@ -1099,7 +1099,7 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:4276-4281: with roles shown, a Chemist who killed the
     /// Wise Elder loses their role (the death line says so).
-    fn chemist_killed_wise_elder(&mut self) {
+    pub(crate) fn chemist_killed_wise_elder(&mut self) {
         if !self.input.reveal {
             return;
         }

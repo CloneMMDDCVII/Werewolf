@@ -1,11 +1,11 @@
-//! SnowWolf is wolf-team muscle for win-condition purposes (`Role::is_wolf`
-//! counts it), but it does **not** share the main wolf-eat vote: the
-//! legacy vote collection uses `WolfRoles = { Wolf, AlphaWolf, WolfCub,
-//! Lycan }` (Werewolf.cs:48), which leaves it out. Its night ability is a
-//! freeze instead, asked and resolved by the `freeze` module (it needs the
-//! previous night's target and the whole night's actions, neither of
-//! which a `NightContext` carries), so this file stays passive. When no
-//! other wolf is left it turns into a plain Wolf (`game::apply_transforms`).
+//! Snow Wolf is on the wolf team but does not vote on the kill
+//! (Werewolf.cs:48). Instead it freezes one player each night, who loses their
+//! action (`RoleDef::frozen_loses_action`). When no other wolf is left it
+//! turns into a Wolf.
+//!
+//! Resolved in:
+//! - [`freeze::freeze_question`](crate::freeze::freeze_question) and [`freeze::apply_freeze`](crate::freeze::apply_freeze): the freeze;
+//! - [`game::apply_transforms`](crate::game::apply_transforms): the transform.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

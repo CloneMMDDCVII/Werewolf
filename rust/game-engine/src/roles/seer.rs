@@ -1,9 +1,9 @@
-//! The Seer checks one player's role each night. Structurally identical to
-//! `wolf::Wolf` (validate a chosen target, emit one action) — worth
-//! comparing the two files side by side as a second example once you've
-//! read `villager.rs`. What the Seer is told, including the legacy
-//! disguises (Lycan reads as Villager, Wolf Man as Wolf), is resolved in
-//! `reveals::resolve_night_readings`.
+//! Seer checks one player's role each night. Some roles are disguised: Lycan
+//! reads as Villager, Wolf Man as Wolf (`RoleDef::seer_sees` on each role).
+//!
+//! Resolved in:
+//! - [`Night::seers`](crate::night::Night::seers): who goes out;
+//! - [`reveals::resolve_night_readings`](crate::reveals::resolve_night_readings): what the Seer is told.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

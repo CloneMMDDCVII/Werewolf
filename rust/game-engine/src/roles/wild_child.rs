@@ -1,16 +1,9 @@
-//! Wild Child picks a "role model" player once, typically the first night
-//! (Werewolf.cs:1757, 1909) — reuses `RoleState::primary_used` the same
-//! way `cupid::Cupid` does for its one-shot link, and stashes *who* was
-//! picked in `RoleState::remembered_player`.
+//! Wild Child picks a role model on the first night (Werewolf.cs:1757, 1909)
+//! and turns Wolf when the role model dies.
 //!
-//! The actual payoff — Wild Child turns Wolf if their role model dies —
-//! **is modeled**, but not in this file: it's a transform triggered by
-//! someone else's death, which `game::apply_transforms` checks each round
-//! (did `remembered_player` drop out of the alive list?) using the value
-//! stored here. Same category of mechanic as `traitor::Traitor`'s
-//! last-wolf-dies transform; `cursed::Cursed`'s bite-transform is a
-//! different, not-yet-modeled trigger (being targeted, not a death) and
-//! stays a known gap.
+//! Resolved in:
+//! - [`game::pick_missing_role_models`](crate::game::pick_missing_role_models): a random model when none was chosen;
+//! - [`game::apply_transforms`](crate::game::apply_transforms): the transform.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

@@ -1,22 +1,13 @@
-//! Passive — WiseElder has no action of their own, night or day. Both real
-//! quirks are entirely reactive to *someone else's* action, so neither
-//! lives in this file:
+//! Wise Elder has no action. The wolves' first attack fails
+//! (Werewolf.cs:3392-3406); the second kills. A Gunner's shot kills the Wise
+//! Elder and demotes the Gunner to Villager (Werewolf.cs:2887-2895). With
+//! roles shown, a Chemist who kills the Wise Elder becomes a Villager too
+//! (Werewolf.cs:4276-4281).
 //!
-//! - A Gunner's shot doesn't save them — they still die like anyone else
-//!   (checked directly: `KillPlayer` runs unconditionally right after the
-//!   Wise Elder switch case, Werewolf.cs:2895). What actually happens is
-//!   punitive: the *Gunner* gets demoted to Villager
-//!   (Werewolf.cs:2887-2889: `Transform(gunner, IRole.Villager, ...)`).
-//!   See `game::demote_gunner_if_shot_a_wise_elder`, applied before the
-//!   shot itself is turned into a death.
-//! - A wolf-eat *does* save them, but only once: the first non-bitten
-//!   wolf-eat attempt has no `KillPlayer` call at all
-//!   (Werewolf.cs:3392-3406, guarded by `target.HasUsedAbility`) — the
-//!   wolves are told they failed and the Wise Elder is warned, then a
-//!   *second* attempt falls through to a normal kill (`goto default`).
-//!   See the wolves region of `night::resolve_night_sequence`, which tracks this with the same
-//!   `RoleState::primary_used` one-shot flag every other "first time
-//!   only" role uses.
+//! Resolved in:
+//! - [`Night::wolves_attack`](crate::night::Night::wolves_attack): surviving the first attack;
+//! - [`game::demote_gunner_if_shot_a_wise_elder`](crate::game::demote_gunner_if_shot_a_wise_elder);
+//! - [`Night::chemist_killed_wise_elder`](crate::night::Night::chemist_killed_wise_elder).
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

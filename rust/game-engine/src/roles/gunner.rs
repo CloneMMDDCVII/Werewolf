@@ -1,22 +1,11 @@
-//! Gunner has two bullets (Werewolf.cs:1938: `bullet: 2`), spent one at a
-//! time to shoot a suspected player during the **day** phase
-//! (Werewolf.cs:2871-2896) — this is what motivated adding the
-//! `day_action` hook: forcing this through `night_action` would have been
-//! wrong regardless of how convenient it looked.
+//! Gunner has two bullets (Werewolf.cs:1938), fired one at a time by day
+//! (Werewolf.cs:2871-2896). A shot always kills, a Wise Elder included
+//! (Werewolf.cs:2895); shooting the Wise Elder demotes the Gunner to Villager
+//! (Werewolf.cs:2887-2889).
 //!
-//! Reuses `RoleState::primary_used`/`secondary_used` for "first bullet
-//! spent"/"second bullet spent", the same trick `witch::Witch` uses for
-//! her two potions.
-//!
-//! The shot always kills its target outright (`KillMethod::Shoot`, in
-//! `orchestrator::apply_day_results`) — including a Wise Elder, who does
-//! *not* survive it (checked directly: `KillPlayer(check, ...)` runs
-//! unconditionally after the Wise Elder switch case, Werewolf.cs:2895).
-//! The real special case is what happens to the *Gunner* afterward: they
-//! get demoted to Villager (Werewolf.cs:2887-2889), which `game::run_game`
-//! applies using the `shooter` field on `DayAction::Shoot` — this file
-//! only covers "is there a bullet left, and is this a valid target,"
-//! same as before.
+//! Resolved in:
+//! - [`orchestrator::apply_day_results`](crate::orchestrator::apply_day_results): the shot;
+//! - [`game::demote_gunner_if_shot_a_wise_elder`](crate::game::demote_gunner_if_shot_a_wise_elder): the demotion.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

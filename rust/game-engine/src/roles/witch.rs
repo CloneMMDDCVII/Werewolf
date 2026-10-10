@@ -1,15 +1,11 @@
-//! New role, not in the legacy game (see `shared::Role::Witch` doc
-//! comment). Two independent one-shot potions: heal (cancel tonight's
-//! wolf kill) and poison (kill a target outright), each usable once per
-//! game. This is the file that justifies `night_action` returning a `Vec`
-//! instead of a single `Option<NightAction>` — Villager/Wolf/Seer only
-//! ever need at most one action, but the Witch can use both potions on
-//! the same night.
+//! Witch is a role legacy never had, and is not dealt. She holds two potions,
+//! each usable once: heal the wolves' victim, or poison anyone. Both can be
+//! used the same night, which is why `night_action` returns a `Vec`. She is
+//! asked after the wolves' vote (`NightQuestion::AfterWolves`).
 //!
-//! The heal only makes sense as "save the wolves' victim", so the Witch is
-//! asked after the wolves' vote (`NightQuestion::AfterWolves`). She is not
-//! dealt (`dealt: false`): she has no legacy texts or balancing weight.
-//! Her potions are resolved in the Witch region of `night`.
+//! Resolved in:
+//! - [`Night::witch`](crate::night::Night::witch): the potions;
+//! - [`Night::eat`](crate::night::Night::eat): the heal stopping the kill.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

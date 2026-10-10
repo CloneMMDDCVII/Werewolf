@@ -1,15 +1,10 @@
-//! AlphaWolf is wolf-team muscle (`WolfRoles`, Werewolf.cs:48) and shares
-//! the same night eat vote as `wolf::Wolf` — identical validation logic,
-//! same `EatVote` action, tallied together by
-//! `orchestrator::majority_eat_target`.
+//! AlphaWolf votes with the pack like `wolf::Wolf` (Werewolf.cs:48). When
+//! the pack attacks, the Alpha may bite instead of kill (Werewolf.cs:2114-2150):
+//! the victim turns Wolf at the start of the next night.
 //!
-//! The real distinguishing ability (a bite/convert mechanic turning a
-//! villager into a wolf over subsequent nights, Werewolf.cs:2114-2150) is
-//! **not modeled here** — it's a slower, stateful conversion process
-//! distinct from anything else built so far, and would need its own
-//! dedicated hook. Team is already correct (`shared::Role::AlphaWolf`
-//! maps to `Team::Wolf`, and `Role::is_wolf` already counts AlphaWolf as
-//! wolf muscle for win-condition purposes).
+//! Resolved in:
+//! - [`Night::wolves_attack`](crate::night::Night::wolves_attack) and [`Night::bite`](crate::night::Night::bite): the bite instead of the kill;
+//! - [`game::apply_pending_alpha_bites`](crate::game::apply_pending_alpha_bites): the bitten player's transform.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};

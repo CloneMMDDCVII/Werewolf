@@ -1,7 +1,7 @@
-//! Passive during the night — Beholder has no night action. The real
-//! ability (silently learns who the Seer is, Werewolf.cs:2055-2110) is
-//! purely informational: it never produces a `NightAction` for anyone else
-//! to react to, just a private message. Nothing to model beyond `team()`.
+//! Beholder has no action. They learn who the Seer is (Werewolf.cs:2055-2110).
+//!
+//! Resolved in:
+//! - [`role_info::role_info`](crate::role_info::role_info): the Seer's name in the role message.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

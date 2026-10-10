@@ -1,15 +1,9 @@
-//! Spumpkin's day-phase detonation (Werewolf.cs:2901-2930): pick a target,
-//! with a 40% chance (Werewolf.cs:2907) of killing both the target and the
-//! Spumpkin at once. There's no per-game usage gate in the legacy code —
-//! `spumpkin.Choice` resets every day (Werewolf.cs:5116-5130) so a failed
-//! (60%) attempt can simply try again tomorrow — same "no limit, the coin
-//! flip is the only gate" shape as `chemist::Chemist`, not a one-shot like
-//! `gunner::Gunner`'s bullets. The coin flip and mutual-kill resolution
-//! are modeled in `orchestrator::resolve_spumpkin_detonation`, not here —
-//! including the WiseElder-demotion special case (Werewolf.cs:2916), which
-//! turns out not to change lethality at all (the real code still kills
-//! both regardless — see that function's doc for why the special case is
-//! flavor-only and safe to skip).
+//! Spumpkin picks a target by day and explodes with a 40% chance, killing both
+//! (Werewolf.cs:2901-2930). A failed attempt can be tried again the next day
+//! (Werewolf.cs:5116-5130).
+//!
+//! Resolved in:
+//! - [`orchestrator::resolve_spumpkin_detonation`](crate::orchestrator::resolve_spumpkin_detonation): the roll and the deaths.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

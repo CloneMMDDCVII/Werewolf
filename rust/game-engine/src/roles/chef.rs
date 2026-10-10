@@ -1,10 +1,6 @@
-//! Chef doesn't exist in this project's `Werewolf.cs` at all — confirmed by
-//! an exhaustive case-insensitive search of the legacy source, not just an
-//! oversight in earlier porting batches. `shared::Role::team`'s doc already
-//! flags Chef/Barkeep as verified against a different fork
-//! (GreyWolfDev/Werewolf@beta) instead. With no local source to cite line
-//! numbers against, this file only asserts the team already established
-//! there — no action to model, honestly, rather than invented.
+//! Chef is not in this project's `Werewolf.cs`; it comes from the
+//! GreyWolfDev/Werewolf beta fork. It has a team and no mechanic, rather than an
+//! invented one, and is not dealt.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

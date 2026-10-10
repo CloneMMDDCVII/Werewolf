@@ -1,13 +1,8 @@
-//! Lycan is wolf-team muscle (`WolfRoles`, Werewolf.cs:48) and shares the
-//! same night eat vote as `wolf::Wolf`.
+//! Lycan votes with the pack like `wolf::Wolf` (Werewolf.cs:48), but the Seer
+//! sees a Villager (Werewolf.cs:3961-3962).
 //!
-//! The real distinguishing quirk — Seer/Sorcerer checks show Lycan as a
-//! Villager instead of revealing the wolf team (Werewolf.cs:3961-3962,
-//! the "sneaky wuff" comment) — is purely about what information an
-//! `Investigate`/`CheckTeam` reveals, which this proof-of-concept already
-//! treats as unresolved display-layer detail for every investigate-shaped
-//! role (see `seer`/`sorcerer` module docs). Nothing extra to model here.
-//! Team is already correct via `Role::is_wolf`.
+//! Resolved in:
+//! - `DEF.seer_sees`, read by [`reveals::resolve_night_readings`](crate::reveals::resolve_night_readings).
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};

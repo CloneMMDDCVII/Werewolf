@@ -1,22 +1,10 @@
-//! Lovers is not a role — it's a relationship state any two players can end
-//! up in via Cupid's `LinkLovers` action. It's modeled separately from
-//! `RoleBehavior` on purpose: "one role, one file" doesn't fit something
-//! that's about a *pair* of players regardless of what roles they hold
-//! (per the legacy win-check, even a Wolf and a Villager can be lovers —
-//! Werewolf.cs:4654 explicitly handles that "forbidden love" case).
+//! Lovers is not a role but a link between two players, made by Cupid's
+//! `LinkLovers`. Any two roles can be lovers (Werewolf.cs:4654).
 //!
-//! Wired into `run_game` (not just unit-tested in isolation): `LinkLovers`
-//! actions build a `LoversState` that persists across the whole game,
-//! `orchestrator::resolve_lover_deaths` uses it to chain-kill a partner
-//! whenever the other one dies (Werewolf.cs:5609-5616), and
-//! `game::resolved_winner` checks `is_lovers_win` ahead of the normal team
-//! logic, matching the real precedence.
-//!
-//! `sim`'s fixture replay still can't verify a *historical* Lovers
-//! outcome — the SQL export never captured `InLove` pairing data, so
-//! there's nothing to feed this model when replaying real games — but
-//! that's now the only remaining gap; a live simulated game exercises the
-//! whole mechanic end to end (see `full_game.rs`'s Cupid tests).
+//! Resolved in:
+//! - [`orchestrator::resolve_lover_deaths`](crate::orchestrator::resolve_lover_deaths): a partner dies with the other
+//!   (Werewolf.cs:5609-5616);
+//! - [`game_end::check_game_end`](crate::game_end::check_game_end): the lovers' win.
 
 use crate::roles::PlayerId;
 use shared::Team;

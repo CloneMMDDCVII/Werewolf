@@ -1,8 +1,9 @@
-//! Mirrors the wolves' night-eat vote (Werewolf.cs's wolf night-action
-//! handling). Each wolf submits a candidate; the orchestrator (not part of
-//! this proof-of-concept) is responsible for tallying votes across all
-//! wolves and resolving the actual kill — this file only validates one
-//! wolf's own vote.
+//! Wolf votes with the pack on who to kill. One wolf's vote is checked here;
+//! the pack's choice and the attack happen in the night.
+//!
+//! Resolved in:
+//! - [`Night::wolves`](crate::night::Night::wolves) and [`Night::wolves_attack`](crate::night::Night::wolves_attack): the vote and the attack;
+//! - [`Night::eat`](crate::night::Night::eat): the kill.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};

@@ -1,11 +1,9 @@
-//! Fool investigates one player overnight, same action shape as Detective
-//! (Werewolf.cs:5174-5179, grouped with Seer/Sorcerer/Oracle under
-//! `AskSee`) — but the answer the Fool gets back is fake: the legacy code
-//! shows a *random* role from the remaining player pool, masking any wolf
-//! variant as generically "Wolf" (Werewolf.cs:3985-4000). That
-//! randomization is a display-layer detail for a future orchestrator to
-//! produce, not something this file decides — it only validates the
-//! target, same as Detective.
+//! Fool checks one player overnight like the Seer (Werewolf.cs:5174-5179), but
+//! is shown a random role, with wolf variants shown as Wolf
+//! (Werewolf.cs:3985-4000).
+//!
+//! Resolved in:
+//! - [`reveals::resolve_night_readings`](crate::reveals::resolve_night_readings): the fake reading.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

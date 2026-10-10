@@ -1,9 +1,8 @@
-//! Cupid links two players as lovers, once, typically on the first night.
-//! The link itself doesn't live here — see `lovers::LoversState` — because
-//! "being in love" is state about *two other players*, not about Cupid.
-//! This file is deliberately small: Cupid's whole job is producing one
-//! `LinkLovers` action; everything about what loving someone *means* for
-//! win conditions belongs to `lovers`, not to Cupid.
+//! Cupid links two players as lovers, once, on the first night.
+//!
+//! Resolved in:
+//! - the night step of [`game::run_game_with_rules`](crate::game::run_game_with_rules): recording the link;
+//! - [`lovers`](crate::roles::lovers): what being in love means.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

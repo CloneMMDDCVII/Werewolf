@@ -1,17 +1,8 @@
-//! Passive during the night — Cursed has no night action of its own.
+//! Cursed has no action. When the wolves attack the Cursed, they turn Wolf
+//! instead of dying (Werewolf.cs:3298-3299).
 //!
-//! The real Cursed mechanic *is* modeled, but not here: like
-//! `traitor::Traitor`'s bite conversion, it's a transform triggered by
-//! being on the receiving end of the wolves' own night action, not
-//! something Cursed decides for itself. Werewolf.cs:3298-3299
-//! (`case IRole.Cursed: Transform(target, IRole.Wolf, ...); break;`) shows
-//! it's unconditional — no `KillPlayer` call at all, not even a chance
-//! roll — whenever the wolves' eat target happens to be Cursed, they
-//! become Wolf instead of dying. See
-//! the wolves region of `night::resolve_night_sequence`, which handles both the
-//! primary wolf-eat target and the Wolf Cub's bonus-kill target (both
-//! funnel through the same switch in the real code, Werewolf.cs:3239-3270)
-//! before either is turned into a death.
+//! Resolved in:
+//! - [`Night::wolves_attack`](crate::night::Night::wolves_attack): the transform.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;
