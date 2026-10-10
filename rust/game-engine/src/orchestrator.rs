@@ -458,6 +458,17 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
             .filter(|r| !matches!(r, Role::Spumpkin | Role::Chef | Role::Barkeep | Role::Witch))
             .map(|r| r.locale_key()),
     );
+    // Every key a role's `RoleDef` names, so a new role's text is checked
+    // the day it is added. Keys with a fallback text are not in English.xml.
+    for &role in shared::ALL_ROLES {
+        let d = def(role);
+        let deaths = [d.deaths.eaten, d.deaths.serial_killed, d.deaths.fell_in_grave];
+        let role_keys = [d.info_key]
+            .into_iter()
+            .chain(deaths)
+            .chain(d.deaths.visited_serial_killer);
+        keys.extend(role_keys.filter(|k| crate::messages::fallback_text(k).is_none()));
+    }
     keys.sort_unstable();
     keys.dedup();
     keys

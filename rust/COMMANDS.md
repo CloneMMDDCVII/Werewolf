@@ -6,6 +6,8 @@ where its logic actually lives today and how much of it this port covers.
 Not a plan to port all 83 — most of these are Telegram-bot admin/infra
 plumbing this rewrite doesn't need. Kept here so "have we looked at X" has
 one answer instead of living in scattered session summaries.
+How the engine is organised, and how to add a role, is in
+`ARCHITECTURE.md`.
 
 Status legend: ✅ done · 🟡 partial (see notes) · ⬜ not started · ⛔ out of
 scope (explained in notes, not just skipped silently)

@@ -1,6 +1,6 @@
 //! Chef is not in this project's `Werewolf.cs`; it comes from the
 //! GreyWolfDev/Werewolf beta fork. It has a team and no mechanic, rather than an
-//! invented one, and is not dealt.
+//! invented one. The balancer never deals it (`Pool::Never`).
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

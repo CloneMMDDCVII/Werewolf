@@ -1,7 +1,8 @@
 # Werewolf for Telegram, in Rust
 
-The Rust port of the bot. `COMMANDS.md` tracks which commands are ported,
-and `bot/README.md` is how to run the bot.
+The Rust port of the bot. `ARCHITECTURE.md` explains how the crates fit
+together and how to add, change or delete a role, `COMMANDS.md` tracks
+which commands are ported, and `bot/README.md` is how to run the bot.
 
 ## Checks
 
