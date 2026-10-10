@@ -2,7 +2,7 @@
 //! `LinkLovers`. Any two roles can be lovers (Werewolf.cs:4654).
 //!
 //! Resolved in:
-//! - [`orchestrator::resolve_lover_deaths`](crate::orchestrator::resolve_lover_deaths): a partner dies with the other
+//! - [`orchestrator::deaths::resolve_lover_deaths`](crate::orchestrator::deaths::resolve_lover_deaths): a partner dies with the other
 //!   (Werewolf.cs:5609-5616);
 //! - [`game_end::check_game_end`](crate::game_end::check_game_end): the lovers' win.
 

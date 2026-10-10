@@ -53,7 +53,7 @@ pub struct RoleDef {
 }
 
 /// The shape of a role's night question. Who a pick may name is the
-/// night menu (`orchestrator::night_options`, Werewolf.cs:5157-5212).
+/// night menu (`orchestrator::night_ask::night_options`, Werewolf.cs:5157-5212).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NightQuestion {
     None,

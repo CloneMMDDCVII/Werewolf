@@ -3,7 +3,7 @@
 //! (Werewolf.cs:5116-5130).
 //!
 //! Resolved in:
-//! - [`orchestrator::resolve_spumpkin_detonation`](crate::orchestrator::resolve_spumpkin_detonation): the roll and the deaths.
+//! - [`orchestrator::deaths::resolve_spumpkin_detonation`](crate::orchestrator::deaths::resolve_spumpkin_detonation): the roll and the deaths.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

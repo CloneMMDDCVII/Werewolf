@@ -22,7 +22,11 @@ Dependencies only point down this list:
 
 `game-engine` never talks to Telegram. It asks questions and tells players
 things through the `orchestrator::Presenter` trait; `bot` implements it for
-Telegram, `sim` for transcripts and tests.
+Telegram, `sim` for transcripts and tests. `orchestrator/` is one file per
+concern (`presenter.rs`, `prompt.rs`, `night_ask.rs`, `day.rs`,
+`deaths.rs`, ...); its `mod.rs` re-exports them, so callers write
+`orchestrator::resolve_day`, and this document names the file
+(`orchestrator::day::resolve_day`) so you know where to look.
 
 ## The life of a game
 
@@ -32,7 +36,7 @@ Telegram, `sim` for transcripts and tests.
    lives across rounds (who is alive, each role's `RoleState`, lovers,
    kills, the night's memory), and tells everyone their role.
 3. Each round:
-   - **Night.** `orchestrator::resolve_night_with_freeze` asks every
+   - **Night.** `orchestrator::night_ask::resolve_night_with_freeze` asks every
      player their night question in one batch, then the roles that need
      the wolves' target (the Witch). Each role's `RoleBehavior` turns its
      answer into `NightAction`s. The Snow Wolf's freeze is applied
@@ -43,11 +47,11 @@ Telegram, `sim` for transcripts and tests.
      `reveals` then tells the Seer, Sorcerer, Fool, Oracle and Augur what
      they saw.
    - **Deaths.** `Game::process_deaths_and_hunter_shots` records the
-     deaths, kills lovers' partners (`orchestrator::resolve_lover_deaths`),
-     asks dead Hunters for their shot (`orchestrator::resolve_hunter_shots`)
+     deaths, kills lovers' partners (`orchestrator::deaths::resolve_lover_deaths`),
+     asks dead Hunters for their shot (`orchestrator::deaths::resolve_hunter_shots`)
      and narrates each death (`death_text`).
-   - **Day.** `orchestrator::resolve_day` asks the lynch vote and every day
-     question together. `orchestrator::apply_day_results` and the game
+   - **Day.** `orchestrator::day::resolve_day` asks the lynch vote and every day
+     question together. `orchestrator::day::apply_day_results` and the game
      apply the Gunner, Detective, Spumpkin, Blacksmith, Sandman, Pacifist
      and Troublemaker, then the lynch.
    - **End check** after every step: an admin's `/killgame`, flees, the
@@ -91,7 +95,7 @@ game resolves them in, which the replays depend on.
    and add tests.
 3. **`game-engine/src/roles/mod.rs`**: `pub mod <role>;` and a line in
    `def`.
-4. **A new question?** Add a `Prompt` variant in `orchestrator.rs` and
+4. **A new question?** Add a `Prompt` variant in `orchestrator/prompt.rs` and
    its key in `prompt_locale_key`. Then point `DEF.night` or `DEF.day` at
    it.
 5. **Does the role touch other players at night?** Add a region to

@@ -2,8 +2,8 @@
 //! living player instead (Werewolf.cs:999-1011).
 //!
 //! Resolved in:
-//! - [`orchestrator::resolve_day`](crate::orchestrator::resolve_day) and
-//!   [`orchestrator::resolve_lynch_vote`](crate::orchestrator::resolve_lynch_vote)
+//! - [`orchestrator::day::resolve_day`](crate::orchestrator::day::resolve_day) and
+//!   [`orchestrator::day::resolve_lynch_vote`](crate::orchestrator::day::resolve_lynch_vote)
 //!   (a Troublemaker's second lynch): the redirected vote.
 
 use crate::roles::definition::*;

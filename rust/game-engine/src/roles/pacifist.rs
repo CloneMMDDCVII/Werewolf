@@ -2,8 +2,8 @@
 //! Troublemaker on the same day cancels it back; the last one to answer wins.
 //!
 //! Resolved in:
-//! - [`orchestrator::last_day_veto`](crate::orchestrator::last_day_veto): which veto stands;
-//! - [`orchestrator::apply_day_results`](crate::orchestrator::apply_day_results): cancelling the lynch.
+//! - [`orchestrator::day::last_day_veto`](crate::orchestrator::day::last_day_veto): which veto stands;
+//! - [`orchestrator::day::apply_day_results`](crate::orchestrator::day::apply_day_results): cancelling the lynch.
 
 use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};

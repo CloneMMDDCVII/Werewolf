@@ -3,7 +3,7 @@
 //! There is no limit on how often.
 //!
 //! Resolved in:
-//! - [`orchestrator::resolve_night_with_freeze`](crate::orchestrator::resolve_night_with_freeze): brewing instead of asking;
+//! - [`orchestrator::night_ask::resolve_night_with_freeze`](crate::orchestrator::night_ask::resolve_night_with_freeze): brewing instead of asking;
 //! - [`Night::chemist`](crate::night::Night::chemist) and [`Night::chemist_killed_wise_elder`](crate::night::Night::chemist_killed_wise_elder): the gamble.
 
 use crate::roles::definition::*;

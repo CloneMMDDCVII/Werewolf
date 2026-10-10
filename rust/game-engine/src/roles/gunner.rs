@@ -4,7 +4,7 @@
 //! (Werewolf.cs:2887-2889).
 //!
 //! Resolved in:
-//! - [`orchestrator::apply_day_results`](crate::orchestrator::apply_day_results): the shot;
+//! - [`orchestrator::day::apply_day_results`](crate::orchestrator::day::apply_day_results): the shot;
 //! - [`game::demote_gunner_if_shot_a_wise_elder`](crate::game::demote_gunner_if_shot_a_wise_elder): the demotion.
 
 use crate::roles::definition::*;

@@ -2,7 +2,7 @@
 //! Pacifist on the same day cancels it; the last one to answer wins.
 //!
 //! Resolved in:
-//! - [`orchestrator::last_day_veto`](crate::orchestrator::last_day_veto): which veto stands;
+//! - [`orchestrator::day::last_day_veto`](crate::orchestrator::day::last_day_veto): which veto stands;
 //! - [`game::run_game_with_rules`](crate::game::run_game_with_rules): the second lynch.
 
 use crate::roles::definition::*;

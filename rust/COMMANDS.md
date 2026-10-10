@@ -166,20 +166,20 @@ Mechanics the briefing listed as unported, scoped in
 | Seer, Sorcerer, Fool, Oracle readings with legacy disguises, read mid-night after the Harlot (a reader killed earlier learns nothing) | ✅ | `game_engine::reveals::resolve_night_readings`, called from `night::Night::seers` |
 | Augur readings (needs the balancer's pool: `balance_with_pool` + `run_game_with_role_pool`) | ✅ | same |
 | Detective snoops by day, wolves may catch them | ✅ | `reveals::resolve_detective` |
-| Troublemaker's second lynch; Pacifist vs Troublemaker, last one wins | ✅ | `game::run_game`, `orchestrator::last_day_veto` |
-| Lynch tie / no votes announcements (no re-vote: `RandomLynch` is `false`) | ✅ | `orchestrator::LynchResult` |
-| Clumsy Guy vote redirect | ✅ | `orchestrator::LynchVotes` |
-| Revealed Mayor's vote counts double on every later lynch | ✅ | `orchestrator::tally_lynch` |
-| Hunter domino chains; a last shot skipped (`HunterSkipChoice*`) told apart from one never taken (`HunterNoChoice*`) | ✅ | `game::process_deaths_and_hunter_shots`, `orchestrator::resolve_hunter_shots` |
+| Troublemaker's second lynch; Pacifist vs Troublemaker, last one wins | ✅ | `game::run_game`, `orchestrator::day::last_day_veto` |
+| Lynch tie / no votes announcements (no re-vote: `RandomLynch` is `false`) | ✅ | `orchestrator::day::LynchResult` |
+| Clumsy Guy vote redirect | ✅ | `orchestrator::day::LynchVotes` |
+| Revealed Mayor's vote counts double on every later lynch | ✅ | `orchestrator::day::tally_lynch` |
+| Hunter domino chains; a last shot skipped (`HunterSkipChoice*`) told apart from one never taken (`HunterNoChoice*`) | ✅ | `game::process_deaths_and_hunter_shots`, `orchestrator::deaths::resolve_hunter_shots` |
 | Gunner bullet count shown and carried over a Thief steal | ✅ | `roles::gunner::bullets_left`, `night::Night::thief` |
 | Thief full mode: a try every night, 50% to land, never on wolves or Cultists, victim becomes the Thief, frozen Thief blocked, SK/Grave Digger/away Harlot or GA | ✅ | `night::Night::thief` |
 | Cultist Hunter kills a hunted Cultist (before the cult converts), reports misses and dead targets, dies at the SK | ✅ | `night::Night::cultist_hunter` |
 | The night in the legacy order, through one shared visit rule (Arsonist, wolves, SK, Cultist Hunter, cult, Chemist, Harlot, seers, GA, Thief) | ✅ | `game_engine::night`. Scope: `features/night-sequence.feature` |
-| The Arsonist offered only undoused houses, shown those doused (`AlreadyDousedList`), spark only once something is doused | ✅ | `orchestrator::resolve_night_with_freeze` |
+| The Arsonist offered only undoused houses, shown those doused (`AlreadyDousedList`), spark only once something is doused | ✅ | `orchestrator::night_ask::resolve_night_with_freeze` |
 | The Grave Digger told whose graves they dig (`DigGraves`/`DigNoGraves`) | ✅ | `game::run_game_with_rules` |
-| Day abilities announced when used; the Pacifist's peace closes the vote | ✅ | `orchestrator::DayAnswers` (`OnAnswer::closed`). Scope: `features/day-abilities.feature` |
-| The Gunner's shot kills at once: told when answered, the victim's questions close, votes by or for them dropped. Their lover's grief, a shot Hunter's last shot and role changes still wait for the day's questions to close | ✅ | `orchestrator::DayAnswers::shoot` |
-| A Gunner or Spumpkin who kills the Wise Elder becomes a Villager (`GunnerShotWiseElder`, `DetonatedWiseElder`) | ✅ | `orchestrator::DayAnswers::shoot`, `game::run_game_with_rules` |
+| Day abilities announced when used; the Pacifist's peace closes the vote | ✅ | `orchestrator::day::DayAnswers` (`OnAnswer::closed`). Scope: `features/day-abilities.feature` |
+| The Gunner's shot kills at once: told when answered, the victim's questions close, votes by or for them dropped. Their lover's grief, a shot Hunter's last shot and role changes still wait for the day's questions to close | ✅ | `orchestrator::day::DayAnswers::shoot` |
+| A Gunner or Spumpkin who kills the Wise Elder becomes a Villager (`GunnerShotWiseElder`, `DetonatedWiseElder`) | ✅ | `orchestrator::day::DayAnswers::shoot`, `game::run_game_with_rules` |
 | Role info and team lists when roles are dealt; every role change told to the player and their old and new teams; the Doppelganger's role model, picked at random for a Wild Child or Doppelganger who didn't | ✅ | `game_engine::role_info`. Scope: `features/role-info.feature` |
 | Game length at the end of the summary (`EndTime`) | ✅ | `bot::game` (the presenter keeps the clock) |
 | Achievements | ⛔ | Dropped for this port |
@@ -190,8 +190,8 @@ Group settings the engine follows, scoped in `features/game-rules.feature`
 | Setting | Status | Where |
 |---|---|---|
 | Day/night/lynch timers announced (`NightTime`, `DayTime` + `Day`, `LynchTime`), longer first night and bigger-game days | ✅ | `rules::GameRules::{night_seconds, day_seconds}`. The countdown is the presenter's (`bot::game`) |
-| Public lynch votes announced as cast | ✅ | `orchestrator::LynchVotes`, called by the presenter as each vote lands (`Presenter::ask_batch`) |
-| Secret lynch: vote counts only, then results with votes and optionally voters | ✅ | `orchestrator::secret_lynch_results` |
+| Public lynch votes announced as cast | ✅ | `orchestrator::day::LynchVotes`, called by the presenter as each vote lands (`Presenter::ask_batch`) |
+| Secret lynch: vote counts only, then results with votes and optionally voters | ✅ | `orchestrator::day::secret_lynch_results` |
 | Show roles on death | ✅ | `NarrationEvent::Death::reveal_role` |
 | End-of-game summary per `ShowRolesEnd` | ✅ | `summary::GameSummary`, `NarrationEvent::GameSummary` |
 | Random mode rolls (mode, thief full, secret lynch, votes, voters, roles on death, burning overkill, end roles) | ✅ | `control::game_rules::game_start`. Divergence: the rolled roles-on-death and end-roles values are used; legacy rolled them and then read the stored flags |

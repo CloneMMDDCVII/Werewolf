@@ -3,7 +3,7 @@
 //! stop the Arsonist (Werewolf.cs:3187, "Fire beats ice!").
 //!
 //! Resolved in:
-//! - [`orchestrator::resolve_night_with_freeze`](crate::orchestrator::resolve_night_with_freeze): the douse-or-spark question;
+//! - [`orchestrator::night_ask::resolve_night_with_freeze`](crate::orchestrator::night_ask::resolve_night_with_freeze): the douse-or-spark question;
 //! - [`Night::arsonist`](crate::night::Night::arsonist): the burn, and the doused set kept in
 //!   [`NightMemory::doused`](crate::night::NightMemory::doused).
 

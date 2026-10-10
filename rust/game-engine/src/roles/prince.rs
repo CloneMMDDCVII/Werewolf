@@ -2,7 +2,7 @@
 //! and are revealed (Werewolf.cs:2745-2751).
 //!
 //! Resolved in:
-//! - [`orchestrator::apply_day_results`](crate::orchestrator::apply_day_results): the survival;
+//! - [`orchestrator::day::apply_day_results`](crate::orchestrator::day::apply_day_results): the survival;
 //! - [`Game::announce_prince`](crate::game::Game::announce_prince): the reveal.
 
 use crate::roles::definition::*;

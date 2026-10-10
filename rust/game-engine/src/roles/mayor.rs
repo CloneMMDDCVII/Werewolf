@@ -2,8 +2,8 @@
 //! their lynch vote counts twice (Werewolf.cs:2649-2652).
 //!
 //! Resolved in:
-//! - [`orchestrator::resolve_day`](crate::orchestrator::resolve_day) and
-//!   [`orchestrator::resolve_lynch_vote`](crate::orchestrator::resolve_lynch_vote)
+//! - [`orchestrator::day::resolve_day`](crate::orchestrator::day::resolve_day) and
+//!   [`orchestrator::day::resolve_lynch_vote`](crate::orchestrator::day::resolve_lynch_vote)
 //!   (a Troublemaker's second lynch): the double vote.
 
 use crate::roles::definition::*;

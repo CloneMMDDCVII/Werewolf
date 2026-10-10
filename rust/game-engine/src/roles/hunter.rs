@@ -2,7 +2,7 @@
 //! (Werewolf.cs:5420-5484). A pack attacking the Hunter may lose a wolf.
 //!
 //! Resolved in:
-//! - [`orchestrator::resolve_hunter_shots`](crate::orchestrator::resolve_hunter_shots): the final shot;
+//! - [`orchestrator::deaths::resolve_hunter_shots`](crate::orchestrator::deaths::resolve_hunter_shots): the final shot;
 //! - [`Night::wolves_attack`](crate::night::Night::wolves_attack): shooting back at the pack.
 
 use crate::roles::definition::*;
