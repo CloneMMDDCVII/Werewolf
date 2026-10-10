@@ -6,6 +6,7 @@
 //! from outside (button presses, `/flee`, `/killgame`, `/players`) goes
 //! through its [`GameHandle`], which is `Send + Sync`.
 
+use crate::sync::LockExt;
 use crate::telegram::{Button, Keyboard, MsgRef, SendError, Telegram};
 use crate::text::{bold, escape, Texts};
 use async_trait::async_trait;
@@ -142,8 +143,7 @@ impl GameHandle {
 
     pub fn is_playing(&self, telegram_id: i64) -> bool {
         self.roster
-            .lock()
-            .unwrap()
+            .locked()
             .iter()
             .any(|p| p.id == PlayerId(telegram_id as u64))
     }
@@ -151,20 +151,19 @@ impl GameHandle {
     /// Roles aren't dealt yet: the lobby has closed but the game hasn't
     /// started.
     pub fn is_initializing(&self) -> bool {
-        self.roster.lock().unwrap().is_empty()
+        self.roster.locked().is_empty()
     }
 
     pub fn is_alive(&self, telegram_id: i64) -> bool {
         self.roster
-            .lock()
-            .unwrap()
+            .locked()
             .iter()
             .any(|p| p.id == PlayerId(telegram_id as u64) && p.alive)
     }
 
     /// `/flee` mid-game: takes effect at the engine's next checkpoint.
     pub fn flee(&self, telegram_id: i64) {
-        let mut fled = self.fled.lock().unwrap();
+        let mut fled = self.fled.locked();
         if !fled.contains(&telegram_id) {
             fled.push(telegram_id);
         }
@@ -184,13 +183,13 @@ impl GameHandle {
     /// `/players` during a game (`OutputPlayers`, Werewolf.cs:1417-1430).
     pub fn players_reply(&self, texts: &Texts, lang: &str) -> PlayersReply {
         {
-            let mut last = self.last_players_reply.lock().unwrap();
+            let mut last = self.last_players_reply.locked();
             if last.is_some_and(|t| t.elapsed() < Duration::from_secs(10)) {
                 return PlayersReply::Throttled;
             }
             *last = Some(Instant::now());
         }
-        match *self.last_list.lock().unwrap() {
+        match *self.last_list.locked() {
             Some(msg) => PlayersReply::LatestList(msg),
             None => PlayersReply::List(self.player_list(texts, lang)),
         }
@@ -200,10 +199,10 @@ impl GameHandle {
     /// in the order they died, then the living, shuffled when the group
     /// asks for it.
     pub fn player_list(&self, texts: &Texts, lang: &str) -> String {
-        let roster = self.roster.lock().unwrap().clone();
+        let roster = self.roster.locked().clone();
         let alive = roster.iter().filter(|p| p.alive).count();
         let mut entries = render_player_list(&roster, self.show_roles_on_death.load(Ordering::SeqCst));
-        let order = self.death_order.lock().unwrap().clone();
+        let order = self.death_order.locked().clone();
         let died_at = |id: PlayerId| order.iter().position(|d| *d == id).unwrap_or(usize::MAX);
         entries.sort_by_key(|e| match e.status {
             PlayerStatus::Alive => usize::MAX,
@@ -244,15 +243,15 @@ impl GameHandle {
     }
 
     fn set_roster(&self, roster: Vec<RosterEntry>) {
-        *self.roster.lock().unwrap() = roster;
+        *self.roster.locked() = roster;
     }
 
     fn update_roster(&self, f: impl FnOnce(&mut Vec<RosterEntry>)) {
-        f(&mut self.roster.lock().unwrap());
+        f(&mut self.roster.locked());
     }
 
     fn drain_fled(&self) -> Vec<i64> {
-        std::mem::take(&mut *self.fled.lock().unwrap())
+        std::mem::take(&mut *self.fled.locked())
     }
 }
 
@@ -434,8 +433,7 @@ pub async fn play(setup: GameSetup) {
                 .collect(),
             None => handle
                 .roster
-                .lock()
-                .unwrap()
+                .locked()
                 .iter()
                 .map(|e| (e.id.0 as i64, e.alive, false))
                 .collect(),
@@ -579,7 +577,7 @@ impl TelegramPresenter {
         let text = self.handle.player_list(&self.texts, &self.lang);
         match self.telegram.send(self.group_id, &text, None).await {
             Ok(msg) => {
-                *self.handle.last_list.lock().unwrap() = Some(msg);
+                *self.handle.last_list.locked() = Some(msg);
                 self.list_changed = false;
             }
             Err(e) => log::warn!("group {}: player list not sent: {e}", self.group_id),
@@ -623,8 +621,7 @@ impl TelegramPresenter {
         let teammates: Vec<String> = self
             .handle
             .roster
-            .lock()
-            .unwrap()
+            .locked()
             .iter()
             .filter(|e| e.alive && e.id != player && team(e.role))
             .filter(|e| self.asked.contains(&(e.id, prompt)))
@@ -903,7 +900,7 @@ impl TelegramPresenter {
 
     async fn record_death(&mut self, victim: PlayerId, method: KillMethod) {
         self.list_changed = true;
-        self.handle.death_order.lock().unwrap().push(victim);
+        self.handle.death_order.locked().push(victim);
         self.handle.update_roster(|r| {
             if let Some(e) = r.iter_mut().find(|e| e.id == victim) {
                 e.alive = false;

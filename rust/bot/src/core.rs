@@ -6,6 +6,7 @@
 use crate::game::{self, parse_callback_data, unix_now, Click, GameHandle, GameSetup, PlayersReply};
 use crate::join_timer::{mm_ss, JoinTimer, TimerEvent};
 use crate::spawn::GameSpawner;
+use crate::sync::LockExt;
 use crate::telegram::{Button, Chat, Command, Incoming, MsgRef, Telegram, User};
 use crate::text::{bold, escape, Texts};
 use control::group_config::{linked_group_name, load_settings, GroupSettings, Toggle};
@@ -15,7 +16,7 @@ use moderation::{CommandMessage, GateDecision, Invocation, Moderation, RestoreCh
 use shared::GameMode;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 use tokio::sync::Notify;
 
@@ -37,7 +38,7 @@ impl MemoryAdmission {
 impl Admission for MemoryAdmission {
     fn admit(&self, running_games: usize) -> bool {
         matches!(
-            self.0.lock().unwrap().try_admit(running_games),
+            self.0.locked().try_admit(running_games),
             control::capacity::AdmissionDecision::Admit
         )
     }
@@ -129,11 +130,11 @@ impl BotCore {
     }
 
     pub(crate) fn texts(&self) -> Arc<Texts> {
-        self.texts.read().unwrap().clone()
+        self.texts.read().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     pub(crate) fn set_texts(&self, texts: Arc<Texts>) {
-        *self.texts.write().unwrap() = texts;
+        *self.texts.write().unwrap_or_else(PoisonError::into_inner) = texts;
     }
 
     pub fn store(&self) -> &Store {
@@ -163,15 +164,14 @@ impl BotCore {
 
     pub fn running_games(&self) -> usize {
         self.slots
-            .lock()
-            .unwrap()
+            .locked()
             .values()
             .filter(|s| matches!(s, Slot::Running(_)))
             .count()
     }
 
     pub fn active_groups(&self) -> usize {
-        self.slots.lock().unwrap().len()
+        self.slots.locked().len()
     }
 
     /// First Ctrl+C: no new games; lobbies and games already going finish.
@@ -193,12 +193,12 @@ impl BotCore {
     /// Second Ctrl+C: end every lobby and game now, telling each group.
     pub async fn kill_everything(&self) {
         let slots: Vec<(i64, Option<Arc<GameHandle>>)> = {
-            let mut map = self.slots.lock().unwrap();
+            let mut map = self.slots.locked();
             let mut out = vec![];
             for (group, slot) in map.iter() {
                 match slot {
                     Slot::Joining(ctl) => {
-                        let _ = ctl.lock().unwrap().lobby.kill();
+                        let _ = ctl.locked().lobby.kill();
                         out.push((*group, None));
                     }
                     Slot::Running(h) => out.push((*group, Some(h.clone()))),
@@ -344,7 +344,7 @@ impl BotCore {
 
     async fn callback(self: &Arc<Self>, id: String, from: User, message: Option<MsgRef>, data: String) {
         if let Some((seq, qid, choice)) = parse_callback_data(&data) {
-            let handle = self.slots.lock().unwrap().values().find_map(|s| match s {
+            let handle = self.slots.locked().values().find_map(|s| match s {
                 Slot::Running(h) if h.seq == seq => Some(h.clone()),
                 _ => None,
             });
@@ -419,7 +419,7 @@ impl BotCore {
                 let settings = self.settings(group).await;
                 let name = self
                     .lobby_of(group)
-                    .map(|c| c.lock().unwrap().group_name.clone())
+                    .map(|c| c.locked().group_name.clone())
                     .unwrap_or_default();
                 self.say(
                     cmd.from.id,
@@ -485,12 +485,7 @@ impl BotCore {
             self.say(group, &text).await;
             return;
         }
-        let existing = self
-            .slots
-            .lock()
-            .unwrap()
-            .get(&group)
-            .map(|s| matches!(s, Slot::Joining(_)));
+        let existing = self.slots.locked().get(&group).map(|s| matches!(s, Slot::Joining(_)));
         match existing {
             Some(true) => {
                 let text = self.texts().get(
@@ -531,7 +526,7 @@ impl BotCore {
             group_name: cmd.chat.title().to_string(),
         }));
         {
-            let mut slots = self.slots.lock().unwrap();
+            let mut slots = self.slots.locked();
             if slots.contains_key(&group) {
                 return; // lost a race with another /startgame
             }
@@ -549,7 +544,7 @@ impl BotCore {
             .send(group, &text, Some(self.join_button(group, &lang)))
             .await
         {
-            ctl.lock().unwrap().join_messages.push(m);
+            ctl.locked().join_messages.push(m);
         }
 
         // The starter joins their own game, if the bot can PM them.
@@ -567,13 +562,13 @@ impl BotCore {
 
     /// The group whose lobby or game `user` is in, if any.
     fn group_of(&self, user: i64) -> Option<(i64, String)> {
-        self.slots.lock().unwrap().iter().find_map(|(group, slot)| {
+        self.slots.locked().iter().find_map(|(group, slot)| {
             let found = match slot {
-                Slot::Joining(ctl) => ctl.lock().unwrap().lobby.telegram_ids().contains(&user),
+                Slot::Joining(ctl) => ctl.locked().lobby.telegram_ids().contains(&user),
                 Slot::Running(h) => h.is_alive(user),
             };
             let name = match slot {
-                Slot::Joining(ctl) => ctl.lock().unwrap().group_name.clone(),
+                Slot::Joining(ctl) => ctl.locked().group_name.clone(),
                 Slot::Running(_) => String::new(),
             };
             found.then_some((*group, name))
@@ -600,7 +595,7 @@ impl BotCore {
     /// as in the legacy `AddPlayer` (Werewolf.cs:685-761); the group hears
     /// about joins in the timer's 30-second batches.
     async fn join(&self, group: i64, user: &User) {
-        let ctl = match self.slots.lock().unwrap().get(&group) {
+        let ctl = match self.slots.locked().get(&group) {
             Some(Slot::Joining(ctl)) => Some(ctl.clone()),
             _ => None,
         };
@@ -623,7 +618,7 @@ impl BotCore {
             .await;
 
         let (result, group_name, link) = {
-            let mut c = ctl.lock().unwrap();
+            let mut c = ctl.locked();
             let result = c.lobby.join(Candidate {
                 telegram_id: user.id,
                 name: user.name.clone(),
@@ -671,7 +666,7 @@ impl BotCore {
         loop {
             ticker.tick().await;
             let (events, announce, lang, show_ids, killed) = {
-                let mut c = ctl.lock().unwrap();
+                let mut c = ctl.locked();
                 if c.lobby.state() != control::lobby::LobbyState::Joining {
                     (vec![], vec![], String::new(), false, true)
                 } else {
@@ -736,7 +731,7 @@ impl BotCore {
                 let keyboard = button.then(|| self.join_button(group, &lang));
                 if let Ok(m) = self.telegram.send(group, &text, keyboard).await {
                     if button {
-                        ctl.lock().unwrap().join_messages.push(m);
+                        ctl.locked().join_messages.push(m);
                     }
                 }
             }
@@ -749,7 +744,7 @@ impl BotCore {
 
     async fn close_joining(self: &Arc<Self>, group: i64, ctl: Arc<Mutex<LobbyCtl>>) {
         let (outcome, buttons, lobby, settings, group_name, requested_mode) = {
-            let mut c = ctl.lock().unwrap();
+            let mut c = ctl.locked();
             let outcome = c.lobby.try_start();
             (
                 outcome,
@@ -774,7 +769,7 @@ impl BotCore {
                 self.say(group, &self.texts().key(&lang, "StartingGameWait", &[])).await;
                 let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
                 let (handle, clicks) = GameHandle::new(seq, group);
-                self.slots.lock().unwrap().insert(group, Slot::Running(handle.clone()));
+                self.slots.locked().insert(group, Slot::Running(handle.clone()));
                 let core = self.clone();
                 let setup = GameSetup {
                     telegram: self.telegram.clone(),
@@ -800,19 +795,19 @@ impl BotCore {
     }
 
     fn free_slot(&self, group: i64) {
-        self.slots.lock().unwrap().remove(&group);
+        self.slots.locked().remove(&group);
         self.slot_freed.notify_waiters();
     }
 
     fn lobby_of(&self, group: i64) -> Option<Arc<Mutex<LobbyCtl>>> {
-        match self.slots.lock().unwrap().get(&group) {
+        match self.slots.locked().get(&group) {
             Some(Slot::Joining(c)) => Some(c.clone()),
             _ => None,
         }
     }
 
     fn game_of(&self, group: i64) -> Option<Arc<GameHandle>> {
-        match self.slots.lock().unwrap().get(&group) {
+        match self.slots.locked().get(&group) {
             Some(Slot::Running(h)) => Some(h.clone()),
             _ => None,
         }
@@ -827,7 +822,7 @@ impl BotCore {
         let name = escape(&cmd.from.name);
         if let Some(ctl) = self.lobby_of(group) {
             let (result, remaining) = {
-                let mut c = ctl.lock().unwrap();
+                let mut c = ctl.locked();
                 let r = c.lobby.leave(cmd.from.id);
                 c.unannounced.retain(|(id, _)| *id != cmd.from.id);
                 (r, c.lobby.players().len())
@@ -865,7 +860,7 @@ impl BotCore {
 
     async fn force_start(&self, cmd: &Command) {
         match self.lobby_of(cmd.chat.id) {
-            Some(ctl) => ctl.lock().unwrap().timer.force_start(),
+            Some(ctl) => ctl.locked().timer.force_start(),
             None => {
                 let lang = self.settings(cmd.chat.id).await.language;
                 self.say(cmd.chat.id, &self.texts().key(&lang, "NoGame", &[])).await;
@@ -891,7 +886,7 @@ impl BotCore {
             .and_then(|a| a.parse().ok())
             .unwrap_or(30);
         let result = {
-            let mut c = ctl.lock().unwrap();
+            let mut c = ctl.locked();
             let r = c.lobby.extend_time(cmd.from.id, is_admin, seconds);
             if let Ok(delta) = r {
                 c.timer.extend(delta as i64);
@@ -914,14 +909,7 @@ impl BotCore {
         let group = cmd.chat.id;
         let lang = self.settings(group).await.language;
         let text = if let Some(ctl) = self.lobby_of(group) {
-            let names: Vec<String> = ctl
-                .lock()
-                .unwrap()
-                .lobby
-                .players()
-                .iter()
-                .map(|p| escape(&p.name))
-                .collect();
+            let names: Vec<String> = ctl.locked().lobby.players().iter().map(|p| escape(&p.name)).collect();
             format!(
                 "{}: {}\n{}",
                 bold(&self.texts().get(&lang, "", "Players", &[])),
@@ -950,8 +938,8 @@ impl BotCore {
         let group = cmd.chat.id;
         let lang = self.settings(group).await.language;
         if let Some(ctl) = self.lobby_of(group) {
-            let _ = ctl.lock().unwrap().lobby.kill();
-            let buttons = std::mem::take(&mut ctl.lock().unwrap().join_messages);
+            let _ = ctl.locked().lobby.kill();
+            let buttons = std::mem::take(&mut ctl.locked().join_messages);
             for m in buttons {
                 let _ = self.telegram.clear_keyboard(m).await;
             }
@@ -999,7 +987,7 @@ impl BotCore {
         for &target in targets {
             if let Some(ctl) = self.lobby_of(group) {
                 let name = {
-                    let mut c = ctl.lock().unwrap();
+                    let mut c = ctl.locked();
                     let name = c
                         .lobby
                         .players()

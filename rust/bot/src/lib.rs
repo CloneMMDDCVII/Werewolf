@@ -7,7 +7,7 @@
 //!   [`fake`] an in-memory one for tests.
 //! - [`core`]: command dispatch, the permission gate, each group's lobby.
 //! - [`game`]: one running game and its Telegram presenter.
-//! - [`config`], [`menus`], [`text`], [`join_timer`], [`spawn`].
+//! - [`config`], [`menus`], [`text`], [`join_timer`], [`spawn`], [`sync`].
 
 pub mod config;
 pub mod core;
@@ -17,6 +17,7 @@ pub mod join_timer;
 pub mod lang_admin;
 pub mod menus;
 pub mod spawn;
+pub mod sync;
 pub mod telegram;
 pub mod teloxide_adapter;
 pub mod text;

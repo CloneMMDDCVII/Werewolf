@@ -3,6 +3,7 @@
 //! and swaps in the reloaded languages after an install.
 
 use crate::core::BotCore;
+use crate::sync::LockExt;
 use crate::telegram::{Button, Command, Keyboard, MsgRef, User};
 use crate::text::{escape, Texts, ENGLISH_XML};
 use i18n::admin::{self, AdminButton, LangFile};
@@ -101,7 +102,7 @@ impl BotCore {
         self.send_report(cmd.chat.id, &check.report).await;
         if check.can_upload {
             let id = LanguageId::of(&new.file_name);
-            self.uploads.lock().unwrap().insert(cmd.from.id, (id, path));
+            self.uploads.locked().insert(cmd.from.id, (id, path));
             let rows = vec![vec![
                 Button::Callback {
                     text: "New".into(),
@@ -184,7 +185,7 @@ impl BotCore {
                 self.send_report(chat, &summary).await;
             }
             AdminButton::KeepNew(file_id) => {
-                let pending = self.uploads.lock().unwrap().remove(&from.id);
+                let pending = self.uploads.locked().remove(&from.id);
                 let Some((_, path)) = pending.filter(|(i, _)| *i == file_id) else {
                     self.edit_or_say(message, chat, "That upload has expired. Send /uploadlang again.")
                         .await;
@@ -213,7 +214,7 @@ impl BotCore {
                 self.edit_or_say(message, chat, text.trim()).await;
             }
             AdminButton::KeepOld => {
-                if let Some((_, path)) = self.uploads.lock().unwrap().remove(&from.id) {
+                if let Some((_, path)) = self.uploads.locked().remove(&from.id) {
                     let _ = std::fs::remove_file(path);
                 }
                 self.edit_or_say(message, chat, admin::KEPT_OLD).await;
