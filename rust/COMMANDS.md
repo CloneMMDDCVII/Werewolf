@@ -253,5 +253,5 @@ you do, so the files' text and translations take over.
 | `RoleInfoBarkeep` | The Barkeep's role info (beta-fork role, no mechanics here) | none |
 
 Questions with no key at all (the bot's own English, `bot::game::question_text`):
-the Witch's heal and poison, the Blacksmith's silver, the Spumpkin's
-detonation.
+the Witch's heal and poison, and the Spumpkin's detonation (the legacy menu
+used `AskDetonate`, Werewolf.cs:5128, which English.xml doesn't have).

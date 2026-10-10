@@ -45,6 +45,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Prompt {
     WolfEat,
+    /// The Serial Killer's nightly kill (Werewolf.cs:5164-5168).
+    SerialKillerKill,
     SeerCheck,
     HarlotVisit,
     GuardianAngelProtect,
@@ -124,6 +126,7 @@ pub enum Prompt {
 pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
     match prompt {
         Prompt::WolfEat => Some("AskEat"),
+        Prompt::SerialKillerKill => Some("AskKill"),
         Prompt::SeerCheck
         | Prompt::FoolInvestigate
         | Prompt::SorcererInvestigate
@@ -149,11 +152,11 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
         Prompt::HunterFinalShotKilled => Some("HunterShotChoice"),
         Prompt::WolfCubBonusKill => Some("AskEat"),
         Prompt::SnowWolfFreeze => Some("AskFreeze"),
+        Prompt::BlacksmithSilver => Some("SpreadDust"),
         // WitchHeal/WitchPoison belong to a role that isn't in the legacy
-        // game at all. BlacksmithSilver and SpumpkinDetonate are
-        // menu-driven in Werewolf.cs but have no corresponding key in
-        // English.xml (checked directly, not an oversight).
-        Prompt::WitchHeal | Prompt::WitchPoison | Prompt::BlacksmithSilver | Prompt::SpumpkinDetonate => None,
+        // game at all. SpumpkinDetonate's menu uses `AskDetonate`
+        // (Werewolf.cs:5128), which English.xml doesn't have.
+        Prompt::WitchHeal | Prompt::WitchPoison | Prompt::SpumpkinDetonate => None,
     }
 }
 
@@ -163,6 +166,7 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
 /// list by hand and risking it drifting from the enum above.
 pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::WolfEat,
+    Prompt::SerialKillerKill,
     Prompt::SeerCheck,
     Prompt::HarlotVisit,
     Prompt::GuardianAngelProtect,
@@ -842,6 +846,60 @@ impl OnAnswer for Quiet {
     }
 }
 
+/// Tells a wolf's or a Cultist's teammates whom they voted for, as each
+/// vote lands (Werewolf.cs:1030-1046 `WolfVotedKill`, 1112-1122
+/// `CultistVotedConvert`).
+pub struct TeamVotes {
+    /// Per question: the voter, who hears their vote, and the key.
+    asked: HashMap<usize, (PlayerId, Vec<PlayerId>, &'static str)>,
+    options: Vec<Vec<PlayerId>>,
+}
+
+impl TeamVotes {
+    pub fn for_night(questions: &[Question], players: &[AlivePlayer]) -> Self {
+        let team = |voter: PlayerId, of: fn(Role) -> bool| -> Vec<PlayerId> {
+            players.iter().filter(|p| p.id != voter && of(p.role)).map(|p| p.id).collect()
+        };
+        let mut asked = HashMap::new();
+        let mut options = vec![];
+        for (index, q) in questions.iter().enumerate() {
+            let Question::Targets { player, prompt, options: offered, .. } = q else {
+                options.push(vec![]);
+                continue;
+            };
+            options.push(offered.clone());
+            let heard = match prompt {
+                Prompt::WolfEat | Prompt::WolfCubBonusKill => Some((team(*player, eating_wolf), "WolfVotedKill")),
+                Prompt::CultistConvert => Some((team(*player, |r| r == Role::Cultist), "CultistVotedConvert")),
+                _ => None,
+            };
+            if let Some((to, key)) = heard {
+                asked.insert(index, (*player, to, key));
+            }
+        }
+        TeamVotes { asked, options }
+    }
+}
+
+impl OnAnswer for TeamVotes {
+    fn answered(&mut self, index: usize, answer: &Answer) -> Vec<NarrationEvent> {
+        let (Some((voter, to, key)), Answer::Targets(Some(picked))) = (self.asked.get(&index), answer) else {
+            return vec![];
+        };
+        let [target] = picked.as_slice() else { return vec![] };
+        if !self.options[index].contains(target) {
+            return vec![];
+        }
+        let message = Message::new(key, vec![MessageArg::Player(*voter), MessageArg::Player(*target)]);
+        to.iter().map(|&to| NarrationEvent::Tell { to, message: message.clone() }).collect()
+    }
+}
+
+/// The legacy `WolfRoles` (Werewolf.cs:48): the wolves who eat.
+fn eating_wolf(role: Role) -> bool {
+    matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
+}
+
 /// Sends one phase's questions and returns validated answers, one per
 /// question (see `validate_pick`); an answer of the wrong shape, or a
 /// missing one, counts as no answer.
@@ -935,6 +993,7 @@ pub struct AlivePlayer {
 fn one_target_prompt(role: Role) -> Option<Prompt> {
     match role {
         Role::Wolf => Some(Prompt::WolfEat),
+        Role::SerialKiller => Some(Prompt::SerialKillerKill),
         Role::Seer => Some(Prompt::SeerCheck),
         Role::Harlot => Some(Prompt::HarlotVisit),
         Role::GuardianAngel => Some(Prompt::GuardianAngelProtect),
@@ -951,6 +1010,20 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
         Role::Arsonist => Some(Prompt::ArsonistDouse),
         _ => None,
     }
+}
+
+/// Who a night menu offers (Werewolf.cs:5157-5212): every other living
+/// player, less the wolves and the Snow Wolf for a wolf, and less the
+/// cult for a Cultist.
+fn night_options(player: &AlivePlayer, players: &[AlivePlayer]) -> Vec<PlayerId> {
+    let eats = eating_wolf;
+    players
+        .iter()
+        .filter(|o| o.id != player.id)
+        .filter(|o| !eats(player.role) || !(eats(o.role) || o.role == Role::SnowWolf))
+        .filter(|o| player.role != Role::Cultist || o.role != Role::Cultist)
+        .map(|o| o.id)
+        .collect()
 }
 
 /// Roles with a yes/no night decision instead of a target pick.
@@ -1035,7 +1108,7 @@ pub async fn resolve_night_with_freeze(
         if player.role == Role::Cupid {
             a.cupid = Some(batch.targets(player.id, Prompt::CupidLink, &alive, 2));
         } else if player.role == Role::Arsonist {
-            let options: Vec<PlayerId> = alive.iter().copied().filter(|id| !doused.contains(id)).collect();
+            let options: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != player.id && !doused.contains(&id)).collect();
             let living_doused: Vec<PlayerId> = alive.iter().copied().filter(|id| doused.contains(id)).collect();
             let text = if living_doused.is_empty() {
                 Message::new("AskArsonistNoDoused", vec![])
@@ -1052,12 +1125,13 @@ pub async fn resolve_night_with_freeze(
             let picked = matches!(player.role, Role::WildChild | Role::Doppelganger) && state.primary_used;
             a.target = one_target_prompt(player.role)
                 .filter(|_| !picked)
-                .map(|prompt| batch.targets(player.id, prompt, &alive, 1));
+                .map(|prompt| batch.targets(player.id, prompt, &night_options(player, players), 1));
             a.toggle = toggle_night_prompt(player.role).map(|prompt| batch.toggle(player.id, prompt));
         }
         asked.push(a);
     }
-    let answers = ask_phase(presenter, Phase::Night, &batch.questions, &mut Quiet).await;
+    let mut votes = TeamVotes::for_night(&batch.questions, players);
+    let answers = ask_phase(presenter, Phase::Night, &batch.questions, &mut votes).await;
 
     let freeze = freeze
         .zip(single_target_answer(&answers, freeze_index))
@@ -1285,6 +1359,9 @@ struct DayAnswers<'a> {
     peace: bool,
     /// Batch index of each Gunner's shot, with the Gunner.
     shots: Vec<(usize, AlivePlayer)>,
+    /// Gunners whose shot was told, and so stands even if they're shot
+    /// after it.
+    fired: Vec<PlayerId>,
     /// Who each question in the batch is for, by index.
     owners: Vec<PlayerId>,
     players: &'a [AlivePlayer],
@@ -1303,6 +1380,7 @@ impl DayAnswers<'_> {
             return vec![];
         }
         self.votes.excluded.push(target);
+        self.fired.push(gunner.id);
         self.votes.cast.retain(|&(voter, voted)| voter != target && voted != target);
         let message = death_message(&DeathContext {
             victim: target,
@@ -1474,6 +1552,7 @@ pub async fn resolve_day(
         abilities: vec![],
         peace: false,
         shots: vec![],
+        fired: vec![],
         owners: vec![],
         players,
         reveal: rules.show_roles_on_death,
@@ -1482,7 +1561,8 @@ pub async fn resolve_day(
     for player in players {
         day.votes.ask(&mut batch, player, &alive);
         let state = states.entry(player.id).or_default();
-        let target = one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &alive, 1));
+        let others: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != player.id).collect();
+        let target = one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &others, 1));
         if let (Some(index), Role::Gunner) = (target, player.role) {
             day.shots.push((index, *player));
         }
@@ -1500,6 +1580,7 @@ pub async fn resolve_day(
     let answers = ask_phase(presenter, Phase::Day, &batch.questions, &mut day).await;
     let peace = day.peace;
     let shot = day.votes.excluded.clone();
+    let fired = day.fired.clone();
     let votes_by_voter = day.votes.cast;
 
     let mut day_actions = vec![];
@@ -1509,8 +1590,12 @@ pub async fn resolve_day(
         let ctx = DayContext {
             alive: &alive,
             self_id: player.id,
-            // Someone shot today doesn't snoop or shoot at day's end.
-            chosen_target: single_target_answer(&answers, target).filter(|_| !shot.contains(&player.id)),
+            // A shot was told as it was fired; someone shot today doesn't
+            // snoop at day's end.
+            chosen_target: single_target_answer(&answers, target).filter(|_| match player.role {
+                Role::Gunner => fired.contains(&player.id),
+                _ => !shot.contains(&player.id),
+            }),
             toggle_choice: toggle_answer(&answers, toggle),
         };
         day_actions.extend(behavior.day_action(&ctx, state));

@@ -203,3 +203,43 @@ Feature: The Grave Digger's graves
   Scenario: No graves on a night the Sandman slept
     Given the Sandman put the village to sleep
     Then the Grave Digger is told nothing, and those deaths still count next night
+
+Feature: Night menus offer what the legacy menus offered
+  # Werewolf.cs:5148-5300 (SendNightActions), 5094 (the Blacksmith),
+  # 1030-1050 and 1112-1122 (teammates told how each one voted).
+
+  Scenario: The Serial Killer is asked every night
+    Given a living Serial Killer
+    When night falls
+    Then they are asked "AskKill" with every other living player
+
+  Scenario Outline: Nobody is offered themselves or their own team
+    Given a living <role>
+    When night falls
+    Then their menu offers <offered>
+    Examples:
+      | role         | offered                                                        |
+      | Seer         | every other living player                                      |
+      | wolf         | every living player who is not a wolf or the Snow Wolf         |
+      | Cultist      | every living player who is not a Cultist                       |
+      | Arsonist     | every other living player not yet doused                       |
+      | Cupid        | every living player, themselves included                       |
+
+  Scenario: The Blacksmith's question has its own text
+    Given a Blacksmith who hasn't spread silver
+    Then they are asked "SpreadDust" during the day
+
+  Scenario Outline: Teammates hear each vote as it's cast
+    Given two living <team>
+    When one of them picks a target
+    Then the other is told "<key>" naming the voter and the target, before the night ends
+    Examples:
+      | team      | key                  |
+      | wolves    | WolfVotedKill        |
+      | Cultists  | CultistVotedConvert  |
+
+  Scenario: The wolves' second kill is asked of every wolf at once
+    Given the Wolf Cub died the day before
+    When night falls
+    Then every eating wolf gets the second menu in one round of questions
+    And the other wolves hear each second vote with "WolfVotedKill"

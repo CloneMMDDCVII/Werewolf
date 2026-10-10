@@ -222,3 +222,31 @@ async fn shooting_the_wise_elder_is_told_right_after_the_shot() {
     let death = presenter.log.iter().position(|l| matches!(l, Log::Said(NarrationEvent::Death { victim, .. }) if *victim == P4)).unwrap();
     assert_eq!(presenter.log[death + 1], Log::Said(NarrationEvent::Announce(Announcement::GunnerShotWiseElder { gunner: P2, elder: P4 })));
 }
+
+#[tokio::test]
+async fn a_gunner_shot_after_firing_still_killed() {
+    // P2 shoots P4 (the other Gunner), who had already shot P1.
+    let players = roster(&[Role::Villager, Role::Gunner, Role::Villager, Role::Gunner, Role::Wolf]);
+    struct Shots(Vec<Log>);
+    #[async_trait(?Send)]
+    impl Presenter for Shots {
+        async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, _: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+            self.0.push(Log::Asked(player, prompt));
+            match (player, prompt) {
+                (P4, Prompt::GunnerShoot { .. }) => Some(vec![P1]),
+                (P2, Prompt::GunnerShoot { .. }) => Some(vec![P4]),
+                _ => None,
+            }
+        }
+        async fn ask_toggle(&mut self, _: PlayerId, _: Prompt) -> bool {
+            false
+        }
+    }
+    // Ask P4 first, so their shot lands before P2's.
+    let players: Vec<AlivePlayer> = [3, 0, 1, 2, 4].iter().map(|&i| players[i]).collect();
+    let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
+    let (actions, _) =
+        resolve_day(&players, &mut states, &GameRules::default(), &mut Shots(vec![]), &mut SeededRngSource::new(0)).await;
+    assert!(actions.contains(&DayAction::Shoot { shooter: P4, target: P1 }), "{actions:?}");
+    assert!(actions.contains(&DayAction::Shoot { shooter: P2, target: P4 }), "{actions:?}");
+}

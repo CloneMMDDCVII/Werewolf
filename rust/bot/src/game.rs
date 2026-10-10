@@ -590,7 +590,6 @@ impl TelegramPresenter {
         let fallback = match prompt {
             Prompt::WitchHeal => "Who do you want to heal tonight?",
             Prompt::WitchPoison => "Who do you want to poison tonight?",
-            Prompt::BlacksmithSilver => "Do you want to spread silver dust tonight?",
             Prompt::SpumpkinDetonate => "Who do you want to detonate on?",
             _ => "Who do you choose?",
         };

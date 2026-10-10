@@ -38,7 +38,6 @@ fn prompt_fallback_text(prompt: Prompt) -> &'static str {
     match prompt {
         Prompt::WitchHeal => "(new role, not in the legacy game) Who do you want to heal?",
         Prompt::WitchPoison => "(new role, not in the legacy game) Who do you want to poison?",
-        Prompt::BlacksmithSilver => "(no locale key in English.xml) Who do you want to protect with silver?",
         Prompt::SpumpkinDetonate => "(no locale key in English.xml) Who do you want to detonate on?",
         _ => "Who do you choose?",
     }

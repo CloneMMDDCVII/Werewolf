@@ -19,7 +19,7 @@ use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::orchestrator::{
     apply_day_results, last_day_veto, resolve_day, resolve_hunter_shots_by, resolve_lover_deaths,
     resolve_lynch_vote, resolve_night_with_freeze, resolve_spumpkin_detonation, AlivePlayer, NarrationEvent,
-    Presenter, Prompt,
+    Answer, Phase, Presenter, Prompt, Question, TeamVotes,
 };
 use crate::reveals::resolve_detective;
 use crate::rng::RngSource;
@@ -870,17 +870,27 @@ async fn ask_wolf_cub_votes(
     presenter: &mut dyn Presenter,
 ) -> Vec<(PlayerId, PlayerId)> {
     let options: Vec<PlayerId> = alive.iter().filter(|p| !is_wolf_muscle(p.role)).map(|p| p.id).collect();
-    let mut votes = vec![];
-    for wolf in alive.iter().filter(|p| is_eating_wolf(p.role) && !skip.contains(&p.id)) {
-        if let Some(picked) = presenter.ask_targets(wolf.id, Prompt::WolfCubBonusKill, &options, 1).await {
-            if let [target] = picked.as_slice() {
-                if options.contains(target) {
-                    votes.push((wolf.id, *target));
-                }
-            }
-        }
+    let wolves: Vec<PlayerId> = alive.iter().filter(|p| is_eating_wolf(p.role) && !skip.contains(&p.id)).map(|p| p.id).collect();
+    if wolves.is_empty() {
+        return vec![];
     }
-    votes
+    let questions: Vec<Question> = wolves
+        .iter()
+        .map(|&player| Question::Targets { player, prompt: Prompt::WolfCubBonusKill, options: options.clone(), count: 1, text: None })
+        .collect();
+    let mut told = TeamVotes::for_night(&questions, alive);
+    let answers = presenter.ask_batch(Phase::Night, questions, &mut told).await;
+    wolves
+        .into_iter()
+        .zip(answers)
+        .filter_map(|(wolf, answer)| match answer {
+            Answer::Targets(Some(picked)) => match picked.as_slice() {
+                [target] if options.contains(target) => Some((wolf, *target)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
 }
 
 /// The legacy `WolfRoles` (Werewolf.cs:48): the wolves who eat.
