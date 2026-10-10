@@ -208,6 +208,9 @@ pub enum NarrationEvent {
         /// Whether the group shows roles on death (`ShowRolesDeath`). The
         /// role is always carried; this says whether to say it.
         reveal_role: bool,
+        /// The public line for this death (see `death_text`), or `None`
+        /// when another line already announced it.
+        message: Option<crate::messages::Message>,
     },
     /// A role transform resolved (Werewolf.cs's `Transform(...)` calls) —
     /// Traitor becoming a Wolf, Doppelganger copying a dead role model,
@@ -476,8 +479,20 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "SerialKillerKilledCH",
         "ThiefStoleKiller",
         "HunterKilledCultist",
-        // The "{name} was {role}" reveal presenters add to a death line.
+        // death_text's lines beyond death_locale_key.
         "Was",
+        "IsDead",
+        "PlayerRoleWas",
+        "GenericDeathNoReveal",
+        "DefaultShot",
+        "HarlotShot",
+        "HunterKilledFinalShot",
+        "HunterKilledFinalLynched",
+        "HunterShotWolf",
+        "HunterShotWolfMulti",
+        "SnowFrozeHunter",
+        "HunterKilledVisiter",
+        "LoverDied",
         "ApprenticeSeerEaten",
         "DetectiveEaten",
         "DrunkEaten",
@@ -1520,6 +1535,23 @@ pub async fn resolve_hunter_shots(
     alive: &[AlivePlayer],
     presenter: &mut dyn Presenter,
 ) -> Vec<(PlayerId, KillMethod)> {
+    resolve_hunter_shots_by(new_deaths, died_with_roles, alive, presenter)
+        .await
+        .into_iter()
+        .map(|(target, _)| (target, KillMethod::HunterShot))
+        .collect()
+}
+
+/// `resolve_hunter_shots`, as `(target, hunter)` pairs. Announces a
+/// Hunter who shoots nobody (Werewolf.cs:5462) and one who shoots the
+/// Wise Elder (Werewolf.cs:5473); a shot that kills is announced with the
+/// death itself (`death_text`).
+pub async fn resolve_hunter_shots_by(
+    new_deaths: &[(PlayerId, KillMethod)],
+    died_with_roles: &[(PlayerId, Role)],
+    alive: &[AlivePlayer],
+    presenter: &mut dyn Presenter,
+) -> Vec<(PlayerId, PlayerId)> {
     let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
     let mut shots = vec![];
 
@@ -1541,8 +1573,13 @@ pub async fn resolve_hunter_shots(
             Prompt::HunterFinalShotKilled
         };
         let options: Vec<PlayerId> = alive_ids.iter().copied().filter(|&id| id != hunter_id).collect();
-        if let Some(target) = ask_one(presenter, hunter_id, prompt, &options).await {
-            shots.push((target, KillMethod::HunterShot));
+        let lynched = method == KillMethod::Lynch;
+        match ask_one(presenter, hunter_id, prompt, &options).await {
+            Some(target) => shots.push((target, hunter_id)),
+            None => {
+                let announcement = Announcement::HunterSkipChoice { hunter: hunter_id, lynched };
+                presenter.narrate(NarrationEvent::Announce(announcement)).await;
+            }
         }
     }
 

@@ -17,11 +17,19 @@ use shared::Role;
 pub struct Message {
     pub key: &'static str,
     pub args: Vec<MessageArg>,
+    /// A second sentence sent in the same message, after a space (for
+    /// example `HunterShotWolf` followed by `PlayerRoleWas`).
+    pub then: Option<Box<Message>>,
 }
 
 impl Message {
     pub fn new(key: &'static str, args: Vec<MessageArg>) -> Self {
-        Message { key, args }
+        Message { key, args, then: None }
+    }
+
+    pub fn followed_by(mut self, next: Message) -> Self {
+        self.then = Some(Box::new(next));
+        self
     }
 }
 
@@ -39,6 +47,14 @@ pub enum MessageArg {
     Voters(Vec<(PlayerId, u32)>),
     /// Nested messages, one per line.
     Lines(Vec<Message>),
+    /// "{name} was {role}", the reveal legacy death lines append when the
+    /// group shows roles on death (`$"{p.GetName()} {GetLocaleString("Was")}
+    /// {GetDescription(p.PlayerRole)}"`).
+    Reveal { player: PlayerId, role: Role },
+    /// "{role} is dead" (Werewolf.cs:4348).
+    RoleIsDead(Role),
+    /// Nothing: a reveal left out because roles are hidden.
+    Empty,
 }
 
 /// Fills `message`'s template. `lookup` returns the text for a locale key;
@@ -46,11 +62,12 @@ pub enum MessageArg {
 /// no display-name entry falls back to its enum name. Literal `\n` in a
 /// template becomes a newline, as the legacy `GetLocaleString` does.
 pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: &dyn Fn(PlayerId) -> String) -> String {
+    let role_name = |role: Role| lookup(role.locale_key()).unwrap_or_else(|| format!("{role:?}"));
     let mut text = lookup(message.key).unwrap_or_else(|| format!("({})", message.key)).replace("\\n", "\n");
     for (i, arg) in message.args.iter().enumerate() {
         let value = match arg {
             MessageArg::Player(id) => name(*id),
-            MessageArg::Role(role) => lookup(role.locale_key()).unwrap_or_else(|| format!("{role:?}")),
+            MessageArg::Role(role) => role_name(*role),
             MessageArg::Number(n) => n.to_string(),
             MessageArg::Voters(voters) => voters
                 .iter()
@@ -60,10 +77,21 @@ pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: 
             MessageArg::Lines(lines) => {
                 lines.iter().map(|m| render(m, lookup, name)).collect::<Vec<_>>().join("\n")
             }
+            MessageArg::Reveal { player, role } => {
+                let was = lookup("Was").unwrap_or_else(|| "was".to_string());
+                format!("{} {was} {}", name(*player), role_name(*role))
+            }
+            MessageArg::RoleIsDead(role) => {
+                format!("{} {}", role_name(*role), lookup("IsDead").unwrap_or_else(|| "is dead".to_string()))
+            }
+            MessageArg::Empty => String::new(),
         };
         text = text.replace(&format!("{{{i}}}"), &value);
     }
-    text
+    match &message.then {
+        Some(next) => format!("{text} {}", render(next, lookup, name)),
+        None => text,
+    }
 }
 
 /// Something told privately to one player.
@@ -173,6 +201,21 @@ pub enum Announcement {
     /// (Werewolf.cs:2717-2741). `voters` is set only when the group shows
     /// voters.
     SecretLynchResults(Vec<SecretTally>),
+    /// Werewolf.cs:901, when the Mayor reveals.
+    MayorReveal { mayor: PlayerId },
+    /// Werewolf.cs:918, when the Pacifist calls for peace.
+    PacifistNoLynch { pacifist: PlayerId },
+    /// Werewolf.cs:2561, in place of the lynch the Pacifist stopped.
+    PacifistNoLynchNow,
+    /// Werewolf.cs:941, when the Blacksmith spreads silver.
+    BlacksmithSpreadSilver { blacksmith: PlayerId },
+    /// Werewolf.cs:2747, the Prince surviving their first lynch.
+    PrinceLynched { prince: PlayerId },
+    /// Werewolf.cs:5462, a dying Hunter who shoots nobody. `lynched` is
+    /// how the Hunter died.
+    HunterSkipChoice { hunter: PlayerId, lynched: bool },
+    /// Werewolf.cs:5473, a dying Hunter who shot the Wise Elder.
+    HunterKilledWiseElder { hunter: PlayerId, elder: PlayerId },
 }
 
 /// One line of the secret lynch results.
@@ -278,13 +321,27 @@ impl Announcement {
             Announcement::PlayerVotedLynch { .. } => "PlayerVotedLynch",
             Announcement::PlayerVoteCounts { .. } => "PlayerVoteCounts",
             Announcement::SecretLynchResults(_) => "SecretLynchResultFull",
+            Announcement::MayorReveal { .. } => "MayorReveal",
+            Announcement::PacifistNoLynch { .. } => "PacifistNoLynch",
+            Announcement::PacifistNoLynchNow => "PacifistNoLynchNow",
+            Announcement::BlacksmithSpreadSilver { .. } => "BlacksmithSpreadSilver",
+            Announcement::PrinceLynched { .. } => "PrinceLynched",
+            Announcement::HunterSkipChoice { lynched: true, .. } => "HunterSkipChoiceLynched",
+            Announcement::HunterSkipChoice { lynched: false, .. } => "HunterSkipChoiceShot",
+            Announcement::HunterKilledWiseElder { .. } => "HunterKilledWiseElder",
         }
     }
 
     pub fn args(&self) -> Vec<MessageArg> {
         use MessageArg::{Number, Player};
         match self {
-            Announcement::TroublemakerDoubleLynch { troublemaker } => vec![Player(*troublemaker)],
+            Announcement::TroublemakerDoubleLynch { troublemaker: one }
+            | Announcement::MayorReveal { mayor: one }
+            | Announcement::PacifistNoLynch { pacifist: one }
+            | Announcement::BlacksmithSpreadSilver { blacksmith: one }
+            | Announcement::PrinceLynched { prince: one }
+            | Announcement::HunterSkipChoice { hunter: one, .. } => vec![Player(*one)],
+            Announcement::HunterKilledWiseElder { hunter, elder } => vec![Player(*hunter), Player(*elder)],
             Announcement::NightTime { seconds } | Announcement::DayTime { seconds } | Announcement::LynchTime { seconds } => {
                 vec![Number(*seconds as i64)]
             }
@@ -303,7 +360,10 @@ impl Announcement {
                     })
                     .collect(),
             )],
-            Announcement::LynchTie | Announcement::NoLynchVotes | Announcement::TroubleDoubleLynchNow => vec![],
+            Announcement::LynchTie
+            | Announcement::NoLynchVotes
+            | Announcement::TroubleDoubleLynchNow
+            | Announcement::PacifistNoLynchNow => vec![],
         }
     }
 
@@ -375,6 +435,14 @@ pub fn all_message_keys() -> Vec<&'static str> {
             Announcement::PlayerVotedLynch { voter: p, target: p },
             Announcement::PlayerVoteCounts { voted: 0, alive: 0 },
             Announcement::SecretLynchResults(vec![]),
+            Announcement::MayorReveal { mayor: p },
+            Announcement::PacifistNoLynch { pacifist: p },
+            Announcement::PacifistNoLynchNow,
+            Announcement::BlacksmithSpreadSilver { blacksmith: p },
+            Announcement::PrinceLynched { prince: p },
+            Announcement::HunterSkipChoice { hunter: p, lynched: true },
+            Announcement::HunterSkipChoice { hunter: p, lynched: false },
+            Announcement::HunterKilledWiseElder { hunter: p, elder: p },
         ]
         .iter()
         .map(Announcement::locale_key),

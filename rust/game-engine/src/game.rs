@@ -7,6 +7,7 @@
 //! isolation.
 
 use crate::freeze::{apply_freeze, ask_freeze};
+use crate::death_text::{death_message, DeathContext};
 use crate::messages::{Announcement, Note};
 use crate::visits::{resolve_full_steal, resolve_hunt, VisitScene};
 use crate::rules::GameRules;
@@ -14,7 +15,7 @@ use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::orchestrator::{
     apply_day_results, apply_night_results, last_day_veto, resolve_arsonist_detonation, resolve_chemistry,
     resolve_cultist_conversion, resolve_day, resolve_grave_digger_falls, resolve_harlot_visit_deaths,
-    resolve_hunter_shots, resolve_lover_deaths, resolve_lynch_vote, resolve_night_by_actor,
+    resolve_hunter_shots_by, resolve_lover_deaths, resolve_lynch_vote, resolve_night_by_actor,
     resolve_spumpkin_detonation, resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
 };
 use crate::reveals::{resolve_detective, resolve_night_readings, AugurMemory};
@@ -294,6 +295,7 @@ pub async fn run_game_with_rules(
         }
         wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
             &night_deaths,
+            &[],
             &mut alive,
             &states,
             &lovers,
@@ -328,12 +330,7 @@ pub async fn run_game_with_rules(
         presenter.narrate(NarrationEvent::Announce(Announcement::LynchTime { seconds: lynch_seconds })).await;
         let (day_actions, lynch) = resolve_day(&alive, &mut states, rules, presenter, rng).await;
         let veto = last_day_veto(&day_actions);
-        if veto == Some(DayAction::Trouble) {
-            if let Some(troublemaker) = alive.iter().find(|p| p.role == Role::Troublemaker) {
-                let announcement = Announcement::TroublemakerDoubleLynch { troublemaker: troublemaker.id };
-                presenter.narrate(NarrationEvent::Announce(announcement)).await;
-            }
-        }
+        narrate_all(day_action_announcements(&day_actions, &alive), presenter).await;
         let lynch_target_role = lynch.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
         silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
@@ -343,13 +340,25 @@ pub async fn run_game_with_rules(
             day_deaths.iter().filter(|&&(_, m)| m != KillMethod::Lynch).map(|&(id, _)| id).collect();
         let snoops = resolve_detective(&day_actions, &alive, &shot_today, rng);
         narrate_all(snoops, presenter).await;
-        if veto != Some(DayAction::Pacify) {
-            if let Some(announcement) = lynch.announcement() {
-                presenter.narrate(NarrationEvent::Announce(announcement)).await;
-            }
+        if veto == Some(DayAction::Pacify) {
+            presenter.narrate(NarrationEvent::Announce(Announcement::PacifistNoLynchNow)).await;
+        } else if let Some(announcement) = lynch.announcement() {
+            presenter.narrate(NarrationEvent::Announce(announcement)).await;
         }
+        if veto != Some(DayAction::Pacify) {
+            announce_prince(lynch.target(), lynch_target_role, &day_deaths, presenter).await;
+        }
+        let shooters: Vec<(PlayerId, PlayerId)> = day_actions
+            .iter()
+            .filter_map(|a| match *a {
+                DayAction::Shoot { shooter, target } => Some((target, shooter)),
+                DayAction::Detonate { spumpkin, target } => Some((target, spumpkin)),
+                _ => None,
+            })
+            .collect();
         wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
             &day_deaths,
+            &shooters,
             &mut alive,
             &states,
             &lovers,
@@ -377,8 +386,10 @@ pub async fn run_game_with_rules(
             if let Some(announcement) = second.announcement() {
                 presenter.narrate(NarrationEvent::Announce(announcement)).await;
             }
+            announce_prince(second.target(), second_role, &second_deaths, presenter).await;
             wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
                 &second_deaths,
+                &[],
                 &mut alive,
                 &states,
                 &lovers,
@@ -483,6 +494,7 @@ fn game_summary(
 #[allow(clippy::too_many_arguments)]
 async fn process_deaths_and_hunter_shots(
     new_deaths: &[(PlayerId, KillMethod)],
+    by: &[(PlayerId, PlayerId)],
     alive: &mut Vec<AlivePlayer>,
     states: &HashMap<PlayerId, RoleState>,
     lovers: &LoversState,
@@ -493,11 +505,23 @@ async fn process_deaths_and_hunter_shots(
 ) -> bool {
     let mut wolf_cub_died = false;
     let mut batch = new_deaths.to_vec();
+    let mut by = by.to_vec();
     while !batch.is_empty() {
         let (processed, died_with_roles) =
-            process_deaths(&batch, alive, states, lovers, kills, deaths, reveal, presenter).await;
+            process_deaths(&batch, &by, alive, states, lovers, kills, deaths, reveal, presenter).await;
         wolf_cub_died |= died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
-        batch = resolve_hunter_shots(&processed, &died_with_roles, alive, presenter).await;
+        // Werewolf.cs:5473: a Hunter who shot the Wise Elder, right after
+        // the shot is announced.
+        for &(target, hunter) in &by {
+            if died_with_roles.contains(&(target, Role::WiseElder))
+                && processed.contains(&(target, KillMethod::HunterShot))
+            {
+                let announcement = Announcement::HunterKilledWiseElder { hunter, elder: target };
+                presenter.narrate(NarrationEvent::Announce(announcement)).await;
+            }
+        }
+        by = resolve_hunter_shots_by(&processed, &died_with_roles, alive, presenter).await;
+        batch = by.iter().map(|&(target, _)| (target, KillMethod::HunterShot)).collect();
     }
     wolf_cub_died
 }
@@ -542,15 +566,40 @@ fn record_deaths(
 /// `record_deaths` itself) since "build the win-check bookkeeping" and
 /// "tell the presenter" are different concerns that happen to run over
 /// the same data.
+#[allow(clippy::too_many_arguments)]
 async fn narrate_deaths(
     new_deaths: &[(PlayerId, KillMethod)],
     died_with_roles: &[(PlayerId, Role)],
+    by: &[(PlayerId, PlayerId)],
+    still_alive: &[AlivePlayer],
+    lovers: &LoversState,
+    deaths: &[(PlayerId, KillMethod)],
     reveal_role: bool,
     presenter: &mut dyn Presenter,
 ) {
+    let pack_size = still_alive.iter().filter(|p| is_wolf_muscle(p.role)).count();
     for (&(victim, method), &(_, role)) in new_deaths.iter().zip(died_with_roles) {
+        let killer = match method {
+            KillMethod::LoverDied => lovers.partner_of(victim),
+            _ => by.iter().find(|&&(v, _)| v == victim).map(|&(_, k)| k),
+        };
+        let killer = killer.map(|k| {
+            let role = still_alive.iter().find(|p| p.id == k).map(|p| p.role);
+            (k, role.unwrap_or(if method == KillMethod::HunterShot { Role::Hunter } else { Role::Villager }))
+        });
+        let killer_was_lynched = killer
+            .is_some_and(|(k, _)| deaths.iter().any(|&(id, m)| id == k && m == KillMethod::Lynch));
+        let message = death_message(&DeathContext {
+            victim,
+            role,
+            method,
+            by: killer,
+            killer_was_lynched,
+            reveal: reveal_role,
+            pack_size,
+        });
         presenter
-            .narrate(NarrationEvent::Death { victim, role, method, reveal_role })
+            .narrate(NarrationEvent::Death { victim, role, method, reveal_role, message })
             .await;
     }
 }
@@ -576,6 +625,7 @@ async fn narrate_deaths(
 #[allow(clippy::too_many_arguments)]
 async fn process_deaths(
     new_deaths: &[(PlayerId, KillMethod)],
+    by: &[(PlayerId, PlayerId)],
     alive: &mut Vec<AlivePlayer>,
     states: &HashMap<PlayerId, RoleState>,
     lovers: &LoversState,
@@ -589,7 +639,7 @@ async fn process_deaths(
     all_deaths.extend(lover_chain);
 
     let died_with_roles = record_deaths(alive, &all_deaths, kills, deaths);
-    narrate_deaths(&all_deaths, &died_with_roles, reveal_role, presenter).await;
+    narrate_deaths(&all_deaths, &died_with_roles, by, alive, lovers, deaths, reveal_role, presenter).await;
     alive.retain(|p| !all_deaths.iter().any(|&(v, _)| v == p.id));
     let transforms = apply_transforms(alive, states, &died_with_roles);
     narrate_all(transforms, presenter).await;
@@ -625,7 +675,7 @@ async fn apply_fled_players(
         .map(|id| (id, KillMethod::Flee))
         .collect();
     if !fled_deaths.is_empty() {
-        process_deaths(&fled_deaths, alive, states, lovers, kills, deaths, reveal_role, presenter).await;
+        process_deaths(&fled_deaths, &[], alive, states, lovers, kills, deaths, reveal_role, presenter).await;
     }
 }
 
@@ -634,6 +684,42 @@ async fn apply_fled_players(
 /// `NarrationEvent`s directly rather than zipping two parallel arrays —
 /// `apply_transforms` today, the natural landing spot for anything else
 /// that ends up producing a batch of events at once.
+/// The moment-of-use lines for day abilities, in the order they were
+/// used: Mayor (Werewolf.cs:901), Pacifist (918), Blacksmith (941) and
+/// Troublemaker (972).
+fn day_action_announcements(day_actions: &[DayAction], alive: &[AlivePlayer]) -> Vec<NarrationEvent> {
+    let holder = |role: Role| alive.iter().find(|p| p.role == role).map(|p| p.id);
+    day_actions
+        .iter()
+        .filter_map(|action| match action {
+            DayAction::Reveal => holder(Role::Mayor).map(|mayor| Announcement::MayorReveal { mayor }),
+            DayAction::Pacify => holder(Role::Pacifist).map(|pacifist| Announcement::PacifistNoLynch { pacifist }),
+            DayAction::SpreadSilver => {
+                holder(Role::Blacksmith).map(|blacksmith| Announcement::BlacksmithSpreadSilver { blacksmith })
+            }
+            DayAction::Trouble => {
+                holder(Role::Troublemaker).map(|troublemaker| Announcement::TroublemakerDoubleLynch { troublemaker })
+            }
+            _ => None,
+        })
+        .map(NarrationEvent::Announce)
+        .collect()
+}
+
+/// Werewolf.cs:2745-2748: a Prince who survives their first lynch says so.
+async fn announce_prince(
+    target: Option<PlayerId>,
+    target_role: Option<Role>,
+    day_deaths: &[(PlayerId, KillMethod)],
+    presenter: &mut dyn Presenter,
+) {
+    if let (Some(prince), Some(Role::Prince)) = (target, target_role) {
+        if !day_deaths.contains(&(prince, KillMethod::Lynch)) {
+            presenter.narrate(NarrationEvent::Announce(Announcement::PrinceLynched { prince })).await;
+        }
+    }
+}
+
 async fn narrate_all(events: Vec<NarrationEvent>, presenter: &mut dyn Presenter) {
     for event in events {
         presenter.narrate(event).await;
@@ -1541,14 +1627,11 @@ mod fled_player_tests {
         assert_eq!(alive.len(), 1);
         assert_eq!(alive[0].id, PlayerId(2));
         assert_eq!(deaths, vec![(fled, KillMethod::Flee)]);
-        assert!(presenter
-            .events
-            .contains(&NarrationEvent::Death {
-                victim: fled,
-                role: Role::Villager,
-                method: KillMethod::Flee,
-                reveal_role: true
-            }));
+        assert!(presenter.events.iter().any(|e| matches!(
+            e,
+            NarrationEvent::Death { victim, role: Role::Villager, method: KillMethod::Flee, reveal_role: true, message: Some(m) }
+                if *victim == fled && m.key == "Flee"
+        )));
     }
 
     #[tokio::test]

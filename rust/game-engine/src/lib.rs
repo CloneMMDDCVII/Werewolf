@@ -7,6 +7,7 @@
 //! (or on `sim`), only on the idea that *something* can answer a question.
 
 pub mod balancing;
+pub mod death_text;
 pub mod freeze;
 pub mod game;
 pub mod messages;

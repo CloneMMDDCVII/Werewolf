@@ -19,11 +19,10 @@
 
 use async_trait::async_trait;
 use game_engine::orchestrator::{
-    death_locale_key, game_over_locale_key, prompt_locale_key, transform_locale_key, NarrationEvent,
+    game_over_locale_key, prompt_locale_key, transform_locale_key, NarrationEvent,
     Presenter, Prompt,
 };
 use game_engine::messages::{render, Message};
-use shared::{KillMethod, Role};
 use game_engine::roles::PlayerId;
 use i18n::LanguagePack;
 use std::collections::HashMap;
@@ -43,14 +42,6 @@ fn prompt_fallback_text(prompt: Prompt) -> &'static str {
         Prompt::SpumpkinDetonate => "(no locale key in English.xml) Who do you want to detonate on?",
         _ => "Who do you choose?",
     }
-}
-
-/// Same idea as `prompt_fallback_text`, for deaths with no exact legacy
-/// flavor key (see `orchestrator::death_locale_key` — today that's every
-/// `KillMethod` except `Lynch`, since the legacy per-role `*Killed` keys
-/// are all Serial-Killer-specific and not yet modeled here).
-fn death_fallback_template() -> &'static str {
-    "{0} did not survive."
 }
 
 /// Same idea, for a transform with no legacy key (see
@@ -138,19 +129,9 @@ impl<'a> TranscriptPresenter<'a> {
         strip_unfilled_placeholders(&render(message, &lookup, &name))
     }
 
-    fn role_text(&self, role: Role) -> String {
-        self.pack.get(role.locale_key()).map(str::to_string).unwrap_or_else(|| format!("{role:?}"))
-    }
-
     pub fn push_line(&mut self, line: impl Into<String>) {
         self.lines.push(line.into());
     }
-}
-
-/// Deaths announced during the day, whose lines are sent even when roles
-/// are hidden.
-fn is_day_death(method: KillMethod) -> bool {
-    matches!(method, KillMethod::Lynch | KillMethod::Shoot | KillMethod::HunterShot | KillMethod::Idle | KillMethod::Flee)
 }
 
 /// Some locale templates carry a `{0}`/`{1}` for data this proof-of-concept
@@ -227,26 +208,16 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
 
     async fn narrate(&mut self, event: NarrationEvent) {
         match event {
-            NarrationEvent::Death { victim, role, method, reveal_role } => {
-                let name = self.name(victim);
-                // Werewolf.cs:4217-4220: with roles hidden, night deaths
-                // all read as `GenericDeathNoReveal`; day deaths keep their
-                // own line with the "{name} was {role}" part left empty
-                // (Werewolf.cs:2765, 2889).
-                let key = match death_locale_key(role, method) {
-                    Some(key) if reveal_role || is_day_death(method) => key,
-                    _ => "GenericDeathNoReveal",
+            NarrationEvent::Death { victim, message, method, .. } => {
+                // The engine picks the line (`game_engine::death_text`).
+                // `None` means another line already covers this death; a
+                // bot sends nothing, but the transcript still notes it so
+                // every death stays countable.
+                let line = match message {
+                    Some(message) => self.render_message(&message),
+                    None => format!("[{} dies in the line above]", self.name(victim)),
                 };
-                let template = self.pack.get(key).unwrap_or_else(|| death_fallback_template());
-                let reveal = if reveal_role {
-                    format!("{name} {} {}", self.pack.get("Was").unwrap_or("was"), self.role_text(role))
-                } else {
-                    String::new()
-                };
-                // `.replace`, not `.replacen(..., 1)`: `GenericDeathNoReveal`
-                // repeats `{0}` twice in the same sentence.
-                let line = template.replace("{0}", &name).replacen("{1}", &reveal, 1);
-                self.lines.push(format!("{} ({method:?})", strip_unfilled_placeholders(&line)));
+                self.lines.push(format!("{line} ({method:?})"));
             }
             NarrationEvent::Transform { player, from, to } => {
                 let name = self.name(player);
