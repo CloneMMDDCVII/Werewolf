@@ -43,9 +43,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             ch.night_action(&ctx, &mut state),
-            vec![NightAction::Investigate {
-                target: PlayerId(2)
-            }]
+            vec![NightAction::Investigate { target: PlayerId(2) }]
         );
     }
 }

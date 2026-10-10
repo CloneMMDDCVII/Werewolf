@@ -16,8 +16,10 @@ use std::collections::HashMap;
 use std::fs;
 
 const FIXTURE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/games_100.json");
-const LANGUAGE_PACK_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages/English.xml");
+const LANGUAGE_PACK_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../Werewolf for Telegram/Languages/English.xml"
+);
 
 #[tokio::main]
 async fn main() {
@@ -77,8 +79,7 @@ async fn main() {
         outcome.rounds_played, outcome.winner, fixture.winner
     ));
 
-    let output_path =
-        output_path_arg.unwrap_or_else(|| format!("{}.txt", fixture.game_id));
+    let output_path = output_path_arg.unwrap_or_else(|| format!("{}.txt", fixture.game_id));
     fs::write(&output_path, transcript.lines.join("\n") + "\n").expect("write transcript");
     println!("wrote {} lines to {output_path}", transcript.lines.len());
 }

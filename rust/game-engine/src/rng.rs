@@ -120,7 +120,9 @@ enum ScriptedAnswer {
 #[cfg(test)]
 impl ScriptedRngSource {
     pub fn new() -> Self {
-        Self { answers: std::collections::VecDeque::new() }
+        Self {
+            answers: std::collections::VecDeque::new(),
+        }
     }
 
     pub fn with_chance(mut self, answer: bool) -> Self {
@@ -144,20 +146,32 @@ impl Default for ScriptedRngSource {
 #[cfg(test)]
 impl RngSource for ScriptedRngSource {
     fn chance(&mut self, _percent_chance: u32) -> bool {
-        match self.answers.pop_front().expect("ScriptedRngSource ran out of scripted answers") {
+        match self
+            .answers
+            .pop_front()
+            .expect("ScriptedRngSource ran out of scripted answers")
+        {
             ScriptedAnswer::Chance(answer) => answer,
-            ScriptedAnswer::Index(_) => panic!("ScriptedRngSource: expected a chance() call, but an index() was scripted next"),
+            ScriptedAnswer::Index(_) => {
+                panic!("ScriptedRngSource: expected a chance() call, but an index() was scripted next")
+            }
         }
     }
 
     fn pick_index(&mut self, len: usize) -> usize {
         assert!(len > 0, "pick_index called with no candidates to pick from");
-        match self.answers.pop_front().expect("ScriptedRngSource ran out of scripted answers") {
+        match self
+            .answers
+            .pop_front()
+            .expect("ScriptedRngSource ran out of scripted answers")
+        {
             ScriptedAnswer::Index(answer) => {
                 assert!(answer < len, "scripted index {answer} out of bounds for len {len}");
                 answer
             }
-            ScriptedAnswer::Chance(_) => panic!("ScriptedRngSource: expected a pick_index() call, but a chance() was scripted next"),
+            ScriptedAnswer::Chance(_) => {
+                panic!("ScriptedRngSource: expected a pick_index() call, but a chance() was scripted next")
+            }
         }
     }
 }
@@ -200,7 +214,10 @@ mod tests {
 
     #[test]
     fn scripted_rng_returns_answers_in_order() {
-        let mut rng = ScriptedRngSource::new().with_chance(true).with_chance(false).with_index(2);
+        let mut rng = ScriptedRngSource::new()
+            .with_chance(true)
+            .with_chance(false)
+            .with_index(2);
         assert!(rng.chance(50));
         assert!(!rng.chance(50));
         assert_eq!(rng.pick_index(5), 2);

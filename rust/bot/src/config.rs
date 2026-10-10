@@ -163,7 +163,8 @@ fn resolve_database_url(url: &str, base: &Path) -> String {
     let Some(rest) = url.strip_prefix("sqlite://").or_else(|| url.strip_prefix("sqlite:")) else {
         return url.to_string();
     };
-    if rest.is_empty() || rest.starts_with(":memory:") || Path::new(rest.split('?').next().unwrap_or("")).is_absolute() {
+    if rest.is_empty() || rest.starts_with(":memory:") || Path::new(rest.split('?').next().unwrap_or("")).is_absolute()
+    {
         return url.to_string();
     }
     format!("sqlite://{}", base.join(rest).display())
@@ -177,7 +178,11 @@ mod tests {
     static N: AtomicU32 = AtomicU32::new(0);
 
     fn temp_dir() -> PathBuf {
-        let d = std::env::temp_dir().join(format!("wolf-config-{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
+        let d = std::env::temp_dir().join(format!(
+            "wolf-config-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d

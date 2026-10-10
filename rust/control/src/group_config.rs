@@ -30,8 +30,8 @@
 use crate::language_picker::{group_language_button, DEFAULT_LANGUAGE};
 use crate::lobby::{DEFAULT_MAX_EXTEND_SECONDS, DEFAULT_MAX_PLAYERS};
 use crate::menu::{
-    rows_of, start_me_prompt, Action, Actor, Button, ButtonAction, CallbackOutcome, CommandOutcome, DecodeError, Message,
-    Notice, Screen, Text,
+    rows_of, start_me_prompt, Action, Actor, Button, ButtonAction, CallbackOutcome, CommandOutcome, DecodeError,
+    Message, Notice, Screen, Text,
 };
 use db::{DbResult, Store};
 use game_engine::balancing::balance;
@@ -311,7 +311,11 @@ impl GroupSettings {
         if !self.roles_validated {
             return vec![];
         }
-        ALL_ROLES.iter().copied().filter(|r| self.disabled_roles.contains(r)).collect()
+        ALL_ROLES
+            .iter()
+            .copied()
+            .filter(|r| self.disabled_roles.contains(r))
+            .collect()
     }
 
     /// `UpdateHandler.cs:1851-1884` (`togglerole`): flips one role and
@@ -344,7 +348,11 @@ impl GroupSettings {
     /// for every player count from five to `max_players`, checked with
     /// burning overkill on as the source does.
     pub fn validate_roles(&mut self, rng: &mut dyn RngSource) -> bool {
-        let disabled: Vec<Role> = ALL_ROLES.iter().copied().filter(|r| self.disabled_roles.contains(r)).collect();
+        let disabled: Vec<Role> = ALL_ROLES
+            .iter()
+            .copied()
+            .filter(|r| self.disabled_roles.contains(r))
+            .collect();
         let max = (self.max_players as usize).max(VALIDATION_MIN_PLAYERS);
         self.roles_validated =
             (VALIDATION_MIN_PLAYERS..=max).all(|count| balance(count, false, &disabled, true, rng).is_ok());
@@ -394,7 +402,12 @@ pub enum Submenu {
 }
 
 impl Submenu {
-    pub const ALL: [Submenu; 4] = [Submenu::Timers, Submenu::RoleConfig, Submenu::Mechanics, Submenu::GroupSettings];
+    pub const ALL: [Submenu; 4] = [
+        Submenu::Timers,
+        Submenu::RoleConfig,
+        Submenu::Mechanics,
+        Submenu::GroupSettings,
+    ];
 
     pub fn key(self) -> &'static str {
         match self {
@@ -465,7 +478,12 @@ pub fn submenu_options(submenu: Submenu) -> Vec<ConfigOption> {
     fixed
         .iter()
         .copied()
-        .chain(Toggle::ALL.into_iter().filter(|t| t.submenu() == submenu).map(ConfigOption::Toggle))
+        .chain(
+            Toggle::ALL
+                .into_iter()
+                .filter(|t| t.submenu() == submenu)
+                .map(ConfigOption::Toggle),
+        )
         .collect()
 }
 
@@ -529,7 +547,11 @@ pub fn config_command(chat: &CommandChat, actor: Actor) -> CommandOutcome {
     if !actor.can_configure {
         return CommandOutcome::Refuse(Message::new("GroupAdminOnly"));
     }
-    CommandOutcome::SendPrivately { menu: main_menu(chat.chat_id), chat_notice: None, fallback: start_me_prompt() }
+    CommandOutcome::SendPrivately {
+        menu: main_menu(chat.chat_id),
+        chat_notice: None,
+        fallback: start_me_prompt(),
+    }
 }
 
 /// [`config_command`], recording the group in `store` when it succeeds.
@@ -565,7 +587,10 @@ pub async fn run_callback(
     let before = settings.clone();
     let outcome = handle_callback(Some(&mut settings), action, actor, rng);
     if settings != before {
-        store.groups().put_settings(action.group_id, &record.name, &settings, now).await?;
+        store
+            .groups()
+            .put_settings(action.group_id, &record.name, &settings, now)
+            .await?;
     }
     Ok(outcome)
 }
@@ -584,14 +609,23 @@ pub fn handle_callback(
     // `done` is the one config callback that needs neither a group nor an
     // admin (`UpdateHandler.cs:1026`).
     if action.callback == Callback::Done {
-        return show(Screen { message: Message::new("ThankYou"), rows: vec![] }, None);
+        return show(
+            Screen {
+                message: Message::new("ThankYou"),
+                rows: vec![],
+            },
+            None,
+        );
     }
 
     let Some(settings) = settings else {
         return CallbackOutcome::Ignore;
     };
     if !actor.can_configure {
-        return CallbackOutcome::Notify(Notice { message: Message::new("GroupAdminOnly"), alert: true });
+        return CallbackOutcome::Notify(Notice {
+            message: Message::new("GroupAdminOnly"),
+            alert: true,
+        });
     }
 
     match action.callback {
@@ -604,15 +638,33 @@ pub fn handle_callback(
 
         Callback::SetMode(mode) => {
             settings.mode = mode;
-            confirm(group_id, settings, ConfigOption::Mode, "GameModeA", Text::Raw(mode.legacy_name().into()))
+            confirm(
+                group_id,
+                settings,
+                ConfigOption::Mode,
+                "GameModeA",
+                Text::Raw(mode.legacy_name().into()),
+            )
         }
         Callback::SetMaxPlayers(n) => {
             settings.set_max_players(n);
-            confirm(group_id, settings, ConfigOption::MaxPlayer, "MaxPlayersA", raw_number(n))
+            confirm(
+                group_id,
+                settings,
+                ConfigOption::MaxPlayer,
+                "MaxPlayersA",
+                raw_number(n),
+            )
         }
         Callback::SetEndRoles(end) => {
             settings.end_roles = end;
-            confirm(group_id, settings, ConfigOption::EndRoles, "ShowRolesEndA", Text::Raw(end.legacy_name().into()))
+            confirm(
+                group_id,
+                settings,
+                ConfigOption::EndRoles,
+                "ShowRolesEndA",
+                Text::Raw(end.legacy_name().into()),
+            )
         }
         Callback::SetMaxExtend(n) => {
             settings.max_extend_seconds = n;
@@ -620,20 +672,44 @@ pub fn handle_callback(
         }
         Callback::SetDayTimer(n) => {
             settings.day_seconds = n;
-            confirm(group_id, settings, ConfigOption::DayTimer, "SetDayTimeA", raw_number(n + DAY_DISPLAY_OFFSET))
+            confirm(
+                group_id,
+                settings,
+                ConfigOption::DayTimer,
+                "SetDayTimeA",
+                raw_number(n + DAY_DISPLAY_OFFSET),
+            )
         }
         Callback::SetNightTimer(n) => {
             settings.night_seconds = n;
-            confirm(group_id, settings, ConfigOption::NightTimer, "SetNightTimeA", raw_number(n))
+            confirm(
+                group_id,
+                settings,
+                ConfigOption::NightTimer,
+                "SetNightTimeA",
+                raw_number(n),
+            )
         }
         Callback::SetLynchTimer(n) => {
             settings.lynch_seconds = n;
-            confirm(group_id, settings, ConfigOption::LynchTimer, "SetLynchTimeA", raw_number(n))
+            confirm(
+                group_id,
+                settings,
+                ConfigOption::LynchTimer,
+                "SetLynchTimeA",
+                raw_number(n),
+            )
         }
         Callback::SetToggle(toggle, on) => {
             settings.set(toggle, on);
             let answer = answer_label(toggle, on);
-            confirm(group_id, settings, ConfigOption::Toggle(toggle), &toggle.answer_key(), answer)
+            confirm(
+                group_id,
+                settings,
+                ConfigOption::Toggle(toggle),
+                &toggle.answer_key(),
+                answer,
+            )
         }
 
         Callback::ToggleRole(role) => {
@@ -649,8 +725,18 @@ pub fn handle_callback(
             show(role_menu(group_id, settings), None)
         }
         Callback::ValidateRoles => {
-            let key = if settings.validate_roles(rng) { "RoleConfigValid" } else { "RoleConfigInvalid" };
-            show(role_menu(group_id, settings), Some(Notice { message: Message::new(key), alert: true }))
+            let key = if settings.validate_roles(rng) {
+                "RoleConfigValid"
+            } else {
+                "RoleConfigInvalid"
+            };
+            show(
+                role_menu(group_id, settings),
+                Some(Notice {
+                    message: Message::new(key),
+                    alert: true,
+                }),
+            )
         }
     }
 }
@@ -663,7 +749,10 @@ fn show(screen: Screen, notice: Option<Notice>) -> CallbackOutcome {
 fn confirm(group_id: i64, settings: &GroupSettings, option: ConfigOption, key: &str, arg: Text) -> CallbackOutcome {
     show(
         submenu_screen(group_id, settings, option.submenu()),
-        Some(Notice { message: Message::with(key, vec![arg]), alert: false }),
+        Some(Notice {
+            message: Message::with(key, vec![arg]),
+            alert: false,
+        }),
     )
 }
 
@@ -677,15 +766,23 @@ fn answer_label(toggle: Toggle, on: bool) -> Text {
 }
 
 fn button(group_id: i64, label: Text, callback: Callback) -> Button {
-    Button { label, action: ButtonAction::Callback(Action::Config(ConfigAction { group_id, callback })) }
+    Button {
+        label,
+        action: ButtonAction::Callback(Action::Config(ConfigAction { group_id, callback })),
+    }
 }
 
 /// `UpdateHandler.cs:2169-2195`.
 pub fn main_menu(group_id: i64) -> Screen {
-    let mut buttons: Vec<Button> =
-        Submenu::ALL.into_iter().map(|s| button(group_id, Text::key(s.key()), Callback::OpenSubmenu(s))).collect();
+    let mut buttons: Vec<Button> = Submenu::ALL
+        .into_iter()
+        .map(|s| button(group_id, Text::key(s.key()), Callback::OpenSubmenu(s)))
+        .collect();
     buttons.push(button(group_id, Text::key("Done"), Callback::Done));
-    Screen { message: Message::new("WhatToDo"), rows: rows_of(buttons, 2) }
+    Screen {
+        message: Message::new("WhatToDo"),
+        rows: rows_of(buttons, 2),
+    }
 }
 
 /// `UpdateHandler.cs:2197-2250`, and the `RoleConfigInfo` text for the
@@ -699,10 +796,15 @@ pub fn submenu_screen(group_id: i64, settings: &GroupSettings, submenu: Submenu)
         buttons.push(group_language_button(group_id));
     }
     buttons.extend(
-        submenu_options(submenu).into_iter().map(|o| button(group_id, Text::key(o.key()), Callback::OpenOption(o))),
+        submenu_options(submenu)
+            .into_iter()
+            .map(|o| button(group_id, Text::key(o.key()), Callback::OpenOption(o))),
     );
     buttons.push(button(group_id, Text::key("Back"), Callback::BackToMain));
-    Screen { message: Message::new("WhatToDo"), rows: rows_of(buttons, 2) }
+    Screen {
+        message: Message::new("WhatToDo"),
+        rows: rows_of(buttons, 2),
+    }
 }
 
 /// `UpdateHandler.cs:2252-2302`.
@@ -711,7 +813,11 @@ pub fn role_menu(group_id: i64, settings: &GroupSettings) -> Screen {
         .map(|role| {
             let mark = if settings.is_role_disabled(role) { "❌" } else { "✅" };
             let emoji = role.emoji().expect("configurable roles all have an emoji");
-            button(group_id, Text::Raw(format!("{emoji} {mark}")), Callback::ToggleRole(role))
+            button(
+                group_id,
+                Text::Raw(format!("{emoji} {mark}")),
+                Callback::ToggleRole(role),
+            )
         })
         .collect();
     let mut rows = rows_of(toggles, 3);
@@ -724,15 +830,24 @@ pub fn role_menu(group_id: i64, settings: &GroupSettings) -> Screen {
     } else {
         button(group_id, Text::key("Validate"), Callback::ValidateRoles)
     };
-    rows.push(vec![validate, button(group_id, Text::key("Back"), Callback::BackToMain)]);
-    Screen { message: Message::new("RoleConfigInfo"), rows }
+    rows.push(vec![
+        validate,
+        button(group_id, Text::key("Back"), Callback::BackToMain),
+    ]);
+    Screen {
+        message: Message::new("RoleConfigInfo"),
+        rows,
+    }
 }
 
 /// One option's question screen: its choices in a single column, then
 /// Cancel.
 pub fn option_screen(group_id: i64, settings: &GroupSettings, option: ConfigOption) -> Screen {
     let numbers = |values: &[u32], offset: u32, make: fn(u32) -> Callback| -> Vec<Button> {
-        values.iter().map(|&v| button(group_id, raw_number(v + offset), make(v))).collect()
+        values
+            .iter()
+            .map(|&v| button(group_id, raw_number(v + offset), make(v)))
+            .collect()
     };
 
     let (message, mut choices) = match option {
@@ -751,7 +866,10 @@ pub fn option_screen(group_id: i64, settings: &GroupSettings, option: ConfigOpti
         ),
         // UpdateHandler.cs:1622-1637
         ConfigOption::EndRoles => (
-            Message::with("ShowRolesEndQ", vec![Text::Raw(settings.end_roles.legacy_name().into())]),
+            Message::with(
+                "ShowRolesEndQ",
+                vec![Text::Raw(settings.end_roles.legacy_name().into())],
+            ),
             EndRoles::ALL
                 .into_iter()
                 .map(|e| button(group_id, Text::key(e.button_key()), Callback::SetEndRoles(e)))
@@ -761,7 +879,10 @@ pub fn option_screen(group_id: i64, settings: &GroupSettings, option: ConfigOpti
         ConfigOption::MaxExtend => (
             Message::with(
                 "MaxExtendQ",
-                vec![raw_number(DEFAULT_MAX_EXTEND_SECONDS as u32), raw_number(settings.max_extend_seconds)],
+                vec![
+                    raw_number(DEFAULT_MAX_EXTEND_SECONDS as u32),
+                    raw_number(settings.max_extend_seconds),
+                ],
             ),
             numbers(&MAX_EXTEND_CHOICES, 0, Callback::SetMaxExtend),
         ),
@@ -778,19 +899,28 @@ pub fn option_screen(group_id: i64, settings: &GroupSettings, option: ConfigOpti
         ),
         // UpdateHandler.cs:1681-1697
         ConfigOption::NightTimer => (
-            Message::with("SetNightTimeQ", vec![raw_number(DEFAULT_NIGHT_SECONDS), raw_number(settings.night_seconds)]),
+            Message::with(
+                "SetNightTimeQ",
+                vec![raw_number(DEFAULT_NIGHT_SECONDS), raw_number(settings.night_seconds)],
+            ),
             numbers(&NIGHT_LYNCH_CHOICES, 0, Callback::SetNightTimer),
         ),
         // UpdateHandler.cs:1711-1727
         ConfigOption::LynchTimer => (
-            Message::with("SetLynchTimeQ", vec![raw_number(DEFAULT_LYNCH_SECONDS), raw_number(settings.lynch_seconds)]),
+            Message::with(
+                "SetLynchTimeQ",
+                vec![raw_number(DEFAULT_LYNCH_SECONDS), raw_number(settings.lynch_seconds)],
+            ),
             numbers(&NIGHT_LYNCH_CHOICES, 0, Callback::SetLynchTimer),
         ),
         // UpdateHandler.cs:1913-1979
         ConfigOption::Toggle(toggle) => {
             let (pos, neg) = toggle.wording().keys();
             (
-                Message::with(&toggle.question_key(), vec![answer_label(toggle, settings.is_on(toggle))]),
+                Message::with(
+                    &toggle.question_key(),
+                    vec![answer_label(toggle, settings.is_on(toggle))],
+                ),
                 vec![
                     button(group_id, Text::key(pos), Callback::SetToggle(toggle, true)),
                     button(group_id, Text::key(neg), Callback::SetToggle(toggle, false)),
@@ -799,7 +929,10 @@ pub fn option_screen(group_id: i64, settings: &GroupSettings, option: ConfigOpti
         }
     };
     choices.push(button(group_id, Text::key("Cancel"), Callback::Cancel(option)));
-    Screen { message, rows: rows_of(choices, 1) }
+    Screen {
+        message,
+        rows: rows_of(choices, 1),
+    }
 }
 
 // ---------- Group link ----------
@@ -823,17 +956,27 @@ pub async fn run_setlink_command(
         )));
     }
     let Some(link) = link.map(str::trim).filter(|l| !l.is_empty()) else {
-        return Ok(CommandOutcome::Reply("You must use /setlink with the link to the group (invite link)".into()));
+        return Ok(CommandOutcome::Reply(
+            "You must use /setlink with the link to the group (invite link)".into(),
+        ));
     };
     if !is_invite_link(link) {
         return Ok(CommandOutcome::Reply("This is an invalid telegram join link.".into()));
     }
     set_link(store, chat, Some(link.to_string()), now).await?;
-    Ok(CommandOutcome::Reply(format!("Link set: {}", linked_group_name(&chat.title, Some(link)))))
+    Ok(CommandOutcome::Reply(format!(
+        "Link set: {}",
+        linked_group_name(&chat.title, Some(link))
+    )))
 }
 
 /// `/remlink` (`AdminCommands.cs:273-285`).
-pub async fn run_remlink_command(store: &Store, chat: &CommandChat, actor: Actor, now: i64) -> DbResult<CommandOutcome> {
+pub async fn run_remlink_command(
+    store: &Store,
+    chat: &CommandChat,
+    actor: Actor,
+    now: i64,
+) -> DbResult<CommandOutcome> {
     if let Some(refusal) = link_command_refusal(chat, actor) {
         return Ok(refusal);
     }
@@ -859,13 +1002,19 @@ async fn set_link(store: &Store, chat: &CommandChat, link: Option<String>, now: 
     store.groups().upsert_name(chat.chat_id, &chat.title, now).await?;
     let mut settings = load_settings(store, chat.chat_id).await?.unwrap_or_default();
     settings.link = link;
-    store.groups().put_settings(chat.chat_id, &chat.title, &settings, now).await
+    store
+        .groups()
+        .put_settings(chat.chat_id, &chat.title, &settings, now)
+        .await
 }
 
 /// `^(https?://)?t(elegram)?.me/(+|joinchat/)[a-zA-Z0-9_-]+$`
 /// (`AdminCommands.cs:308`).
 pub fn is_invite_link(link: &str) -> bool {
-    let rest = link.strip_prefix("https://").or_else(|| link.strip_prefix("http://")).unwrap_or(link);
+    let rest = link
+        .strip_prefix("https://")
+        .or_else(|| link.strip_prefix("http://"))
+        .unwrap_or(link);
     let Some(rest) = rest.strip_prefix("t.me/").or_else(|| rest.strip_prefix("telegram.me/")) else {
         return false;
     };
@@ -886,7 +1035,10 @@ pub fn linked_group_name(title: &str, link: Option<&str>) -> String {
 
 /// `Extensions.cs::FormatHTML`.
 fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Every locale key this module can emit, for the locale coverage check.
@@ -992,11 +1144,17 @@ impl ConfigAction {
             "o" => Callback::OpenOption(option_from_code(arg(3)?).ok_or_else(err)?),
             "c" => Callback::Cancel(option_from_code(arg(3)?).ok_or_else(err)?),
             "m" => Callback::SetMode(
-                ModeSetting::ALL.into_iter().find(|m| m.legacy_name() == arg(3).unwrap_or("")).ok_or_else(err)?,
+                ModeSetting::ALL
+                    .into_iter()
+                    .find(|m| m.legacy_name() == arg(3).unwrap_or(""))
+                    .ok_or_else(err)?,
             ),
             "mp" => Callback::SetMaxPlayers(num(3)?),
             "er" => Callback::SetEndRoles(
-                EndRoles::ALL.into_iter().find(|e| e.legacy_name() == arg(3).unwrap_or("")).ok_or_else(err)?,
+                EndRoles::ALL
+                    .into_iter()
+                    .find(|e| e.legacy_name() == arg(3).unwrap_or(""))
+                    .ok_or_else(err)?,
             ),
             "mx" => Callback::SetMaxExtend(num(3)?),
             "dt" => Callback::SetDayTimer(num(3)?),
@@ -1043,7 +1201,10 @@ fn option_code(o: ConfigOption) -> String {
 
 fn option_from_code(code: &str) -> Option<ConfigOption> {
     if let Some(i) = code.strip_prefix('t') {
-        return Toggle::ALL.get(i.parse::<usize>().ok()?).copied().map(ConfigOption::Toggle);
+        return Toggle::ALL
+            .get(i.parse::<usize>().ok()?)
+            .copied()
+            .map(ConfigOption::Toggle);
     }
     [
         ConfigOption::Mode,

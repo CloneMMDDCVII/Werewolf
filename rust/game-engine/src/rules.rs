@@ -43,7 +43,11 @@ pub struct Timers {
 impl Default for Timers {
     /// Settings.cs:79-81.
     fn default() -> Self {
-        Timers { day_seconds: 60, night_seconds: 90, lynch_seconds: 90 }
+        Timers {
+            day_seconds: 60,
+            night_seconds: 90,
+            lynch_seconds: 90,
+        }
     }
 }
 
@@ -102,7 +106,14 @@ mod tests {
     use crate::roles::PlayerId;
 
     fn roster(roles: &[Role]) -> Vec<AlivePlayer> {
-        roles.iter().enumerate().map(|(i, &role)| AlivePlayer { id: PlayerId(i as u64), role }).collect()
+        roles
+            .iter()
+            .enumerate()
+            .map(|(i, &role)| AlivePlayer {
+                id: PlayerId(i as u64),
+                role,
+            })
+            .collect()
     }
 
     #[test]

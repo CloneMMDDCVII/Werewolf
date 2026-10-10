@@ -20,7 +20,10 @@ impl RoleBehavior for Detective {
     fn day_action(&self, ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {
-                vec![DayAction::Snoop { detective: ctx.self_id, target }]
+                vec![DayAction::Snoop {
+                    detective: ctx.self_id,
+                    target,
+                }]
             }
             _ => vec![],
         }
@@ -46,7 +49,10 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             Detective.day_action(&ctx(PlayerId(2)), &mut state),
-            vec![DayAction::Snoop { detective: PlayerId(1), target: PlayerId(2) }]
+            vec![DayAction::Snoop {
+                detective: PlayerId(1),
+                target: PlayerId(2)
+            }]
         );
     }
 

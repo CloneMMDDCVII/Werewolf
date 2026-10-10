@@ -67,7 +67,9 @@ pub fn resolve_target(message: &CommandMessage, players: &dyn PlayerDirectory) -
     let sender = || players.by_id(message.sender_id);
 
     if let Some(reply) = message.reply_to {
-        return players.by_id(reply.forwarded_from.unwrap_or(reply.from)).or_else(sender);
+        return players
+            .by_id(reply.forwarded_from.unwrap_or(reply.from))
+            .or_else(sender);
     }
 
     let Some(first_word) = message.argument_words().next() else {
@@ -115,15 +117,26 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn player(id: i64, name: &str, username: Option<&str>) -> PlayerRecord {
-        PlayerRecord { telegram_id: id, name: name.into(), username: username.map(Into::into) }
+        PlayerRecord {
+            telegram_id: id,
+            name: name.into(),
+            username: username.map(Into::into),
+        }
     }
 
     pub(crate) fn roster() -> Players {
-        Players(vec![player(1, "Alice", Some("alice")), player(2, "Paul", Some("paul")), player(3, "Rita", None)])
+        Players(vec![
+            player(1, "Alice", Some("alice")),
+            player(2, "Paul", Some("paul")),
+            player(3, "Rita", None),
+        ])
     }
 
     fn from_alice() -> CommandMessage {
-        CommandMessage { sender_id: 1, ..Default::default() }
+        CommandMessage {
+            sender_id: 1,
+            ..Default::default()
+        }
     }
 
     fn target(message: CommandMessage) -> i64 {
@@ -132,14 +145,32 @@ pub(crate) mod tests {
 
     #[test]
     fn a_reply_targets_its_author() {
-        let reply_to = Some(ReplyTo { from: 2, forwarded_from: None });
-        assert_eq!(target(CommandMessage { reply_to, ..from_alice() }), 2);
+        let reply_to = Some(ReplyTo {
+            from: 2,
+            forwarded_from: None,
+        });
+        assert_eq!(
+            target(CommandMessage {
+                reply_to,
+                ..from_alice()
+            }),
+            2
+        );
     }
 
     #[test]
     fn a_reply_to_a_forward_targets_the_original_author() {
-        let reply_to = Some(ReplyTo { from: 3, forwarded_from: Some(2) });
-        assert_eq!(target(CommandMessage { reply_to, ..from_alice() }), 2);
+        let reply_to = Some(ReplyTo {
+            from: 3,
+            forwarded_from: Some(2),
+        });
+        assert_eq!(
+            target(CommandMessage {
+                reply_to,
+                ..from_alice()
+            }),
+            2
+        );
     }
 
     #[test]
@@ -164,30 +195,66 @@ pub(crate) mod tests {
 
     #[test]
     fn a_numeric_id_targets_that_player() {
-        assert_eq!(target(CommandMessage { argument: Some("2 extra words".into()), ..from_alice() }), 2);
+        assert_eq!(
+            target(CommandMessage {
+                argument: Some("2 extra words".into()),
+                ..from_alice()
+            }),
+            2
+        );
     }
 
     #[test]
     fn a_bare_username_without_an_entity_still_resolves() {
-        assert_eq!(target(CommandMessage { argument: Some("paul".into()), ..from_alice() }), 2);
+        assert_eq!(
+            target(CommandMessage {
+                argument: Some("paul".into()),
+                ..from_alice()
+            }),
+            2
+        );
     }
 
     #[test]
     fn no_argument_falls_back_to_the_sender() {
         assert_eq!(target(from_alice()), 1);
-        assert_eq!(target(CommandMessage { argument: Some("   ".into()), ..from_alice() }), 1);
+        assert_eq!(
+            target(CommandMessage {
+                argument: Some("   ".into()),
+                ..from_alice()
+            }),
+            1
+        );
     }
 
     #[test]
     fn an_unknown_target_falls_back_to_the_sender() {
-        assert_eq!(target(CommandMessage { argument: Some("nobody".into()), ..from_alice() }), 1);
-        let reply_to = Some(ReplyTo { from: 99, forwarded_from: None });
-        assert_eq!(target(CommandMessage { reply_to, ..from_alice() }), 1);
+        assert_eq!(
+            target(CommandMessage {
+                argument: Some("nobody".into()),
+                ..from_alice()
+            }),
+            1
+        );
+        let reply_to = Some(ReplyTo {
+            from: 99,
+            forwarded_from: None,
+        });
+        assert_eq!(
+            target(CommandMessage {
+                reply_to,
+                ..from_alice()
+            }),
+            1
+        );
     }
 
     #[test]
     fn an_unknown_sender_with_no_target_resolves_to_nobody() {
-        let message = CommandMessage { sender_id: 42, ..Default::default() };
+        let message = CommandMessage {
+            sender_id: 42,
+            ..Default::default()
+        };
         assert_eq!(resolve_target(&message, &roster()), None);
     }
 }

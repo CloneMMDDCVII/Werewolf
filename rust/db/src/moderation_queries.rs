@@ -104,7 +104,10 @@ impl Games<'_> {
         .execute(&mut *tx)
         .await?
         .rows_affected();
-        sqlx::query("DELETE FROM game_players WHERE telegram_id = $1").bind(old).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM game_players WHERE telegram_id = $1")
+            .bind(old)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("UPDATE game_kills SET victim = $1 WHERE victim = $2")
             .bind(new)
             .bind(old)

@@ -133,7 +133,14 @@ mod tests {
     use super::*;
 
     fn entry(id: u64, role: Role, alive: bool, won: bool) -> SummaryEntry {
-        SummaryEntry { id: PlayerId(id), role, alive, fled: false, in_love: false, won }
+        SummaryEntry {
+            id: PlayerId(id),
+            role,
+            alive,
+            fled: false,
+            in_love: false,
+            won,
+        }
     }
 
     fn lookup(key: &str) -> Option<String> {
@@ -155,7 +162,10 @@ mod tests {
     }
 
     fn summary(end_roles: EndRoles) -> GameSummary {
-        GameSummary { end_roles, entries: vec![entry(1, Role::Wolf, true, true), entry(2, Role::Villager, false, false)] }
+        GameSummary {
+            end_roles,
+            entries: vec![entry(1, Role::Wolf, true, true), entry(2, Role::Villager, false, false)],
+        }
     }
 
     fn name(id: PlayerId) -> String {
@@ -164,7 +174,10 @@ mod tests {
 
     #[test]
     fn none_lists_names_only() {
-        assert_eq!(summary(EndRoles::None).render(&lookup, &name), "Players Alive: 1 / 2\nP1\nP2");
+        assert_eq!(
+            summary(EndRoles::None).render(&lookup, &name),
+            "Players Alive: 1 / 2\nP1\nP2"
+        );
     }
 
     #[test]
@@ -177,7 +190,10 @@ mod tests {
 
     #[test]
     fn living_lists_survivors_with_team() {
-        assert_eq!(summary(EndRoles::Living).render(&lookup, &name), "Remaining:\n\nP1: a Werewolf Wolf Team Won");
+        assert_eq!(
+            summary(EndRoles::Living).render(&lookup, &name),
+            "Remaining:\n\nP1: a Werewolf Wolf Team Won"
+        );
     }
 
     #[test]

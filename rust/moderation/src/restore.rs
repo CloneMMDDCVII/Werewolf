@@ -26,7 +26,12 @@ pub enum RestoreCheck {
     OldAccountBanned,
     /// The report to show, ending with a yes/no question. A dev confirms
     /// with `restore|<old>|<new>` (UpdateHandler.cs:986-1001).
-    Ready { old: i64, new: i64, report: String, score: i64 },
+    Ready {
+        old: i64,
+        new: i64,
+        report: String,
+        score: i64,
+    },
 }
 
 impl RestoreCheck {
@@ -71,18 +76,23 @@ pub fn restore_report(old: &AccountFacts, new: &AccountFacts, old_is_banned: boo
     }
 
     let shared = new.group_ids.iter().filter(|g| old.group_ids.contains(g)).count() as i64;
-    let group_like = if new.group_ids.is_empty() { 0 } else { shared * 100 / new.group_ids.len() as i64 };
+    let group_like = if new.group_ids.is_empty() {
+        0
+    } else {
+        shared * 100 / new.group_ids.len() as i64
+    };
     score -= 20 - group_like * 20 / 100;
     report += &format!("Percent of new groups that were in old account: {group_like}%\n");
 
-    let username_distance =
-        levenshtein(old.username.as_deref().unwrap_or(""), new.username.as_deref().unwrap_or("")) as i64;
+    let username_distance = levenshtein(
+        old.username.as_deref().unwrap_or(""),
+        new.username.as_deref().unwrap_or(""),
+    ) as i64;
     if username_distance != 0 {
         let name_distance = levenshtein(&old.name, &new.name) as i64;
         score -= (username_distance + name_distance) / 2;
-        report += &format!(
-            "\nLevenshtein Distance:\nUsernames: {username_distance}\nDisplay name: {name_distance}\n\n"
-        );
+        report +=
+            &format!("\nLevenshtein Distance:\nUsernames: {username_distance}\nDisplay name: {name_distance}\n\n");
     }
 
     if old.language != new.language {
@@ -91,7 +101,12 @@ pub fn restore_report(old: &AccountFacts, new: &AccountFacts, old_is_banned: boo
     }
 
     report += &format!("Accuracy score: {score}%\n\nDo you want to restore the account?");
-    RestoreCheck::Ready { old: old.telegram_id, new: new.telegram_id, report, score }
+    RestoreCheck::Ready {
+        old: old.telegram_id,
+        new: new.telegram_id,
+        report,
+        score,
+    }
 }
 
 /// The reply once a dev confirms (UpdateHandler.cs:1151).

@@ -13,9 +13,9 @@ pub mod game;
 pub mod game_end;
 pub mod messages;
 pub mod night;
-pub mod reveals;
 pub mod orchestrator;
 pub mod player_list;
+pub mod reveals;
 pub mod rng;
 pub mod role_info;
 pub mod roles;
@@ -103,9 +103,7 @@ pub fn evaluate_winner(players: &[PlayerState]) -> WinOutcome {
         1 => {
             let p = alive[0];
             match p.role {
-                Role::Tanner | Role::Sorcerer | Role::Thief | Role::Doppelganger => {
-                    WinOutcome::Team(Team::NoOne)
-                }
+                Role::Tanner | Role::Sorcerer | Role::Thief | Role::Doppelganger => WinOutcome::Team(Team::NoOne),
                 _ => WinOutcome::Team(p.role.team()),
             }
         }
@@ -125,9 +123,7 @@ pub fn evaluate_winner(players: &[PlayerState]) -> WinOutcome {
                 return WinOutcome::Team(Team::SerialKiller);
             }
             if alive.iter().any(|p| p.role == Role::Arsonist) {
-                return WinOutcome::InsufficientData(
-                    "arsonist-vs-gunner parity exception (Werewolf.cs:4560)",
-                );
+                return WinOutcome::InsufficientData("arsonist-vs-gunner parity exception (Werewolf.cs:4560)");
             }
             if alive.iter().any(|p| p.role == Role::Cultist) {
                 return WinOutcome::Unimplemented("cult auto-convert (Werewolf.cs:4563-4589)");
@@ -172,10 +168,7 @@ fn evaluate_common(alive: &[&PlayerState]) -> WinOutcome {
     }
 
     if alive.iter().all(|p| {
-        !is_wolf_muscle(p.role)
-            && p.role != Role::Cultist
-            && p.role != Role::SerialKiller
-            && p.role != Role::Arsonist
+        !is_wolf_muscle(p.role) && p.role != Role::Cultist && p.role != Role::SerialKiller && p.role != Role::Arsonist
     }) {
         return WinOutcome::Team(Team::Village);
     }

@@ -31,8 +31,8 @@ pub mod doppelganger;
 pub mod drunk;
 pub mod fool;
 pub mod grave_digger;
-pub mod gunner;
 pub mod guardian_angel;
+pub mod gunner;
 pub mod harlot;
 pub mod hunter;
 pub mod lovers;
@@ -78,11 +78,22 @@ pub struct PlayerId(pub u64);
 /// Roles only ever describe *intent*, never mutate game state directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NightAction {
-    EatVote { target: PlayerId },
-    CheckTeam { target: PlayerId },
-    Heal { target: PlayerId },
-    Poison { target: PlayerId },
-    LinkLovers { a: PlayerId, b: PlayerId },
+    EatVote {
+        target: PlayerId,
+    },
+    CheckTeam {
+        target: PlayerId,
+    },
+    Heal {
+        target: PlayerId,
+    },
+    Poison {
+        target: PlayerId,
+    },
+    LinkLovers {
+        a: PlayerId,
+        b: PlayerId,
+    },
     /// Harlot visiting a target overnight (Werewolf.cs:2358-2360,
     /// 2424-2428). Carries `visitor` (not just `target`) so
     /// the Harlot region of `night::resolve_night_sequence` can kill the right
@@ -90,34 +101,47 @@ pub enum NightAction {
     /// kills the Harlot (Werewolf.cs:2352-2360, `KillMthd.VisitWolf`,
     /// unconditional — no RNG involved). Being unable to visit someone
     /// already occupied (Werewolf.cs:2424-2428) is still not modeled.
-    Visit { visitor: PlayerId, target: PlayerId },
+    Visit {
+        visitor: PlayerId,
+        target: PlayerId,
+    },
     /// Guardian Angel protecting a target overnight (Werewolf.cs:2361-2372,
     /// 3091 onward). Same caveat as `Visit`: the actual protection
     /// resolution (does it save them, does the GA risk dying) isn't
     /// modeled here yet.
-    Protect { target: PlayerId },
+    Protect {
+        target: PlayerId,
+    },
     /// Fool, Sorcerer, Oracle or Cultist Hunter looking at a target.
     /// What each learns is resolved by `reveals::resolve_night_readings`
     /// (Cultist Hunter excepted). The Detective snoops by day instead, see
     /// `DayAction::Snoop`.
-    Investigate { target: PlayerId },
+    Investigate {
+        target: PlayerId,
+    },
     /// Wild Child's (and Doppelganger's — same shape, different transform
     /// payoff) one-time pick of a "role model" player (Werewolf.cs:1757,
     /// 1909 for Wild Child; 1927-1938 for Doppelganger). If that player
     /// dies, `game::apply_transforms` turns the picker into a Wolf (Wild
     /// Child) or a copy of the dead player's role (Doppelganger).
-    ChooseRoleModel { target: PlayerId },
+    ChooseRoleModel {
+        target: PlayerId,
+    },
     /// The cult's proposed conversion target for tonight
     /// (Werewolf.cs:3690-3735 onward: each surviving cultist effectively
     /// votes by choosing a target, with a per-target-role success chance).
     /// This models only the *proposal*; the conversion itself is
     /// RNG-and-role-dependent resolution logic not modeled here.
-    ConvertVote { target: PlayerId },
+    ConvertVote {
+        target: PlayerId,
+    },
     /// The Serial Killer's personal kill choice (Werewolf.cs:2340-2348,
     /// 2380 onward). Unlike `EatVote`, there's normally only one Serial
     /// Killer, so there's no consensus to tally — `apply_night_results`
     /// applies this as a direct, unconditional kill.
-    SerialKillVote { target: PlayerId },
+    SerialKillVote {
+        target: PlayerId,
+    },
     /// Thief stealing a target's role, night 1 only (Werewolf.cs:4132-4163:
     /// `StealRole(thief, target)`). Unlike Doppelganger's `ChooseRoleModel`
     /// (which waits for the role model to die), the steal is immediate —
@@ -128,14 +152,20 @@ pub enum NightAction {
     /// a Villager (Werewolf.cs:2483-2486, the non-`ThiefFull` case this
     /// proof-of-concept models). The RNG success chance `ThiefFull` mode
     /// rolls (Werewolf.cs:4173) is still not attempted.
-    StealRole { thief: PlayerId, target: PlayerId },
+    StealRole {
+        thief: PlayerId,
+        target: PlayerId,
+    },
     /// Chemist's nightly gambit (Werewolf.cs:3792-3821): visit a target,
     /// with an RNG chance of killing them (`KillMthd.Chemistry`) or, on
     /// failure, killing the Chemist instead — see
     /// the Chemist region of `night::resolve_night_sequence`, which needs `chemist`'s own id
     /// for exactly that self-kill case, the same reasoning `Shoot` and
     /// `StealRole` already carry their actor's id for.
-    Chemistry { chemist: PlayerId, target: PlayerId },
+    Chemistry {
+        chemist: PlayerId,
+        target: PlayerId,
+    },
     /// Arsonist dousing a target with kerosene, any night, as many nights
     /// as they like (Werewolf.cs:3792 region / `x.Doused`) — there's no
     /// `primary_used`-style gate in the legacy code, doused players just
@@ -143,7 +173,9 @@ pub enum NightAction {
     /// douse via `RoleState::remembered_player`, not the full doused set
     /// (which would need a `Vec`, not a single slot) — see `arsonist`
     /// module doc for why that's an honest gap, not a bug.
-    Douse { target: PlayerId },
+    Douse {
+        target: PlayerId,
+    },
     /// Arsonist choosing to detonate ("Spark", Werewolf.cs:1013,
     /// `player.Choice = -2`) instead of dousing this night: burns every
     /// doused player at once (`KillMthd.Burn`, Werewolf.cs:3198-3202) — see
@@ -154,7 +186,10 @@ pub enum NightAction {
     /// The freeze itself is resolved by `freeze::apply_freeze`; this
     /// records that the Snow Wolf left home, which a cult visit checks
     /// (Werewolf.cs:3688).
-    Freeze { snow_wolf: PlayerId, target: PlayerId },
+    Freeze {
+        snow_wolf: PlayerId,
+        target: PlayerId,
+    },
 }
 
 /// A piece of information about tonight that some role's decision depends

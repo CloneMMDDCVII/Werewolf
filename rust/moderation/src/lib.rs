@@ -22,12 +22,12 @@ pub mod target;
 
 pub use ban::{Ban, BanIssuer, BanList, BanSource, LegacyGlobalBan};
 pub use commands::{escape_html, getban_report, issuer_name, permban, remban, smite_targets, BanReport};
+pub use gate::{check, policy_for, BlockedChat, Chat, CommandPolicy, GateDecision, Invocation, Refusal, Sender};
 pub use idles::{getidles_report, getidles_targets, IdleCount};
 pub use restore::{levenshtein, restore_report, AccountFacts, RestoreCheck};
 pub use service::Moderation;
-pub use gate::{check, policy_for, BlockedChat, Chat, CommandPolicy, GateDecision, Invocation, Refusal, Sender};
-pub use target::{resolve_target, CommandMessage, Mention, PlayerDirectory, PlayerRecord, ReplyTo};
 pub use shared::time::{self, Timestamp};
+pub use target::{resolve_target, CommandMessage, Mention, PlayerDirectory, PlayerRecord, ReplyTo};
 
 use serde::{Deserialize, Serialize};
 

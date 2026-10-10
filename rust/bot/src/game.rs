@@ -17,16 +17,15 @@ use game_engine::balancing::balance_with_pool;
 use game_engine::game::run_game_with_rules;
 use game_engine::messages::{Announcement, Message};
 use game_engine::orchestrator::{
-    prompt_locale_key, AlivePlayer, Answer, NarrationEvent, OnAnswer, Phase, Presenter, Prompt,
-    Question, Quiet,
+    prompt_locale_key, AlivePlayer, Answer, NarrationEvent, OnAnswer, Phase, Presenter, Prompt, Question, Quiet,
 };
 use game_engine::player_list::{render_player_list, PlayerStatus, RosterEntry};
 use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
 use game_engine::summary::GameSummary;
 use game_engine::WinOutcome;
-use shared::{GameMode, KillMethod, Role};
 use rand::seq::SliceRandom;
+use shared::{GameMode, KillMethod, Role};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -142,7 +141,11 @@ impl GameHandle {
     }
 
     pub fn is_playing(&self, telegram_id: i64) -> bool {
-        self.roster.lock().unwrap().iter().any(|p| p.id == PlayerId(telegram_id as u64))
+        self.roster
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p.id == PlayerId(telegram_id as u64))
     }
 
     /// Roles aren't dealt yet: the lobby has closed but the game hasn't
@@ -152,7 +155,11 @@ impl GameHandle {
     }
 
     pub fn is_alive(&self, telegram_id: i64) -> bool {
-        self.roster.lock().unwrap().iter().any(|p| p.id == PlayerId(telegram_id as u64) && p.alive)
+        self.roster
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p.id == PlayerId(telegram_id as u64) && p.alive)
     }
 
     /// `/flee` mid-game: takes effect at the engine's next checkpoint.
@@ -203,10 +210,17 @@ impl GameHandle {
             PlayerStatus::Dead { .. } => died_at(e.id),
         });
         if self.shuffle.load(Ordering::SeqCst) {
-            let first_alive = entries.iter().position(|e| e.status == PlayerStatus::Alive).unwrap_or(entries.len());
+            let first_alive = entries
+                .iter()
+                .position(|e| e.status == PlayerStatus::Alive)
+                .unwrap_or(entries.len());
             entries[first_alive..].shuffle(&mut rand::thread_rng());
         }
-        let mut out = format!("{}: {alive}/{}", bold(&texts.key(lang, "PlayersAlive", &[])), roster.len());
+        let mut out = format!(
+            "{}: {alive}/{}",
+            bold(&texts.key(lang, "PlayersAlive", &[])),
+            roster.len()
+        );
         for entry in entries {
             let line = match entry.status {
                 PlayerStatus::Alive => format!("{}: {}", escape(&entry.name), texts.key(lang, "Alive", &[])),
@@ -293,8 +307,12 @@ pub async fn play(setup: GameSetup) {
     // What this game plays by: the group's settings, or this game's roll
     // in Random mode (Werewolf.cs:174-211).
     let start = game_start(&settings, requested_mode, &mut rng);
-    handle.show_roles_on_death.store(start.rules.show_roles_on_death, Ordering::SeqCst);
-    handle.shuffle.store(settings.is_on(Toggle::ShufflePlayerList), Ordering::SeqCst);
+    handle
+        .show_roles_on_death
+        .store(start.rules.show_roles_on_death, Ordering::SeqCst);
+    handle
+        .shuffle
+        .store(settings.is_on(Toggle::ShufflePlayerList), Ordering::SeqCst);
     let dealt = balance_with_pool(
         lobby.players().len(),
         start.mode == GameMode::Chaos,
@@ -307,7 +325,11 @@ pub async fn play(setup: GameSetup) {
         Err(e) => {
             log::error!("group {group_id}: could not deal roles: {e:?}");
             let _ = telegram
-                .send(group_id, &texts.get(&lang, "", "Sorry, I couldn't deal roles for this game.", &[]), None)
+                .send(
+                    group_id,
+                    &texts.get(&lang, "", "Sorry, I couldn't deal roles for this game.", &[]),
+                    None,
+                )
                 .await;
             on_finish();
             return;
@@ -317,10 +339,16 @@ pub async fn play(setup: GameSetup) {
         .players()
         .iter()
         .zip(roles)
-        .map(|(c, role)| AlivePlayer { id: PlayerId(c.telegram_id as u64), role })
+        .map(|(c, role)| AlivePlayer {
+            id: PlayerId(c.telegram_id as u64),
+            role,
+        })
         .collect();
-    let names: HashMap<PlayerId, String> =
-        lobby.players().iter().map(|c| (PlayerId(c.telegram_id as u64), c.name.clone())).collect();
+    let names: HashMap<PlayerId, String> = lobby
+        .players()
+        .iter()
+        .map(|c| (PlayerId(c.telegram_id as u64), c.name.clone()))
+        .collect();
 
     let game_id = match store
         .games()
@@ -331,7 +359,11 @@ pub async fn play(setup: GameSetup) {
             started_at: unix_now(),
             players: players
                 .iter()
-                .map(|p| NewGamePlayer { telegram_id: p.id.0 as i64, name: names[&p.id].clone(), role: p.role })
+                .map(|p| NewGamePlayer {
+                    telegram_id: p.id.0 as i64,
+                    name: names[&p.id].clone(),
+                    role: p.role,
+                })
                 .collect(),
         })
         .await
@@ -395,8 +427,18 @@ pub async fn play(setup: GameSetup) {
         // Who survived and who won, from the engine's own end-of-game
         // summary when there is one.
         let finals: Vec<(i64, bool, bool)> = match &presenter.summary {
-            Some(summary) => summary.entries.iter().map(|e| (e.id.0 as i64, e.alive, e.won)).collect(),
-            None => handle.roster.lock().unwrap().iter().map(|e| (e.id.0 as i64, e.alive, false)).collect(),
+            Some(summary) => summary
+                .entries
+                .iter()
+                .map(|e| (e.id.0 as i64, e.alive, e.won))
+                .collect(),
+            None => handle
+                .roster
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|e| (e.id.0 as i64, e.alive, false))
+                .collect(),
         };
         if let Err(e) = store.games().finish(id, &result, unix_now(), &finals).await {
             log::error!("group {group_id}: could not record game end: {e}");
@@ -445,7 +487,11 @@ fn any_time(prompt: Prompt) -> bool {
 }
 
 enum Shape {
-    Targets { options: Vec<PlayerId>, count: usize, picked: Vec<PlayerId> },
+    Targets {
+        options: Vec<PlayerId>,
+        count: usize,
+        picked: Vec<PlayerId>,
+    },
     /// Yes/No, or, for the C#'s one-tap abilities, a single button with
     /// this key's label (not pressing it means no).
     Toggle { single: Option<&'static str> },
@@ -551,7 +597,11 @@ impl TelegramPresenter {
             Err(SendError::Unreachable) => {
                 log::info!("player {} can't be messaged; treating as not answering", player.0);
                 self.unreachable.insert(player);
-                let _ = self.store.players().set_reachable(player.0 as i64, false, unix_now()).await;
+                let _ = self
+                    .store
+                    .players()
+                    .set_reachable(player.0 as i64, false, unix_now())
+                    .await;
                 None
             }
             Err(e) => {
@@ -619,15 +669,27 @@ impl TelegramPresenter {
                         }]
                     })
                     .collect();
-                rows.push(vec![Button::Callback { text: self.t("Skip", &[]), data: callback_data(seq, qid, Choice::Skip) }]);
+                rows.push(vec![Button::Callback {
+                    text: self.t("Skip", &[]),
+                    data: callback_data(seq, qid, Choice::Skip),
+                }]);
                 rows
             }
             Shape::Toggle { single: Some(key) } => {
-                vec![vec![Button::Callback { text: self.t(key, &[]), data: callback_data(seq, qid, Choice::Yes) }]]
+                vec![vec![Button::Callback {
+                    text: self.t(key, &[]),
+                    data: callback_data(seq, qid, Choice::Yes),
+                }]]
             }
             Shape::Toggle { single: None } => vec![vec![
-                Button::Callback { text: self.t("Yes", &[]), data: callback_data(seq, qid, Choice::Yes) },
-                Button::Callback { text: self.t("No", &[]), data: callback_data(seq, qid, Choice::No) },
+                Button::Callback {
+                    text: self.t("Yes", &[]),
+                    data: callback_data(seq, qid, Choice::Yes),
+                },
+                Button::Callback {
+                    text: self.t("No", &[]),
+                    data: callback_data(seq, qid, Choice::No),
+                },
             ]],
         }
     }
@@ -638,19 +700,41 @@ impl TelegramPresenter {
         let qid = self.next_qid;
         self.next_qid += 1;
         let (player, prompt, shape, text) = match q {
-            Question::Targets { player, prompt, options, count, text } => {
+            Question::Targets {
+                player,
+                prompt,
+                options,
+                count,
+                text,
+            } => {
                 // The legacy menus never offered yourself, except Cupid's
                 // (self-love is allowed).
-                let mut options: Vec<PlayerId> =
-                    options.into_iter().filter(|o| *o != player || prompt == Prompt::CupidLink).collect();
+                let mut options: Vec<PlayerId> = options
+                    .into_iter()
+                    .filter(|o| *o != player || prompt == Prompt::CupidLink)
+                    .collect();
                 if self.handle.shuffle.load(Ordering::SeqCst) {
                     options.shuffle(&mut rand::thread_rng());
                 }
-                (player, prompt, Shape::Targets { options, count, picked: vec![] }, text)
+                (
+                    player,
+                    prompt,
+                    Shape::Targets {
+                        options,
+                        count,
+                        picked: vec![],
+                    },
+                    text,
+                )
             }
-            Question::Toggle { player, prompt } => {
-                (player, prompt, Shape::Toggle { single: single_button(prompt) }, None)
-            }
+            Question::Toggle { player, prompt } => (
+                player,
+                prompt,
+                Shape::Toggle {
+                    single: single_button(prompt),
+                },
+                None,
+            ),
         };
         let keyboard = self.keyboard(qid, &shape);
         let text = match text {
@@ -658,7 +742,15 @@ impl TelegramPresenter {
             None => self.question_text(player, prompt),
         };
         let msg = self.pm(player, &text, Some(keyboard)).await;
-        let mut open = Open { index, qid, player, prompt, msg, shape, answer: None };
+        let mut open = Open {
+            index,
+            qid,
+            player,
+            prompt,
+            msg,
+            shape,
+            answer: None,
+        };
         if msg.is_none() {
             open.answer = Some(open.no_answer());
         }
@@ -666,15 +758,19 @@ impl TelegramPresenter {
     }
 
     async fn on_click(&mut self, open: &mut [Open], click: Click, on_answer: &mut dyn OnAnswer) {
-        let Some(q) =
-            open.iter_mut().find(|q| q.qid == click.qid && q.answer.is_none() && !on_answer.closed(q.index))
+        let Some(q) = open
+            .iter_mut()
+            .find(|q| q.qid == click.qid && q.answer.is_none() && !on_answer.closed(q.index))
         else {
             let closed = self.texts.get(&self.lang, "", "That question is closed.", &[]);
             let _ = self.telegram.answer_callback(&click.callback_id, Some(&closed)).await;
             return;
         };
         if q.player != PlayerId(click.user as u64) {
-            let _ = self.telegram.answer_callback(&click.callback_id, Some(&self.t("DidntAsk", &[]))).await;
+            let _ = self
+                .telegram
+                .answer_callback(&click.callback_id, Some(&self.t("DidntAsk", &[])))
+                .await;
             return;
         }
         let _ = self.telegram.answer_callback(&click.callback_id, None).await;
@@ -694,7 +790,10 @@ impl TelegramPresenter {
                 }
                 picked.push(target);
                 if picked.len() == *count {
-                    let names: Vec<String> = picked.iter().map(|p| self.names.get(p).cloned().unwrap_or_default()).collect();
+                    let names: Vec<String> = picked
+                        .iter()
+                        .map(|p| self.names.get(p).cloned().unwrap_or_default())
+                        .collect();
                     chosen_label = Some(escape(&names.join(", ")));
                     q.answer = Some(Answer::Targets(Some(picked.clone())));
                 } else {
@@ -760,7 +859,11 @@ impl TelegramPresenter {
         for q in open.iter_mut().filter(|q| q.answer.is_none() && which(q)) {
             q.answer = Some(q.no_answer());
             if let Some(msg) = q.msg {
-                let key = if on_answer.closed(q.index) { on_answer.closed_key(q.index) } else { "TimesUp" };
+                let key = if on_answer.closed(q.index) {
+                    on_answer.closed_key(q.index)
+                } else {
+                    "TimesUp"
+                };
                 let _ = self.telegram.edit(msg, &self.t(key, &[]), None).await;
             }
         }
@@ -787,7 +890,11 @@ impl TelegramPresenter {
 
     async fn ask_one(&mut self, q: Question) -> Answer {
         let deadline = Self::secs(SINGLE_QUESTION_SECONDS);
-        self.ask(vec![(0, q)], deadline, &mut Quiet).await.pop().map(|(_, a)| a).unwrap_or(Answer::Toggle(false))
+        self.ask(vec![(0, q)], deadline, &mut Quiet)
+            .await
+            .pop()
+            .map(|(_, a)| a)
+            .unwrap_or(Answer::Toggle(false))
     }
 
     fn secs(n: u64) -> Instant {
@@ -815,15 +922,33 @@ impl TelegramPresenter {
 
 #[async_trait(?Send)]
 impl Presenter for TelegramPresenter {
-    async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], count: usize) -> Option<Vec<PlayerId>> {
-        match self.ask_one(Question::Targets { player, prompt, options: options.to_vec(), count, text: None }).await {
+    async fn ask_targets(
+        &mut self,
+        player: PlayerId,
+        prompt: Prompt,
+        options: &[PlayerId],
+        count: usize,
+    ) -> Option<Vec<PlayerId>> {
+        match self
+            .ask_one(Question::Targets {
+                player,
+                prompt,
+                options: options.to_vec(),
+                count,
+                text: None,
+            })
+            .await
+        {
             Answer::Targets(t) => t,
             Answer::Toggle(_) => None,
         }
     }
 
     async fn ask_toggle(&mut self, player: PlayerId, prompt: Prompt) -> bool {
-        matches!(self.ask_one(Question::Toggle { player, prompt }).await, Answer::Toggle(true))
+        matches!(
+            self.ask_one(Question::Toggle { player, prompt }).await,
+            Answer::Toggle(true)
+        )
     }
 
     async fn ask_batch(&mut self, phase: Phase, questions: Vec<Question>, on_answer: &mut dyn OnAnswer) -> Vec<Answer> {
@@ -843,14 +968,20 @@ impl Presenter for TelegramPresenter {
                     None => Self::secs(self.night_seconds as u64),
                 };
                 self.night_deadline = Some(deadline);
-                fill(self.ask(questions.iter().cloned().enumerate().collect(), deadline, on_answer).await);
+                fill(
+                    self.ask(questions.iter().cloned().enumerate().collect(), deadline, on_answer)
+                        .await,
+                );
             }
             Phase::Day => {
                 // Discussion first, with the day's role actions open for
                 // the whole day timer, then the lynch vote. The Mayor and
                 // the Pacifist can still act during the vote.
-                let (votes, actions): (Vec<_>, Vec<_>) =
-                    questions.iter().cloned().enumerate().partition(|(_, q)| q.prompt() == Prompt::LynchVote);
+                let (votes, actions): (Vec<_>, Vec<_>) = questions
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .partition(|(_, q)| q.prompt() == Prompt::LynchVote);
                 let mut open = vec![];
                 for (index, q) in actions {
                     open.push(self.open(index, q).await);
@@ -898,7 +1029,12 @@ impl Presenter for TelegramPresenter {
             self.flush_lynch_time().await;
         }
         match event {
-            NarrationEvent::Death { victim, method, message, .. } => {
+            NarrationEvent::Death {
+                victim,
+                method,
+                message,
+                ..
+            } => {
                 self.record_death(victim, method).await;
                 if let Some(message) = message {
                     self.group(&self.render(&message)).await;
@@ -922,7 +1058,9 @@ impl Presenter for TelegramPresenter {
             NarrationEvent::GameOver { winner, message } => {
                 let text = match (&winner, message) {
                     (_, Some(message)) => self.render(&message),
-                    (WinOutcome::Killed, None) => self.texts.get(&self.lang, "", "The game was ended by an admin.", &[]),
+                    (WinOutcome::Killed, None) => {
+                        self.texts.get(&self.lang, "", "The game was ended by an admin.", &[])
+                    }
                     _ => self.texts.get(&self.lang, "", "The game is over.", &[]),
                 };
                 self.group(&text).await;
@@ -961,7 +1099,11 @@ impl Presenter for TelegramPresenter {
     }
 
     fn drain_fled_players(&mut self) -> Vec<PlayerId> {
-        self.handle.drain_fled().into_iter().map(|id| PlayerId(id as u64)).collect()
+        self.handle
+            .drain_fled()
+            .into_iter()
+            .map(|id| PlayerId(id as u64))
+            .collect()
     }
 
     fn game_was_killed(&mut self) -> bool {

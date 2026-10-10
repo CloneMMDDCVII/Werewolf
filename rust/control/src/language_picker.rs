@@ -15,8 +15,8 @@
 
 use crate::group_config::{load_settings, main_menu, GroupSettings};
 use crate::menu::{
-    rows_of, start_me_prompt, Action, Actor, Button, ButtonAction, CallbackOutcome, CommandOutcome, DecodeError, Message,
-    Notice, Screen, Text,
+    rows_of, start_me_prompt, Action, Actor, Button, ButtonAction, CallbackOutcome, CommandOutcome, DecodeError,
+    Message, Notice, Screen, Text,
 };
 use db::{DbResult, Store};
 use i18n::{Catalog, LanguageId};
@@ -126,7 +126,10 @@ pub struct LanguageAction {
 }
 
 fn button(target: LanguageTarget, label: String, step: LanguageStep) -> Button {
-    Button { label: Text::Raw(label), action: ButtonAction::Callback(Action::Language(LanguageAction { target, step })) }
+    Button {
+        label: Text::Raw(label),
+        action: ButtonAction::Callback(Action::Language(LanguageAction { target, step })),
+    }
 }
 
 /// The group config's `Lang` button.
@@ -142,13 +145,19 @@ pub fn group_language_button(group_id: i64) -> Button {
 
 /// `WhatLang` with the current base, and every base two per row.
 pub fn base_screen(choices: &LanguageChoices, target: LanguageTarget, current: &str) -> Screen {
-    let current_base = choices.file(current).map(|f| f.base.clone()).unwrap_or_else(|| current.to_string());
+    let current_base = choices
+        .file(current)
+        .map(|f| f.base.clone())
+        .unwrap_or_else(|| current.to_string());
     let buttons = choices
         .bases()
         .into_iter()
         .map(|b| button(target, b.to_string(), LanguageStep::PickBase(LanguageId::of(b))))
         .collect();
-    Screen { message: Message::with("WhatLang", vec![Text::Raw(current_base)]), rows: rows_of(buttons, 2) }
+    Screen {
+        message: Message::with("WhatLang", vec![Text::Raw(current_base)]),
+        rows: rows_of(buttons, 2),
+    }
 }
 
 /// `WhatVariant` with the *current* language's variant (as the legacy
@@ -159,9 +168,18 @@ fn variant_screen(choices: &LanguageChoices, target: LanguageTarget, base: &str,
     let buttons = choices
         .variants(base)
         .into_iter()
-        .map(|f| button(target, f.variant.clone(), LanguageStep::PickFile(LanguageId::of(&f.file))))
+        .map(|f| {
+            button(
+                target,
+                f.variant.clone(),
+                LanguageStep::PickFile(LanguageId::of(&f.file)),
+            )
+        })
         .collect();
-    Screen { message: Message::with("WhatVariant", vec![Text::Raw(current_variant)]), rows: rows_of(buttons, 2) }
+    Screen {
+        message: Message::with("WhatVariant", vec![Text::Raw(current_variant)]),
+        rows: rows_of(buttons, 2),
+    }
 }
 
 /// A picker button press. Returns what to show and, when the press chose
@@ -174,7 +192,13 @@ pub fn handle_language_callback(
 ) -> (CallbackOutcome, Option<String>) {
     // The group's language is a config setting (UpdateHandler.cs:1031).
     if matches!(action.target, LanguageTarget::Group(_)) && !actor.can_configure {
-        return (CallbackOutcome::Notify(Notice { message: Message::new("GroupAdminOnly"), alert: true }), None);
+        return (
+            CallbackOutcome::Notify(Notice {
+                message: Message::new("GroupAdminOnly"),
+                alert: true,
+            }),
+            None,
+        );
     }
 
     let chosen = match &action.step {
@@ -207,10 +231,19 @@ pub fn handle_language_callback(
         // UpdateHandler.cs:1487-1492: confirm, then back to the config menu.
         LanguageTarget::Group(group_id) => CallbackOutcome::Show {
             screen: main_menu(group_id),
-            notice: Some(Notice { message: lang_set, alert: false }),
+            notice: Some(Notice {
+                message: lang_set,
+                alert: false,
+            }),
         },
         // UpdateHandler.cs:1494-1497: the message becomes the confirmation.
-        LanguageTarget::Player(_) => CallbackOutcome::Show { screen: Screen { message: lang_set, rows: vec![] }, notice: None },
+        LanguageTarget::Player(_) => CallbackOutcome::Show {
+            screen: Screen {
+                message: lang_set,
+                rows: vec![],
+            },
+            notice: None,
+        },
     };
     (outcome, Some(chosen.file.clone()))
 }
@@ -233,7 +266,10 @@ pub async fn run_setlang_command(
     in_private_chat: bool,
     now: i64,
 ) -> DbResult<CommandOutcome> {
-    store.players().upsert(user.telegram_id, &user.name, user.username.as_deref(), now).await?;
+    store
+        .players()
+        .upsert(user.telegram_id, &user.name, user.username.as_deref(), now)
+        .await?;
     let current = player_language(store, user.telegram_id).await?;
     Ok(CommandOutcome::SendPrivately {
         menu: base_screen(choices, LanguageTarget::Player(user.telegram_id), &current),
@@ -270,7 +306,10 @@ pub async fn run_language_callback(
             let (outcome, chosen) = handle_language_callback(choices, &settings.language, action, actor);
             if let Some(file) = chosen {
                 settings.language = file;
-                store.groups().put_settings(group_id, &record.name, &settings, now).await?;
+                store
+                    .groups()
+                    .put_settings(group_id, &record.name, &settings, now)
+                    .await?;
             }
             Ok(outcome)
         }
@@ -332,5 +371,13 @@ impl LanguageAction {
 
 /// Every locale key the picker can emit.
 pub fn all_locale_keys() -> Vec<&'static str> {
-    vec!["Lang", "WhatLang", "WhatVariant", "LangSet", "SentPrivate", "GroupAdminOnly", "StartMe"]
+    vec![
+        "Lang",
+        "WhatLang",
+        "WhatVariant",
+        "LangSet",
+        "SentPrivate",
+        "GroupAdminOnly",
+        "StartMe",
+    ]
 }

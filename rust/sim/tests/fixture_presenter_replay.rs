@@ -26,10 +26,7 @@ const FIXTURE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/games_
 /// orchestrator — that's a scope boundary to route around in this test,
 /// not something to silently over-claim by checking against it anyway.
 fn historical_night1_eat_by_plain_wolf(game: &GameFixture) -> Option<i64> {
-    let kill = game
-        .kills
-        .iter()
-        .find(|k| k.method == KillMethod::Eat && k.day == 1)?;
+    let kill = game.kills.iter().find(|k| k.method == KillMethod::Eat && k.day == 1)?;
     let killer_is_plain_wolf = game
         .players
         .iter()

@@ -54,7 +54,10 @@ pub enum MessageArg {
     /// "{name} was {role}", the reveal legacy death lines append when the
     /// group shows roles on death (`$"{p.GetName()} {GetLocaleString("Was")}
     /// {GetDescription(p.PlayerRole)}"`).
-    Reveal { player: PlayerId, role: Role },
+    Reveal {
+        player: PlayerId,
+        role: Role,
+    },
     /// "{role} is dead" (Werewolf.cs:4348).
     RoleIsDead(Role),
     /// One `Reveal` per line (the Arsonist's "Burning" list,
@@ -72,7 +75,9 @@ pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: 
     let lookup = |key: &str| lookup(key).or_else(|| fallback_text(key).map(str::to_string));
     let lookup: &dyn Fn(&str) -> Option<String> = &lookup;
     let role_name = |role: Role| lookup(role.locale_key()).unwrap_or_else(|| format!("{role:?}"));
-    let mut text = lookup(message.key).unwrap_or_else(|| format!("({})", message.key)).replace("\\n", "\n");
+    let mut text = lookup(message.key)
+        .unwrap_or_else(|| format!("({})", message.key))
+        .replace("\\n", "\n");
     for (i, arg) in message.args.iter().enumerate() {
         let value = match arg {
             MessageArg::Player(id) => name(*id),
@@ -85,22 +90,33 @@ pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: 
                 .join(", "),
             MessageArg::Players(list) => list.iter().map(|&id| name(id)).collect::<Vec<_>>().join(", "),
             MessageArg::PlayersAnd(list) => {
-                let and = lookup("And").map(|a| format!(" {} ", a.trim())).unwrap_or_else(|| " and ".to_string());
+                let and = lookup("And")
+                    .map(|a| format!(" {} ", a.trim()))
+                    .unwrap_or_else(|| " and ".to_string());
                 list.iter().map(|&id| name(id)).collect::<Vec<_>>().join(&and)
             }
-            MessageArg::Lines(lines) => {
-                lines.iter().map(|m| render(m, lookup, name)).collect::<Vec<_>>().join("\n")
-            }
+            MessageArg::Lines(lines) => lines
+                .iter()
+                .map(|m| render(m, lookup, name))
+                .collect::<Vec<_>>()
+                .join("\n"),
             MessageArg::Reveal { player, role } => {
                 let was = lookup("Was").unwrap_or_else(|| "was".to_string());
                 format!("{} {was} {}", name(*player), role_name(*role))
             }
             MessageArg::Reveals(list) => {
                 let was = lookup("Was").unwrap_or_else(|| "was".to_string());
-                list.iter().map(|&(p, r)| format!("{} {was} {}", name(p), role_name(r))).collect::<Vec<_>>().join("\n")
+                list.iter()
+                    .map(|&(p, r)| format!("{} {was} {}", name(p), role_name(r)))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             }
             MessageArg::RoleIsDead(role) => {
-                format!("{} {}", role_name(*role), lookup("IsDead").unwrap_or_else(|| "is dead".to_string()))
+                format!(
+                    "{} {}",
+                    role_name(*role),
+                    lookup("IsDead").unwrap_or_else(|| "is dead".to_string())
+                )
             }
             MessageArg::Empty => String::new(),
         };
@@ -117,13 +133,22 @@ pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: 
 /// lists these keys so they can be added upstream, after which the
 /// file's text wins.
 pub const FALLBACK_TEXTS: &[(&str, &str)] = &[
-    ("Detonation", "{0} 🎃 detonated next to {1}, and neither of them survived. {2}"),
-    ("DetonatedWiseElder", "By blowing up {1}, the wise elder, {0} lost their way and died a simple villager."),
+    (
+        "Detonation",
+        "{0} 🎃 detonated next to {1}, and neither of them survived. {2}",
+    ),
+    (
+        "DetonatedWiseElder",
+        "By blowing up {1}, the wise elder, {0} lost their way and died a simple villager.",
+    ),
     (
         "RoleInfoSpumpkin",
         "You are the Spumpkin 🎃. Each day you may try to detonate next to a player: if it works, you both die.",
     ),
-    ("RoleInfoWitch", "You are the Witch. Once per game you can heal the wolves' victim, and once you can poison a player."),
+    (
+        "RoleInfoWitch",
+        "You are the Witch. Once per game you can heal the wolves' victim, and once you can poison a player.",
+    ),
     ("RoleInfoChef", "You are the Chef."),
     ("RoleInfoBarkeep", "You are the Barkeep."),
 ];
@@ -138,53 +163,93 @@ pub enum Note {
     /// Seer, Sorcerer and Fool readings all use this key
     /// (Werewolf.cs:3954, 3970-3976, 4016). `role` is what the reader is
     /// *told*, which is often not the target's real role.
-    SeerSees { target: PlayerId, role: Role },
+    SeerSees {
+        target: PlayerId,
+        role: Role,
+    },
     /// Sorcerer looking at anyone who is not a wolf or a seer
     /// (Werewolf.cs:3979).
-    SorcererOther { target: PlayerId },
+    SorcererOther {
+        target: PlayerId,
+    },
     /// Oracle: a role the target is not (Werewolf.cs:4032).
-    NegSeerSees { target: PlayerId, role: Role },
+    NegSeerSees {
+        target: PlayerId,
+        role: Role,
+    },
     /// Augur: a role nobody alive holds (Werewolf.cs:4054).
-    AugurSees { role: Role },
+    AugurSees {
+        role: Role,
+    },
     /// Augur, once every absent role has been shown (Werewolf.cs:4059).
     AugurSeesNothing,
     /// Detective's daytime snoop shows the exact role (Werewolf.cs:2945).
-    DetectiveSnoop { target: PlayerId, role: Role },
+    DetectiveSnoop {
+        target: PlayerId,
+        role: Role,
+    },
     /// Told to every wolf when the Detective is caught (Werewolf.cs:2942).
-    DetectiveCaught { detective: PlayerId },
+    DetectiveCaught {
+        detective: PlayerId,
+    },
     /// Told to a player the Snow Wolf froze (Werewolf.cs:3104-3176).
     Frozen(FrozenNotice),
     /// Told to the Snow Wolf after a freeze lands (Werewolf.cs:3105, 3118, 3179).
-    SuccessfulFreeze { target: PlayerId },
+    SuccessfulFreeze {
+        target: PlayerId,
+    },
     /// Told to the Snow Wolf when a Guardian Angel blocks the freeze
     /// (Werewolf.cs:3110).
-    GuardBlockedSnowWolf { target: PlayerId },
+    GuardBlockedSnowWolf {
+        target: PlayerId,
+    },
     /// Full-mode Thief (Werewolf.cs:4171-4186).
-    ThiefStealFailed { target: PlayerId },
-    ThiefStealDead { target: PlayerId },
-    ThiefFell { target: PlayerId },
+    ThiefStealFailed {
+        target: PlayerId,
+    },
+    ThiefStealDead {
+        target: PlayerId,
+    },
+    ThiefFell {
+        target: PlayerId,
+    },
     StealKiller,
     /// Told to the Thief after a steal (Werewolf.cs:2214).
-    ThiefStoleRole { target: PlayerId },
+    ThiefStoleRole {
+        target: PlayerId,
+    },
     /// Told to a Wild Child or Doppelganger who didn't pick a role model
     /// on the first night, naming the one picked for them
     /// (Werewolf.cs:1765, 1777).
-    RoleModelChosen { target: PlayerId },
+    RoleModelChosen {
+        target: PlayerId,
+    },
     /// Told to the player robbed by a Thief (Werewolf.cs:2261): they
     /// become the Thief in full mode, a Villager otherwise.
     ThiefStoleYourRoleThief,
     ThiefStoleYourRoleVillager,
     /// Told to the Grave Digger whose trap caught a visitor
     /// (Werewolf.cs:2394-2412).
-    FellDigger { visitor: PlayerId, by: DiggerVisitor },
+    FellDigger {
+        visitor: PlayerId,
+        by: DiggerVisitor,
+    },
     /// Cultist Hunter (Werewolf.cs:3569-3584).
-    HunterFindCultist { target: PlayerId },
+    HunterFindCultist {
+        target: PlayerId,
+    },
     CHHuntedYou,
-    HunterFailedToFind { target: PlayerId },
-    HunterVisitDead { target: PlayerId },
+    HunterFailedToFind {
+        target: PlayerId,
+    },
+    HunterVisitDead {
+        target: PlayerId,
+    },
     /// A plain Thief who picked nobody, or a dead player, is given a
     /// random target (Werewolf.cs:2449, 4155).
-    ThiefStealChosen { target: PlayerId },
+    ThiefStealChosen {
+        target: PlayerId,
+    },
     /// Everything else the night tells one player.
     Night(NightNote),
 }
@@ -307,61 +372,123 @@ pub enum Announcement {
     /// Werewolf.cs:2792.
     NoLynchVotes,
     /// Werewolf.cs:972, the moment the Troublemaker acts.
-    TroublemakerDoubleLynch { troublemaker: PlayerId },
+    TroublemakerDoubleLynch {
+        troublemaker: PlayerId,
+    },
     /// Werewolf.cs:2566, right before the second lynch vote.
     TroubleDoubleLynchNow,
     /// Werewolf.cs:3028.
-    NightTime { seconds: u32 },
+    NightTime {
+        seconds: u32,
+    },
     /// Werewolf.cs:2829.
-    DayTime { seconds: u32 },
+    DayTime {
+        seconds: u32,
+    },
     /// Werewolf.cs:2830.
-    Day { number: u32 },
+    Day {
+        number: u32,
+    },
     /// Werewolf.cs:2567.
-    LynchTime { seconds: u32 },
+    LynchTime {
+        seconds: u32,
+    },
     /// A public lynch vote (Werewolf.cs:1129).
-    PlayerVotedLynch { voter: PlayerId, target: PlayerId },
+    PlayerVotedLynch {
+        voter: PlayerId,
+        target: PlayerId,
+    },
     /// A secret lynch vote: only the running count (Werewolf.cs:1134).
-    PlayerVoteCounts { voted: u32, alive: u32 },
+    PlayerVoteCounts {
+        voted: u32,
+        alive: u32,
+    },
     /// Secret lynch results after the vote, most votes first
     /// (Werewolf.cs:2717-2741). `voters` is set only when the group shows
     /// voters.
     SecretLynchResults(Vec<SecretTally>),
     /// Werewolf.cs:901, when the Mayor reveals.
-    MayorReveal { mayor: PlayerId },
+    MayorReveal {
+        mayor: PlayerId,
+    },
     /// Werewolf.cs:918, when the Pacifist calls for peace.
-    PacifistNoLynch { pacifist: PlayerId },
+    PacifistNoLynch {
+        pacifist: PlayerId,
+    },
     /// Werewolf.cs:2561, in place of the lynch the Pacifist stopped.
     PacifistNoLynchNow,
     /// Werewolf.cs:941, when the Blacksmith spreads silver.
-    BlacksmithSpreadSilver { blacksmith: PlayerId },
+    BlacksmithSpreadSilver {
+        blacksmith: PlayerId,
+    },
     /// Werewolf.cs:2747, the Prince surviving their first lynch.
-    PrinceLynched { prince: PlayerId },
+    PrinceLynched {
+        prince: PlayerId,
+    },
     /// Werewolf.cs:5462, a dying Hunter who shoots nobody. `lynched` is
     /// how the Hunter died.
-    HunterSkipChoice { hunter: PlayerId, lynched: bool },
+    HunterSkipChoice {
+        hunter: PlayerId,
+        lynched: bool,
+    },
     /// A dying Hunter who let the timer run out (Werewolf.cs:5455).
-    HunterNoChoice { hunter: PlayerId, lynched: bool },
+    HunterNoChoice {
+        hunter: PlayerId,
+        lynched: bool,
+    },
     /// Werewolf.cs:5473, a dying Hunter who shot the Wise Elder.
-    HunterKilledWiseElder { hunter: PlayerId, elder: PlayerId },
+    HunterKilledWiseElder {
+        hunter: PlayerId,
+        elder: PlayerId,
+    },
     /// Werewolf.cs:2890, a Gunner who shot the Wise Elder.
-    GunnerShotWiseElder { gunner: PlayerId, elder: PlayerId },
+    GunnerShotWiseElder {
+        gunner: PlayerId,
+        elder: PlayerId,
+    },
     /// Werewolf.cs:2915, a Spumpkin who blew up the Wise Elder (not in
     /// English.xml; see `FALLBACK_TEXTS`).
-    DetonatedWiseElder { spumpkin: PlayerId, elder: PlayerId },
+    DetonatedWiseElder {
+        spumpkin: PlayerId,
+        elder: PlayerId,
+    },
     /// Last-two endings (Werewolf.cs:4544-4578, 4840-4894).
-    HunterKillsWolfEnd { hunter: PlayerId, wolf: PlayerId },
-    WolfKillsHunterEnd { hunter: PlayerId, wolf: PlayerId },
-    SKHunterEnd { serial_killer: PlayerId, hunter: PlayerId },
-    CHKillsCultistEnd { cultist: PlayerId, hunter: PlayerId },
-    SerialKillerWinsOverpower { serial_killer: PlayerId, other: PlayerId },
-    ArsonistWinsOverpower { arsonist: PlayerId, other: PlayerId },
+    HunterKillsWolfEnd {
+        hunter: PlayerId,
+        wolf: PlayerId,
+    },
+    WolfKillsHunterEnd {
+        hunter: PlayerId,
+        wolf: PlayerId,
+    },
+    SKHunterEnd {
+        serial_killer: PlayerId,
+        hunter: PlayerId,
+    },
+    CHKillsCultistEnd {
+        cultist: PlayerId,
+        hunter: PlayerId,
+    },
+    SerialKillerWinsOverpower {
+        serial_killer: PlayerId,
+        other: PlayerId,
+    },
+    ArsonistWinsOverpower {
+        arsonist: PlayerId,
+        other: PlayerId,
+    },
     /// A neutral role left at a no-winner ending: `SorcererEnd`,
     /// `ThiefEnd`, `DoppelgangerEnd` or `TannerEnd` (Werewolf.cs:4696-4806).
-    NeutralEnd { player: PlayerId, role: Role },
+    NeutralEnd {
+        player: PlayerId,
+        role: Role,
+    },
     /// Werewolf.cs:4437, a night nobody died.
     NoAttack,
     /// Werewolf.cs:957, when the Sandman acts.
-    SandmanSleepAll { sandman: PlayerId },
+    SandmanSleepAll {
+        sandman: PlayerId,
+    },
     /// Werewolf.cs:3017, in place of the night the Sandman skipped.
     SandmanNight,
 }
@@ -523,12 +650,20 @@ impl Announcement {
             | Announcement::DetonatedWiseElder { spumpkin: a, elder: b }
             | Announcement::HunterKillsWolfEnd { hunter: a, wolf: b }
             | Announcement::WolfKillsHunterEnd { hunter: a, wolf: b }
-            | Announcement::SKHunterEnd { serial_killer: a, hunter: b }
+            | Announcement::SKHunterEnd {
+                serial_killer: a,
+                hunter: b,
+            }
             | Announcement::CHKillsCultistEnd { cultist: a, hunter: b }
-            | Announcement::SerialKillerWinsOverpower { serial_killer: a, other: b }
+            | Announcement::SerialKillerWinsOverpower {
+                serial_killer: a,
+                other: b,
+            }
             | Announcement::ArsonistWinsOverpower { arsonist: a, other: b } => vec![Player(*a), Player(*b)],
             Announcement::NeutralEnd { player, .. } => vec![Player(*player)],
-            Announcement::NightTime { seconds } | Announcement::DayTime { seconds } | Announcement::LynchTime { seconds } => {
+            Announcement::NightTime { seconds }
+            | Announcement::DayTime { seconds }
+            | Announcement::LynchTime { seconds } => {
                 vec![Number(*seconds as i64)]
             }
             Announcement::Day { number } => vec![Number(*number as i64)],
@@ -540,9 +675,16 @@ impl Announcement {
                     .map(|t| match &t.voters {
                         Some(voters) => Message::new(
                             "SecretLynchResultEach",
-                            vec![Number(t.votes as i64), Player(t.target), MessageArg::Voters(voters.clone())],
+                            vec![
+                                Number(t.votes as i64),
+                                Player(t.target),
+                                MessageArg::Voters(voters.clone()),
+                            ],
                         ),
-                        None => Message::new("SecretLynchResultNumber", vec![Number(t.votes as i64), Player(t.target)]),
+                        None => Message::new(
+                            "SecretLynchResultNumber",
+                            vec![Number(t.votes as i64), Player(t.target)],
+                        ),
                     })
                     .collect(),
             )],
@@ -579,12 +721,21 @@ pub fn all_message_keys() -> Vec<&'static str> {
         FrozenNotice::Thief,
     ];
     let mut keys: Vec<&'static str> = [
-        Note::SeerSees { target: p, role: Role::Wolf },
+        Note::SeerSees {
+            target: p,
+            role: Role::Wolf,
+        },
         Note::SorcererOther { target: p },
-        Note::NegSeerSees { target: p, role: Role::Wolf },
+        Note::NegSeerSees {
+            target: p,
+            role: Role::Wolf,
+        },
         Note::AugurSees { role: Role::Wolf },
         Note::AugurSeesNothing,
-        Note::DetectiveSnoop { target: p, role: Role::Wolf },
+        Note::DetectiveSnoop {
+            target: p,
+            role: Role::Wolf,
+        },
         Note::DetectiveCaught { detective: p },
         Note::SuccessfulFreeze { target: p },
         Note::GuardBlockedSnowWolf { target: p },
@@ -596,19 +747,43 @@ pub fn all_message_keys() -> Vec<&'static str> {
         Note::RoleModelChosen { target: p },
         Note::ThiefStoleYourRoleThief,
         Note::ThiefStoleYourRoleVillager,
-        Note::FellDigger { visitor: p, by: DiggerVisitor::Wolf },
-        Note::FellDigger { visitor: p, by: DiggerVisitor::CultistHunter },
-        Note::FellDigger { visitor: p, by: DiggerVisitor::Cultist },
-        Note::FellDigger { visitor: p, by: DiggerVisitor::GuardianAngel },
-        Note::FellDigger { visitor: p, by: DiggerVisitor::Harlot },
-        Note::FellDigger { visitor: p, by: DiggerVisitor::Thief },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::Wolf,
+        },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::CultistHunter,
+        },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::Cultist,
+        },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::GuardianAngel,
+        },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::Harlot,
+        },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::Thief,
+        },
         Note::HunterFindCultist { target: p },
         Note::CHHuntedYou,
         Note::HunterFailedToFind { target: p },
         Note::HunterVisitDead { target: p },
         Note::ThiefStealChosen { target: p },
-        Note::FellDigger { visitor: p, by: DiggerVisitor::Chemist },
-        Note::FellDigger { visitor: p, by: DiggerVisitor::Arsonist },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::Chemist,
+        },
+        Note::FellDigger {
+            visitor: p,
+            by: DiggerVisitor::Arsonist,
+        },
     ]
     .iter()
     .chain(notices.iter().map(|&n| Note::Frozen(n)).collect::<Vec<_>>().iter())
@@ -632,22 +807,52 @@ pub fn all_message_keys() -> Vec<&'static str> {
             Announcement::PacifistNoLynchNow,
             Announcement::BlacksmithSpreadSilver { blacksmith: p },
             Announcement::PrinceLynched { prince: p },
-            Announcement::HunterSkipChoice { hunter: p, lynched: true },
-            Announcement::HunterSkipChoice { hunter: p, lynched: false },
-            Announcement::HunterNoChoice { hunter: p, lynched: true },
-            Announcement::HunterNoChoice { hunter: p, lynched: false },
+            Announcement::HunterSkipChoice {
+                hunter: p,
+                lynched: true,
+            },
+            Announcement::HunterSkipChoice {
+                hunter: p,
+                lynched: false,
+            },
+            Announcement::HunterNoChoice {
+                hunter: p,
+                lynched: true,
+            },
+            Announcement::HunterNoChoice {
+                hunter: p,
+                lynched: false,
+            },
             Announcement::HunterKilledWiseElder { hunter: p, elder: p },
             Announcement::GunnerShotWiseElder { gunner: p, elder: p },
             Announcement::HunterKillsWolfEnd { hunter: p, wolf: p },
             Announcement::WolfKillsHunterEnd { hunter: p, wolf: p },
-            Announcement::SKHunterEnd { serial_killer: p, hunter: p },
+            Announcement::SKHunterEnd {
+                serial_killer: p,
+                hunter: p,
+            },
             Announcement::CHKillsCultistEnd { cultist: p, hunter: p },
-            Announcement::SerialKillerWinsOverpower { serial_killer: p, other: p },
+            Announcement::SerialKillerWinsOverpower {
+                serial_killer: p,
+                other: p,
+            },
             Announcement::ArsonistWinsOverpower { arsonist: p, other: p },
-            Announcement::NeutralEnd { player: p, role: Role::Sorcerer },
-            Announcement::NeutralEnd { player: p, role: Role::Thief },
-            Announcement::NeutralEnd { player: p, role: Role::Doppelganger },
-            Announcement::NeutralEnd { player: p, role: Role::Tanner },
+            Announcement::NeutralEnd {
+                player: p,
+                role: Role::Sorcerer,
+            },
+            Announcement::NeutralEnd {
+                player: p,
+                role: Role::Thief,
+            },
+            Announcement::NeutralEnd {
+                player: p,
+                role: Role::Doppelganger,
+            },
+            Announcement::NeutralEnd {
+                player: p,
+                role: Role::Tanner,
+            },
             Announcement::NoAttack,
             Announcement::SandmanSleepAll { sandman: p },
             Announcement::SandmanNight,
@@ -657,7 +862,12 @@ pub fn all_message_keys() -> Vec<&'static str> {
     );
     keys.extend(NightNote::samples().iter().map(NightNote::locale_key));
     keys.extend(["DigGraves", "DigNoGraves", "And"]);
-    keys.extend(["SecretLynchResultEach", "SecretLynchResultNumber", "Burning", "ChemistKillWiseElder"]);
+    keys.extend([
+        "SecretLynchResultEach",
+        "SecretLynchResultNumber",
+        "Burning",
+        "ChemistKillWiseElder",
+    ]);
     keys.extend(crate::summary::SUMMARY_KEYS);
     let mut role_info: Vec<&'static str> = crate::role_info::samples().iter().map(|m| m.key).collect();
     role_info.sort_unstable();
@@ -672,9 +882,15 @@ mod tests {
 
     #[test]
     fn a_seer_reading_names_the_target_then_the_role() {
-        let note = Note::SeerSees { target: PlayerId(3), role: Role::Wolf };
+        let note = Note::SeerSees {
+            target: PlayerId(3),
+            role: Role::Wolf,
+        };
         assert_eq!(note.locale_key(), "SeerSees");
-        assert_eq!(note.args(), vec![MessageArg::Player(PlayerId(3)), MessageArg::Role(Role::Wolf)]);
+        assert_eq!(
+            note.args(),
+            vec![MessageArg::Player(PlayerId(3)), MessageArg::Role(Role::Wolf)]
+        );
     }
 
     #[test]
@@ -703,8 +919,14 @@ mod tests {
             votes: 3,
             voters: Some(vec![(PlayerId(1), 2), (PlayerId(3), 1)]),
         }]);
-        assert_eq!(render(&results.message(), &lookup, &name), "Result:\n3 votes went to P2: P1 (2), P3");
-        let seer = Note::SeerSees { target: PlayerId(4), role: Role::Wolf };
+        assert_eq!(
+            render(&results.message(), &lookup, &name),
+            "Result:\n3 votes went to P2: P1 (2), P3"
+        );
+        let seer = Note::SeerSees {
+            target: PlayerId(4),
+            role: Role::Wolf,
+        };
         assert_eq!(render(&seer.message(), &lookup, &name), "P4 is a Werewolf");
         assert_eq!(render(&Message::new("Nope", vec![]), &lookup, &name), "(Nope)");
     }

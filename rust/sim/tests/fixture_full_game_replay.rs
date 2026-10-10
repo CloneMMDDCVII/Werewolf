@@ -101,9 +101,7 @@ async fn run_game_reproduces_history_for_the_reproducible_day_window() {
         let expected_deaths: Vec<(PlayerId, KillMethod)> = game
             .kills
             .iter()
-            .filter(|k| {
-                k.day <= compared_through && matches!(k.method, KillMethod::Eat | KillMethod::Lynch)
-            })
+            .filter(|k| k.day <= compared_through && matches!(k.method, KillMethod::Eat | KillMethod::Lynch))
             .map(|k| (PlayerId(k.victim_telegram_id as u64), k.method))
             .collect();
 
@@ -127,7 +125,5 @@ async fn run_game_reproduces_history_for_the_reproducible_day_window() {
         checked_games > 0,
         "expected at least one fixture game with a reproducible day window"
     );
-    println!(
-        "checked {checked_games} games across {checked_days} total reproducible day-rounds"
-    );
+    println!("checked {checked_games} games across {checked_days} total reproducible day-rounds");
 }

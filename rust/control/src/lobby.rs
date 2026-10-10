@@ -38,11 +38,11 @@
 //! through this: `Lobby` decides who's playing, `balancing` decides who's
 //! playing *what*, `run_game` plays it out.
 
+use crate::group_config::{GroupSettings, Toggle};
 use game_engine::balancing::{balance, BalanceError};
 use game_engine::orchestrator::AlivePlayer;
 use game_engine::rng::RngSource;
 use game_engine::roles::PlayerId;
-use crate::group_config::{GroupSettings, Toggle};
 use shared::{GameMode, Role};
 use std::collections::HashSet;
 
@@ -275,7 +275,10 @@ impl Lobby {
             return Err(JoinError::Full);
         }
 
-        self.players.push(Candidate { telegram_id: candidate.telegram_id, name: trimmed.to_string() });
+        self.players.push(Candidate {
+            telegram_id: candidate.telegram_id,
+            name: trimmed.to_string(),
+        });
 
         // Werewolf.cs:743-744: hitting the cap ends joining immediately,
         // the same signal a force-start sends.
@@ -325,7 +328,12 @@ impl Lobby {
     /// `GroupSettings` the lobby was built with (see
     /// [`Lobby::from_group_settings`]); the plain constructors keep the
     /// legacy 60-second cap and allow extending.
-    pub fn extend_time(&mut self, requester_id: i64, is_admin: bool, requested_seconds: i32) -> Result<i32, ExtendError> {
+    pub fn extend_time(
+        &mut self,
+        requester_id: i64,
+        is_admin: bool,
+        requested_seconds: i32,
+    ) -> Result<i32, ExtendError> {
         let max_extend_seconds = self.max_extend_seconds;
         if self.state != LobbyState::Joining {
             return Err(ExtendError::NotJoining);
@@ -432,7 +440,10 @@ impl Lobby {
             .players
             .iter()
             .zip(roles)
-            .map(|(player, role)| AlivePlayer { id: PlayerId(player.telegram_id as u64), role })
+            .map(|(player, role)| AlivePlayer {
+                id: PlayerId(player.telegram_id as u64),
+                role,
+            })
             .collect())
     }
 }
@@ -462,7 +473,10 @@ mod tests {
     use super::*;
 
     fn candidate(id: i64, name: &str) -> Candidate {
-        Candidate { telegram_id: id, name: name.to_string() }
+        Candidate {
+            telegram_id: id,
+            name: name.to_string(),
+        }
     }
 
     #[test]
@@ -658,10 +672,7 @@ mod tests {
     fn a_non_player_cannot_extend_even_as_admin() {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
-        assert_eq!(
-            lobby.extend_time(99, true, 30),
-            Err(ExtendError::NotInGame)
-        );
+        assert_eq!(lobby.extend_time(99, true, 30), Err(ExtendError::NotInGame));
     }
 
     #[test]
@@ -669,10 +680,7 @@ mod tests {
         let mut lobby = Lobby::new();
         lobby.join(candidate(1, "Alice")).unwrap();
         assert_eq!(lobby.extend_time(1, false, 30), Ok(30));
-        assert_eq!(
-            lobby.extend_time(1, false, 30),
-            Err(ExtendError::AlreadyExtended)
-        );
+        assert_eq!(lobby.extend_time(1, false, 30), Err(ExtendError::AlreadyExtended));
     }
 
     #[test]
@@ -688,10 +696,7 @@ mod tests {
         let mut lobby = Lobby::with_limits(1, 35);
         lobby.join(candidate(1, "Alice")).unwrap();
         lobby.try_start();
-        assert_eq!(
-            lobby.extend_time(1, false, 30),
-            Err(ExtendError::NotJoining)
-        );
+        assert_eq!(lobby.extend_time(1, false, 30), Err(ExtendError::NotJoining));
     }
 
     #[test]

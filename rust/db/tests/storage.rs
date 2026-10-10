@@ -15,12 +15,24 @@ async fn fresh_postgres() -> Option<Store> {
     let admin_url = std::env::var("WEREWOLF_TEST_POSTGRES_URL").ok()?;
     sqlx::any::install_default_drivers();
     let name = format!("wolf_t_{}_{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst));
-    let admin = sqlx::AnyPool::connect(&admin_url).await.expect("connect to WEREWOLF_TEST_POSTGRES_URL");
-    sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE IF EXISTS {name}"))).execute(&admin).await.unwrap();
-    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}"))).execute(&admin).await.unwrap();
+    let admin = sqlx::AnyPool::connect(&admin_url)
+        .await
+        .expect("connect to WEREWOLF_TEST_POSTGRES_URL");
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP DATABASE IF EXISTS {name}")))
+        .execute(&admin)
+        .await
+        .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
+        .execute(&admin)
+        .await
+        .unwrap();
     admin.close().await;
     let base = admin_url.rsplit_once('/').map(|(b, _)| b).unwrap_or(&admin_url);
-    Some(Store::connect(&format!("{base}/{name}")).await.expect("connect to fresh test database"))
+    Some(
+        Store::connect(&format!("{base}/{name}"))
+            .await
+            .expect("connect to fresh test database"),
+    )
 }
 
 async fn both<F, Fut>(scenario: F)
@@ -49,7 +61,10 @@ struct SettingsV1 {
 
 impl Default for SettingsV1 {
     fn default() -> Self {
-        SettingsV1 { night_timer: 90, language: "English".into() }
+        SettingsV1 {
+            night_timer: 90,
+            language: "English".into(),
+        }
     }
 }
 
@@ -64,7 +79,11 @@ struct SettingsV2 {
 
 impl Default for SettingsV2 {
     fn default() -> Self {
-        SettingsV2 { night_timer: 90, language: "English".into(), allow_flee: true }
+        SettingsV2 {
+            night_timer: 90,
+            language: "English".into(),
+            allow_flee: true,
+        }
     }
 }
 
@@ -77,8 +96,15 @@ async fn group_settings_survive_a_restart() {
     let url = format!("sqlite://{}", dir.join("werewolf.db").display());
 
     let store = Store::connect(&url).await.unwrap();
-    let settings = SettingsV1 { night_timer: 120, ..Default::default() };
-    store.groups().put_settings(-100, "Village Square", &settings, 1).await.unwrap();
+    let settings = SettingsV1 {
+        night_timer: 120,
+        ..Default::default()
+    };
+    store
+        .groups()
+        .put_settings(-100, "Village Square", &settings, 1)
+        .await
+        .unwrap();
     store.close().await;
 
     let store = Store::connect(&url).await.unwrap();
@@ -89,8 +115,15 @@ async fn group_settings_survive_a_restart() {
 #[tokio::test]
 async fn group_settings_persist_on_both_backends() {
     both(|store| async move {
-        let settings = SettingsV1 { night_timer: 120, ..Default::default() };
-        store.groups().put_settings(-100, "Village Square", &settings, 1).await.unwrap();
+        let settings = SettingsV1 {
+            night_timer: 120,
+            ..Default::default()
+        };
+        store
+            .groups()
+            .put_settings(-100, "Village Square", &settings, 1)
+            .await
+            .unwrap();
         let back: SettingsV1 = store.groups().settings(-100).await.unwrap();
         assert_eq!(back, settings);
     })
@@ -110,10 +143,20 @@ async fn a_group_with_no_stored_settings_gets_defaults_and_nothing_is_written() 
 #[tokio::test]
 async fn new_settings_fields_need_no_migration() {
     both(|store| async move {
-        let old = SettingsV1 { night_timer: 45, language: "Deutsch".into() };
+        let old = SettingsV1 {
+            night_timer: 45,
+            language: "Deutsch".into(),
+        };
         store.groups().put_settings(-300, "Dorf", &old, 1).await.unwrap();
         let new: SettingsV2 = store.groups().settings(-300).await.unwrap();
-        assert_eq!(new, SettingsV2 { night_timer: 45, language: "Deutsch".into(), allow_flee: true });
+        assert_eq!(
+            new,
+            SettingsV2 {
+                night_timer: 45,
+                language: "Deutsch".into(),
+                allow_flee: true
+            }
+        );
     })
     .await;
 }
@@ -121,8 +164,15 @@ async fn new_settings_fields_need_no_migration() {
 #[tokio::test]
 async fn renaming_a_group_keeps_its_settings() {
     both(|store| async move {
-        let s = SettingsV1 { night_timer: 30, ..Default::default() };
-        store.groups().put_settings(-400, "Village Square", &s, 1).await.unwrap();
+        let s = SettingsV1 {
+            night_timer: 30,
+            ..Default::default()
+        };
+        store
+            .groups()
+            .put_settings(-400, "Village Square", &s, 1)
+            .await
+            .unwrap();
         store.groups().upsert_name(-400, "Village Square II", 2).await.unwrap();
         let g = store.groups().get(-400).await.unwrap().unwrap();
         assert_eq!(g.name, "Village Square II");
@@ -188,7 +238,14 @@ async fn expired_bans_stop_counting_but_stay_in_history() {
         assert!(store.bans().is_banned(8, now).await.unwrap());
         assert_eq!(store.bans().history(7).await.unwrap().len(), 1);
 
-        let active: Vec<i64> = store.bans().all_active(now).await.unwrap().iter().map(|b| b.telegram_id).collect();
+        let active: Vec<i64> = store
+            .bans()
+            .all_active(now)
+            .await
+            .unwrap()
+            .iter()
+            .map(|b| b.telegram_id)
+            .collect();
         assert_eq!(active, vec![8]);
     })
     .await;
@@ -242,11 +299,31 @@ fn new_game() -> NewGame {
         mode: GameMode::Normal,
         started_at: 1_782_888_320,
         players: vec![
-            NewGamePlayer { telegram_id: 1, name: "Ana".into(), role: Role::Seer },
-            NewGamePlayer { telegram_id: 2, name: "Bob".into(), role: Role::Wolf },
-            NewGamePlayer { telegram_id: 3, name: "Cal".into(), role: Role::Traitor },
-            NewGamePlayer { telegram_id: 4, name: "Dee".into(), role: Role::Villager },
-            NewGamePlayer { telegram_id: 5, name: "Eve".into(), role: Role::Villager },
+            NewGamePlayer {
+                telegram_id: 1,
+                name: "Ana".into(),
+                role: Role::Seer,
+            },
+            NewGamePlayer {
+                telegram_id: 2,
+                name: "Bob".into(),
+                role: Role::Wolf,
+            },
+            NewGamePlayer {
+                telegram_id: 3,
+                name: "Cal".into(),
+                role: Role::Traitor,
+            },
+            NewGamePlayer {
+                telegram_id: 4,
+                name: "Dee".into(),
+                role: Role::Villager,
+            },
+            NewGamePlayer {
+                telegram_id: 5,
+                name: "Eve".into(),
+                role: Role::Villager,
+            },
         ],
     }
 }
@@ -258,16 +335,31 @@ async fn every_finished_game_is_recorded() {
         let id = games.start(&new_game()).await.unwrap();
         assert_eq!(games.unfinished().await.unwrap().len(), 1);
 
-        games.record_kill(id, 1, Some(2), KillMethod::Eat, 1, 1_782_888_400).await.unwrap();
+        games
+            .record_kill(id, 1, Some(2), KillMethod::Eat, 1, 1_782_888_400)
+            .await
+            .unwrap();
         games.set_final_role(id, 3, Role::Wolf).await.unwrap();
-        games.record_kill(id, 2, None, KillMethod::Lynch, 1, 1_782_888_500).await.unwrap();
-        games.record_kill(id, 3, None, KillMethod::Lynch, 2, 1_782_888_600).await.unwrap();
+        games
+            .record_kill(id, 2, None, KillMethod::Lynch, 1, 1_782_888_500)
+            .await
+            .unwrap();
+        games
+            .record_kill(id, 3, None, KillMethod::Lynch, 2, 1_782_888_600)
+            .await
+            .unwrap();
         games
             .finish(
                 id,
                 &GameResult::Won(Team::Village),
                 1_782_888_700,
-                &[(1, false, true), (2, false, false), (3, false, false), (4, true, true), (5, true, true)],
+                &[
+                    (1, false, true),
+                    (2, false, false),
+                    (3, false, false),
+                    (4, true, true),
+                    (5, true, true),
+                ],
             )
             .await
             .unwrap();
@@ -311,7 +403,11 @@ async fn games_cut_off_by_a_crash_are_found_and_marked_interrupted() {
 async fn recorded_games_export_as_replayable_fixtures() {
     let store = Store::in_memory().await.unwrap();
     let id = store.games().start(&new_game()).await.unwrap();
-    store.games().record_kill(id, 2, None, KillMethod::Lynch, 1, 1_782_888_500).await.unwrap();
+    store
+        .games()
+        .record_kill(id, 2, None, KillMethod::Lynch, 1, 1_782_888_500)
+        .await
+        .unwrap();
     store
         .games()
         .finish(id, &GameResult::Won(Team::Village), 1_782_888_700, &[(2, false, false)])
@@ -320,7 +416,11 @@ async fn recorded_games_export_as_replayable_fixtures() {
     let game = store.games().export_fixture(id).await.unwrap();
 
     let path = std::env::temp_dir().join(format!("wolf-export-{}.json", std::process::id()));
-    std::fs::write(&path, serde_json::to_string(&serde_json::json!({ "games": [game] })).unwrap()).unwrap();
+    std::fs::write(
+        &path,
+        serde_json::to_string(&serde_json::json!({ "games": [game] })).unwrap(),
+    )
+    .unwrap();
     let loaded = sim::fixture::load_fixtures(&path).expect("sim loads the exported game");
     assert_eq!(loaded.len(), 1);
     assert_eq!(loaded[0].winner, shared::Winner::Village);

@@ -33,7 +33,10 @@ fn end_roles(stored: StoredEndRoles) -> EndRoles {
 }
 
 fn secret_lynch(enabled: bool, show_votes: bool, show_voters: bool) -> Option<SecretLynch> {
-    enabled.then_some(SecretLynch { show_votes, show_voters })
+    enabled.then_some(SecretLynch {
+        show_votes,
+        show_voters,
+    })
 }
 
 /// What a game started as `requested_mode` in this group plays by.
@@ -122,9 +125,16 @@ mod tests {
             GameRules {
                 show_roles_on_death: false,
                 end_roles: EndRoles::Living,
-                secret_lynch: Some(SecretLynch { show_votes: settings.is_on(Toggle::SecretLynchShowVotes), show_voters: true }),
+                secret_lynch: Some(SecretLynch {
+                    show_votes: settings.is_on(Toggle::SecretLynchShowVotes),
+                    show_voters: true
+                }),
                 thief_full: true,
-                timers: Timers { day_seconds: 30, night_seconds: 45, lynch_seconds: 60 },
+                timers: Timers {
+                    day_seconds: 30,
+                    night_seconds: 45,
+                    lynch_seconds: 60
+                },
             }
         );
     }

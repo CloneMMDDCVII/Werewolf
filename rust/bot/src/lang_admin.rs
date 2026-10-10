@@ -38,14 +38,20 @@ impl BotCore {
         let files = self.installed_languages();
         let buttons: Vec<Button> = admin::bases(&files)
             .into_iter()
-            .map(|b| Button::Callback { text: b.to_string(), data: AdminButton::PickBase(LanguageId::of(b)).encode() })
+            .map(|b| Button::Callback {
+                text: b.to_string(),
+                data: AdminButton::PickBase(LanguageId::of(b)).encode(),
+            })
             .collect();
         if buttons.is_empty() {
             self.say(cmd.chat.id, "There are no language files to validate.").await;
             return;
         }
         let rows: Keyboard = buttons.chunks(2).map(|c| c.to_vec()).collect();
-        let _ = self.telegram.send(cmd.chat.id, "Validate which language?", Some(rows)).await;
+        let _ = self
+            .telegram
+            .send(cmd.chat.id, "Validate which language?", Some(rows))
+            .await;
     }
 
     /// LanguageHelper.cs:180-260: check a file sent as a reply, and offer
@@ -61,7 +67,11 @@ impl BotCore {
         let bytes = match self.telegram.download(&doc.file_id).await {
             Ok(b) => b,
             Err(e) => {
-                self.say(cmd.chat.id, &format!("Could not download the file: {}", escape(&e.to_string()))).await;
+                self.say(
+                    cmd.chat.id,
+                    &format!("Could not download the file: {}", escape(&e.to_string())),
+                )
+                .await;
                 return;
             }
         };
@@ -69,14 +79,21 @@ impl BotCore {
         let dir = std::env::temp_dir().join(format!("werewolf-upload-{}", cmd.from.id));
         let path = dir.join(sanitize(&file_name));
         if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, &bytes)) {
-            self.say(cmd.chat.id, &format!("Could not save the file: {}", escape(&e.to_string()))).await;
+            self.say(
+                cmd.chat.id,
+                &format!("Could not save the file: {}", escape(&e.to_string())),
+            )
+            .await;
             return;
         }
         let new = match LangFile::load(&path) {
             Ok(f) => f,
             Err(e) => {
-                self.say(cmd.chat.id, &format!("That file isn't a language file I can read: {}", escape(&e.to_string())))
-                    .await;
+                self.say(
+                    cmd.chat.id,
+                    &format!("That file isn't a language file I can read: {}", escape(&e.to_string())),
+                )
+                .await;
                 return;
             }
         };
@@ -86,8 +103,14 @@ impl BotCore {
             let id = LanguageId::of(&new.file_name);
             self.uploads.lock().unwrap().insert(cmd.from.id, (id, path));
             let rows = vec![vec![
-                Button::Callback { text: "New".into(), data: AdminButton::KeepNew(id).encode() },
-                Button::Callback { text: "Old".into(), data: AdminButton::KeepOld.encode() },
+                Button::Callback {
+                    text: "New".into(),
+                    data: AdminButton::KeepNew(id).encode(),
+                },
+                Button::Callback {
+                    text: "Old".into(),
+                    data: AdminButton::KeepOld.encode(),
+                },
             ]];
             let _ = self.telegram.send(cmd.chat.id, admin::KEEP_WHICH, Some(rows)).await;
         } else {
@@ -97,7 +120,9 @@ impl BotCore {
 
     /// The `lv|…` and `lu|…` buttons. Returns false for anything else.
     pub(crate) async fn lang_admin_callback(&self, id: &str, from: &User, message: Option<MsgRef>, data: &str) -> bool {
-        let Some(button) = AdminButton::decode(data) else { return false };
+        let Some(button) = AdminButton::decode(data) else {
+            return false;
+        };
         let _ = self.telegram.answer_callback(id, None).await;
         if !self.is_language_admin(from.id) {
             return true;
@@ -106,7 +131,9 @@ impl BotCore {
         match button {
             AdminButton::PickBase(base_id) => {
                 let files = self.installed_languages();
-                let Some(base) = admin::base_by_id(&files, base_id).map(str::to_string) else { return true };
+                let Some(base) = admin::base_by_id(&files, base_id).map(str::to_string) else {
+                    return true;
+                };
                 let of_base: Vec<&LangFile> = files.iter().filter(|f| f.pack.meta.base == base).collect();
                 match of_base.as_slice() {
                     [only] => self.validate_file(chat, only).await,
@@ -116,8 +143,15 @@ impl BotCore {
                             data: AdminButton::ValidateBase(base_id).encode(),
                         }]];
                         rows.extend(many.iter().map(|f| {
-                            let text = if f.pack.meta.variant.is_empty() { f.file_name.clone() } else { f.pack.meta.variant.clone() };
-                            vec![Button::Callback { text, data: AdminButton::ValidateFile(LanguageId::of(&f.file_name)).encode() }]
+                            let text = if f.pack.meta.variant.is_empty() {
+                                f.file_name.clone()
+                            } else {
+                                f.pack.meta.variant.clone()
+                            };
+                            vec![Button::Callback {
+                                text,
+                                data: AdminButton::ValidateFile(LanguageId::of(&f.file_name)).encode(),
+                            }]
                         }));
                         let text = format!("Validate which {} file?", escape(&base));
                         match message {
@@ -139,7 +173,9 @@ impl BotCore {
             }
             AdminButton::ValidateBase(base_id) => {
                 let files = self.installed_languages();
-                let Some(base) = admin::base_by_id(&files, base_id).map(str::to_string) else { return true };
+                let Some(base) = admin::base_by_id(&files, base_id).map(str::to_string) else {
+                    return true;
+                };
                 let of_base: Vec<LangFile> = files.into_iter().filter(|f| f.pack.meta.base == base).collect();
                 let (details, summary) = admin::summary_report(&of_base, &master());
                 if !details.is_empty() {
@@ -150,7 +186,8 @@ impl BotCore {
             AdminButton::KeepNew(file_id) => {
                 let pending = self.uploads.lock().unwrap().remove(&from.id);
                 let Some((_, path)) = pending.filter(|(i, _)| *i == file_id) else {
-                    self.edit_or_say(message, chat, "That upload has expired. Send /uploadlang again.").await;
+                    self.edit_or_say(message, chat, "That upload has expired. Send /uploadlang again.")
+                        .await;
                     return true;
                 };
                 let result = admin::install(&path, &self.config.languages_dir);
@@ -161,7 +198,15 @@ impl BotCore {
                             self.reload_languages();
                         }
                         // The log is fixed text plus file names, with its own <b>.
-                        format!("{}\n{}", installed.log, if installed.path.is_some() { "Languages reloaded." } else { "" })
+                        format!(
+                            "{}\n{}",
+                            installed.log,
+                            if installed.path.is_some() {
+                                "Languages reloaded."
+                            } else {
+                                ""
+                            }
+                        )
                     }
                     Err(e) => format!("Install failed: {}", escape(&e.to_string())),
                 };
@@ -214,14 +259,20 @@ fn master() -> LanguagePack {
 
 /// A file name safe to write: no folders.
 fn sanitize(name: &str) -> PathBuf {
-    let base = std::path::Path::new(name).file_name().and_then(|n| n.to_str()).unwrap_or("upload.xml");
+    let base = std::path::Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("upload.xml");
     PathBuf::from(base)
 }
 
 /// Escapes `text` and turns paired `*bold*` and `_italic_` on each line
 /// into HTML. An unpaired marker stays as it is.
 pub fn markdown_to_html(text: &str) -> String {
-    text.split('\n').map(|line| convert_line(&escape(line))).collect::<Vec<_>>().join("\n")
+    text.split('\n')
+        .map(|line| convert_line(&escape(line)))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn convert_line(line: &str) -> String {
@@ -277,8 +328,14 @@ mod tests {
 
     #[test]
     fn report_markdown_becomes_html() {
-        assert_eq!(markdown_to_html("*Deutsch.xml* (Last updated: 3 May)"), "<b>Deutsch.xml</b> (Last updated: 3 May)");
-        assert_eq!(markdown_to_html("_Missing Values:_\nKey<1>"), "<i>Missing Values:</i>\nKey&lt;1&gt;");
+        assert_eq!(
+            markdown_to_html("*Deutsch.xml* (Last updated: 3 May)"),
+            "<b>Deutsch.xml</b> (Last updated: 3 May)"
+        );
+        assert_eq!(
+            markdown_to_html("_Missing Values:_\nKey<1>"),
+            "<i>Missing Values:</i>\nKey&lt;1&gt;"
+        );
         assert_eq!(markdown_to_html("a * b"), "a * b");
     }
 

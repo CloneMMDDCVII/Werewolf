@@ -2,15 +2,15 @@
 //! that turns Telegram updates into [`Incoming`]. This is the only module
 //! that knows teloxide exists.
 
-use crate::telegram::{Button, Chat, ChatKind, Command, Document, Incoming, Keyboard, MsgRef, SendError, Telegram, User};
+use crate::telegram::{
+    Button, Chat, ChatKind, Command, Document, Incoming, Keyboard, MsgRef, SendError, Telegram, User,
+};
 use async_trait::async_trait;
 use moderation::{Mention, PlayerRecord, ReplyTo, Sender};
 use std::time::Duration;
-use teloxide::payloads::{
-    AnswerCallbackQuerySetters, EditMessageTextSetters, GetUpdatesSetters, SendMessageSetters,
-};
-use teloxide::prelude::Requester;
 use teloxide::net::Download;
+use teloxide::payloads::{AnswerCallbackQuerySetters, EditMessageTextSetters, GetUpdatesSetters, SendMessageSetters};
+use teloxide::prelude::Requester;
 use teloxide::types::{
     AllowedUpdate, ChatId, ChatMemberKind, FileId, InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
     LinkPreviewOptions, Message, MessageEntityKind, MessageId, ParseMode, ReplyParameters, UpdateKind, UserId,
@@ -49,7 +49,10 @@ impl TeloxideTelegram {
     pub async fn connect(token: &str) -> Result<Self, ConnectError> {
         let bot = Bot::new(token);
         match bot.get_me().await {
-            Ok(me) => Ok(TeloxideTelegram { username: me.username().to_string(), bot }),
+            Ok(me) => Ok(TeloxideTelegram {
+                username: me.username().to_string(),
+                bot,
+            }),
             Err(RequestError::Api(ApiError::InvalidToken)) => Err(ConnectError::BadToken),
             Err(e) => Err(ConnectError::Network(e.to_string())),
         }
@@ -94,13 +97,23 @@ fn markup(keyboard: Keyboard) -> InlineKeyboardMarkup {
 }
 
 fn no_preview() -> LinkPreviewOptions {
-    LinkPreviewOptions { is_disabled: true, url: None, prefer_small_media: false, prefer_large_media: false, show_above_text: false }
+    LinkPreviewOptions {
+        is_disabled: true,
+        url: None,
+        prefer_small_media: false,
+        prefer_large_media: false,
+        show_above_text: false,
+    }
 }
 
 #[async_trait]
 impl Telegram for TeloxideTelegram {
     async fn send(&self, chat: i64, text: &str, keyboard: Option<Keyboard>) -> Result<MsgRef, SendError> {
-        let mut req = self.bot.send_message(ChatId(chat), text).parse_mode(ParseMode::Html).link_preview_options(no_preview());
+        let mut req = self
+            .bot
+            .send_message(ChatId(chat), text)
+            .parse_mode(ParseMode::Html)
+            .link_preview_options(no_preview());
         if let Some(k) = keyboard {
             req = req.reply_markup(markup(k));
         }
@@ -130,14 +143,20 @@ impl Telegram for TeloxideTelegram {
     }
 
     async fn clear_keyboard(&self, msg: MsgRef) -> Result<(), SendError> {
-        match self.bot.edit_message_reply_markup(ChatId(msg.chat), MessageId(msg.id)).await {
+        match self
+            .bot
+            .edit_message_reply_markup(ChatId(msg.chat), MessageId(msg.id))
+            .await
+        {
             Ok(_) | Err(RequestError::Api(ApiError::MessageNotModified)) => Ok(()),
             Err(e) => Err(map_error(e)),
         }
     }
 
     async fn answer_callback(&self, callback_id: &str, text: Option<&str>) -> Result<(), SendError> {
-        let mut req = self.bot.answer_callback_query(teloxide::types::CallbackQueryId(callback_id.to_string()));
+        let mut req = self
+            .bot
+            .answer_callback_query(teloxide::types::CallbackQueryId(callback_id.to_string()));
         if let Some(t) = text {
             req = req.text(t);
         }
@@ -149,12 +168,19 @@ impl Telegram for TeloxideTelegram {
     }
 
     async fn is_group_admin(&self, chat: i64, user: i64) -> Result<bool, SendError> {
-        let member = self.bot.get_chat_member(ChatId(chat), UserId(user as u64)).await.map_err(map_error)?;
+        let member = self
+            .bot
+            .get_chat_member(ChatId(chat), UserId(user as u64))
+            .await
+            .map_err(map_error)?;
         Ok(member.is_privileged())
     }
 
     async fn send_reply(&self, chat: i64, text: &str, reply_to: i32) -> Result<MsgRef, SendError> {
-        let reply = ReplyParameters { allow_sending_without_reply: Some(true), ..ReplyParameters::new(MessageId(reply_to)) };
+        let reply = ReplyParameters {
+            allow_sending_without_reply: Some(true),
+            ..ReplyParameters::new(MessageId(reply_to))
+        };
         let m = self
             .bot
             .send_message(ChatId(chat), text)
@@ -167,15 +193,26 @@ impl Telegram for TeloxideTelegram {
     }
 
     async fn is_group_member(&self, chat: i64, user: i64) -> Result<bool, SendError> {
-        let member = self.bot.get_chat_member(ChatId(chat), UserId(user as u64)).await.map_err(map_error)?;
+        let member = self
+            .bot
+            .get_chat_member(ChatId(chat), UserId(user as u64))
+            .await
+            .map_err(map_error)?;
         let muted = matches!(&member.kind, ChatMemberKind::Restricted(r) if !r.can_send_messages);
         Ok(member.kind.is_present() && !muted)
     }
 
     async fn download(&self, file_id: &str) -> Result<Vec<u8>, SendError> {
-        let file = self.bot.get_file(FileId(file_id.to_string())).await.map_err(map_error)?;
+        let file = self
+            .bot
+            .get_file(FileId(file_id.to_string()))
+            .await
+            .map_err(map_error)?;
         let mut bytes = Vec::new();
-        self.bot.download_file(&file.path, &mut bytes).await.map_err(|e| SendError::Other(e.to_string()))?;
+        self.bot
+            .download_file(&file.path, &mut bytes)
+            .await
+            .map_err(|e| SendError::Other(e.to_string()))?;
         Ok(bytes)
     }
 
@@ -185,14 +222,26 @@ impl Telegram for TeloxideTelegram {
 }
 
 fn user(u: &teloxide::types::User) -> User {
-    User { id: u.id.0 as i64, name: u.full_name(), username: u.username.clone() }
+    User {
+        id: u.id.0 as i64,
+        name: u.full_name(),
+        username: u.username.clone(),
+    }
 }
 
 fn chat(c: &teloxide::types::Chat) -> Chat {
     if c.is_private() {
-        Chat { id: c.id.0, kind: ChatKind::Private }
+        Chat {
+            id: c.id.0,
+            kind: ChatKind::Private,
+        }
     } else {
-        Chat { id: c.id.0, kind: ChatKind::Group { title: c.title().unwrap_or_default().to_string() } }
+        Chat {
+            id: c.id.0,
+            kind: ChatKind::Group {
+                title: c.title().unwrap_or_default().to_string(),
+            },
+        }
     }
 }
 
@@ -207,9 +256,16 @@ pub fn command_from_message(m: &Message, bot_username: &str) -> Option<Command> 
     };
     // Anonymous admins and channels arrive with a placeholder `from`
     // (@GroupAnonymousBot); the gate decides what they may do.
-    let from = m.from.as_ref().map(user).unwrap_or(User { id: 0, name: String::new(), username: None });
+    let from = m.from.as_ref().map(user).unwrap_or(User {
+        id: 0,
+        name: String::new(),
+        username: None,
+    });
     let reply_to = m.reply_to_message().and_then(|r| {
-        Some(ReplyTo { from: r.from.as_ref()?.id.0 as i64, forwarded_from: r.forward_from_user().map(|u| u.id.0 as i64) })
+        Some(ReplyTo {
+            from: r.from.as_ref()?.id.0 as i64,
+            forwarded_from: r.forward_from_user().map(|u| u.id.0 as i64),
+        })
     });
     let mentions = m
         .parse_entities()
@@ -230,7 +286,16 @@ pub fn command_from_message(m: &Message, bot_username: &str) -> Option<Command> 
         file_id: d.file.id.0.clone(),
         file_name: d.file_name.clone(),
     });
-    Some(Command { chat: chat(&m.chat), from, name, args, sender, reply_to, mentions, replied_document })
+    Some(Command {
+        chat: chat(&m.chat),
+        from,
+        name,
+        args,
+        sender,
+        reply_to,
+        mentions,
+        replied_document,
+    })
 }
 
 pub fn incoming(update: teloxide::types::Update, bot_username: &str) -> Option<Incoming> {
@@ -239,7 +304,10 @@ pub fn incoming(update: teloxide::types::Update, bot_username: &str) -> Option<I
         UpdateKind::CallbackQuery(q) => Some(Incoming::Callback {
             id: q.id.0,
             from: user(&q.from),
-            message: q.message.as_ref().map(|m| MsgRef { chat: m.chat().id.0, id: m.id().0 }),
+            message: q.message.as_ref().map(|m| MsgRef {
+                chat: m.chat().id.0,
+                id: m.id().0,
+            }),
             data: q.data?,
         }),
         _ => None,

@@ -27,15 +27,14 @@
 //! topological sort is future work for whenever a second dependency shows
 //! up and two hardcoded levels stop being enough.
 
+use crate::death_text::{death_message, DeathContext};
 use crate::messages::{Announcement, Message, MessageArg, Note, SecretTally};
-use crate::rules::GameRules;
 use crate::rng::RngSource;
 use crate::roles::{
-    behavior_for, DayAction, DayContext, LoversState, NightAction, NightContext, NightFact,
-    PlayerId, RoleState,
+    behavior_for, DayAction, DayContext, LoversState, NightAction, NightContext, NightFact, PlayerId, RoleState,
 };
+use crate::rules::GameRules;
 use async_trait::async_trait;
-use crate::death_text::{death_message, DeathContext};
 use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
 
@@ -62,7 +61,9 @@ pub enum Prompt {
     LynchVote,
     /// Carries the bullets left, which the legacy text shows
     /// (`AskShoot`, "{0} bullet(s) remain", Werewolf.cs:5111).
-    GunnerShoot { bullets: u8 },
+    GunnerShoot {
+        bullets: u8,
+    },
     BlacksmithSilver,
     CultistHunterInvestigate,
     SorcererInvestigate,
@@ -127,10 +128,9 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
     match prompt {
         Prompt::WolfEat => Some("AskEat"),
         Prompt::SerialKillerKill => Some("AskKill"),
-        Prompt::SeerCheck
-        | Prompt::FoolInvestigate
-        | Prompt::SorcererInvestigate
-        | Prompt::OracleInvestigate => Some("AskSee"),
+        Prompt::SeerCheck | Prompt::FoolInvestigate | Prompt::SorcererInvestigate | Prompt::OracleInvestigate => {
+            Some("AskSee")
+        }
         Prompt::HarlotVisit => Some("AskVisit"),
         Prompt::GuardianAngelProtect => Some("AskGuard"),
         Prompt::DetectiveInvestigate => Some("AskDetect"),
@@ -225,11 +225,7 @@ pub enum NarrationEvent {
     /// etc. `from`/`to` rather than just `to` because several legacy
     /// messages (`DGToWolf`, `DGToCult`, ...) are phrased around what the
     /// player *was*, not just what they became.
-    Transform {
-        player: PlayerId,
-        from: Role,
-        to: Role,
-    },
+    Transform { player: PlayerId, from: Role, to: Role },
     /// The game has ended. Carries the whole `WinOutcome`, not just a
     /// `Team`, so a presenter can tell a genuine "no winner yet" (never
     /// produced — `run_game` only emits this once it actually returns)
@@ -245,7 +241,10 @@ pub enum NarrationEvent {
     Private { to: PlayerId, note: Note },
     /// A whole message told to one player only, for what `Note` can't
     /// carry: role info and team lists (see `role_info`).
-    Tell { to: PlayerId, message: crate::messages::Message },
+    Tell {
+        to: PlayerId,
+        message: crate::messages::Message,
+    },
     /// Something told to the whole group — see `messages::Announcement`.
     Announce(Announcement),
     /// The end-of-game summary, right after `GameOver`.
@@ -563,27 +562,51 @@ mod locale_mapping_tests {
 
     #[test]
     fn serial_killed_maps_to_the_dying_roles_own_flavor_key() {
-        assert_eq!(death_locale_key(Role::Gunner, KillMethod::SerialKilled), Some("GunnerKilled"));
-        assert_eq!(death_locale_key(Role::Seer, KillMethod::SerialKilled), Some("SeerKilled"));
-        assert_eq!(death_locale_key(Role::Blacksmith, KillMethod::SerialKilled), Some("BlacksmithKilled"));
-        assert_eq!(death_locale_key(Role::Cupid, KillMethod::SerialKilled), Some("CupidKilled"));
+        assert_eq!(
+            death_locale_key(Role::Gunner, KillMethod::SerialKilled),
+            Some("GunnerKilled")
+        );
+        assert_eq!(
+            death_locale_key(Role::Seer, KillMethod::SerialKilled),
+            Some("SeerKilled")
+        );
+        assert_eq!(
+            death_locale_key(Role::Blacksmith, KillMethod::SerialKilled),
+            Some("BlacksmithKilled")
+        );
+        assert_eq!(
+            death_locale_key(Role::Cupid, KillMethod::SerialKilled),
+            Some("CupidKilled")
+        );
     }
 
     #[test]
     fn serial_killed_falls_back_to_default_for_an_uncelebrated_role() {
-        assert_eq!(death_locale_key(Role::Villager, KillMethod::SerialKilled), Some("DefaultKilled"));
+        assert_eq!(
+            death_locale_key(Role::Villager, KillMethod::SerialKilled),
+            Some("DefaultKilled")
+        );
     }
 
     #[test]
     fn a_harlot_dying_from_visiting_a_wolf_has_a_key() {
-        assert_eq!(death_locale_key(Role::Harlot, KillMethod::VisitWolf), Some("HarlotFuckedWolfPublic"));
+        assert_eq!(
+            death_locale_key(Role::Harlot, KillMethod::VisitWolf),
+            Some("HarlotFuckedWolfPublic")
+        );
     }
 
     #[test]
     fn wolf_eat_maps_to_the_dying_roles_own_flavor_key() {
         assert_eq!(death_locale_key(Role::Seer, KillMethod::Eat), Some("SeerEaten"));
-        assert_eq!(death_locale_key(Role::Detective, KillMethod::Eat), Some("DetectiveEaten"));
-        assert_eq!(death_locale_key(Role::GuardianAngel, KillMethod::Eat), Some("GuardianEaten"));
+        assert_eq!(
+            death_locale_key(Role::Detective, KillMethod::Eat),
+            Some("DetectiveEaten")
+        );
+        assert_eq!(
+            death_locale_key(Role::GuardianAngel, KillMethod::Eat),
+            Some("GuardianEaten")
+        );
     }
 
     #[test]
@@ -593,17 +616,38 @@ mod locale_mapping_tests {
 
     #[test]
     fn chemistry_success_and_failure_map_to_different_keys() {
-        assert_eq!(death_locale_key(Role::Villager, KillMethod::Chemistry), Some("ChemistSuccessPublic"));
-        assert_eq!(death_locale_key(Role::Chemist, KillMethod::Chemistry), Some("ChemistFailPublic"));
+        assert_eq!(
+            death_locale_key(Role::Villager, KillMethod::Chemistry),
+            Some("ChemistSuccessPublic")
+        );
+        assert_eq!(
+            death_locale_key(Role::Chemist, KillMethod::Chemistry),
+            Some("ChemistFailPublic")
+        );
     }
 
     #[test]
     fn visit_killer_deaths_vary_by_the_dying_roles_own_team() {
-        assert_eq!(death_locale_key(Role::Wolf, KillMethod::VisitKiller), Some("SerialKillerKilledWolf"));
-        assert_eq!(death_locale_key(Role::AlphaWolf, KillMethod::VisitKiller), Some("SerialKillerKilledWolf"));
-        assert_eq!(death_locale_key(Role::SnowWolf, KillMethod::VisitKiller), Some("SnowFrozeKiller"));
-        assert_eq!(death_locale_key(Role::Cultist, KillMethod::VisitKiller), Some("CultConvertKillerPublic"));
-        assert_eq!(death_locale_key(Role::Harlot, KillMethod::VisitKiller), Some("HarlotFuckKillerPublic"));
+        assert_eq!(
+            death_locale_key(Role::Wolf, KillMethod::VisitKiller),
+            Some("SerialKillerKilledWolf")
+        );
+        assert_eq!(
+            death_locale_key(Role::AlphaWolf, KillMethod::VisitKiller),
+            Some("SerialKillerKilledWolf")
+        );
+        assert_eq!(
+            death_locale_key(Role::SnowWolf, KillMethod::VisitKiller),
+            Some("SnowFrozeKiller")
+        );
+        assert_eq!(
+            death_locale_key(Role::Cultist, KillMethod::VisitKiller),
+            Some("CultConvertKillerPublic")
+        );
+        assert_eq!(
+            death_locale_key(Role::Harlot, KillMethod::VisitKiller),
+            Some("HarlotFuckKillerPublic")
+        );
         assert_eq!(death_locale_key(Role::Villager, KillMethod::VisitKiller), None);
     }
 
@@ -621,7 +665,10 @@ mod locale_mapping_tests {
 
     #[test]
     fn known_win_outcomes_map_to_their_real_keys() {
-        assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::Village)), Some("VillageWins"));
+        assert_eq!(
+            game_over_locale_key(&WinOutcome::Team(Team::Village)),
+            Some("VillageWins")
+        );
         assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::Wolf)), Some("WolfWins"));
         assert_eq!(game_over_locale_key(&WinOutcome::Team(Team::Lovers)), Some("LoversWin"));
     }
@@ -740,7 +787,12 @@ pub trait Presenter {
     /// `ask_toggle`, in order, calling `on_answer` after each, so a
     /// presenter that doesn't override it sees exactly the calls it always
     /// did.
-    async fn ask_batch(&mut self, _phase: Phase, questions: Vec<Question>, on_answer: &mut dyn OnAnswer) -> Vec<Answer> {
+    async fn ask_batch(
+        &mut self,
+        _phase: Phase,
+        questions: Vec<Question>,
+        on_answer: &mut dyn OnAnswer,
+    ) -> Vec<Answer> {
         let mut answers = Vec::with_capacity(questions.len());
         for (index, question) in questions.into_iter().enumerate() {
             if on_answer.closed(index) {
@@ -751,9 +803,13 @@ pub trait Presenter {
                 continue;
             }
             let answer = match question {
-                Question::Targets { player, prompt, options, count, .. } => {
-                    Answer::Targets(self.ask_targets(player, prompt, &options, count).await)
-                }
+                Question::Targets {
+                    player,
+                    prompt,
+                    options,
+                    count,
+                    ..
+                } => Answer::Targets(self.ask_targets(player, prompt, &options, count).await),
                 Question::Toggle { player, prompt } => Answer::Toggle(self.ask_toggle(player, prompt).await),
             };
             for event in on_answer.answered(index, &answer) {
@@ -858,12 +914,22 @@ pub struct TeamVotes {
 impl TeamVotes {
     pub fn for_night(questions: &[Question], players: &[AlivePlayer]) -> Self {
         let team = |voter: PlayerId, of: fn(Role) -> bool| -> Vec<PlayerId> {
-            players.iter().filter(|p| p.id != voter && of(p.role)).map(|p| p.id).collect()
+            players
+                .iter()
+                .filter(|p| p.id != voter && of(p.role))
+                .map(|p| p.id)
+                .collect()
         };
         let mut asked = HashMap::new();
         let mut options = vec![];
         for (index, q) in questions.iter().enumerate() {
-            let Question::Targets { player, prompt, options: offered, .. } = q else {
+            let Question::Targets {
+                player,
+                prompt,
+                options: offered,
+                ..
+            } = q
+            else {
                 options.push(vec![]);
                 continue;
             };
@@ -891,7 +957,12 @@ impl OnAnswer for TeamVotes {
             return vec![];
         }
         let message = Message::new(key, vec![MessageArg::Player(*voter), MessageArg::Player(*target)]);
-        to.iter().map(|&to| NarrationEvent::Tell { to, message: message.clone() }).collect()
+        to.iter()
+            .map(|&to| NarrationEvent::Tell {
+                to,
+                message: message.clone(),
+            })
+            .collect()
     }
 }
 
@@ -912,7 +983,10 @@ async fn ask_phase(
     if questions.is_empty() {
         return vec![];
     }
-    let mut answers = presenter.ask_batch(phase, questions.to_vec(), on_answer).await.into_iter();
+    let mut answers = presenter
+        .ask_batch(phase, questions.to_vec(), on_answer)
+        .await
+        .into_iter();
     questions.iter().map(|q| validate_answer(q, answers.next())).collect()
 }
 
@@ -945,12 +1019,30 @@ struct BatchBuilder {
 
 impl BatchBuilder {
     fn targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], count: usize) -> usize {
-        self.questions.push(Question::Targets { player, prompt, options: options.to_vec(), count, text: None });
+        self.questions.push(Question::Targets {
+            player,
+            prompt,
+            options: options.to_vec(),
+            count,
+            text: None,
+        });
         self.questions.len() - 1
     }
 
-    fn targets_with_text(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], text: crate::messages::Message) -> usize {
-        self.questions.push(Question::Targets { player, prompt, options: options.to_vec(), count: 1, text: Some(text) });
+    fn targets_with_text(
+        &mut self,
+        player: PlayerId,
+        prompt: Prompt,
+        options: &[PlayerId],
+        text: crate::messages::Message,
+    ) -> usize {
+        self.questions.push(Question::Targets {
+            player,
+            prompt,
+            options: options.to_vec(),
+            count: 1,
+            text: Some(text),
+        });
         self.questions.len() - 1
     }
 
@@ -1079,7 +1171,11 @@ pub async fn resolve_night_with_freeze(
     presenter: &mut dyn Presenter,
     skip: &[PlayerId],
     doused: &[PlayerId],
-) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>, Option<(PlayerId, PlayerId)>) {
+) -> (
+    Vec<(PlayerId, NightAction)>,
+    Option<PlayerId>,
+    Option<(PlayerId, PlayerId)>,
+) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut actions: Vec<(PlayerId, NightAction)> = vec![];
 
@@ -1091,7 +1187,9 @@ pub async fn resolve_night_with_freeze(
         toggle: Option<usize>,
     }
     let mut batch = BatchBuilder::default();
-    let freeze_index = freeze.as_ref().map(|(snow_wolf, options)| batch.targets(*snow_wolf, Prompt::SnowWolfFreeze, options, 1));
+    let freeze_index = freeze
+        .as_ref()
+        .map(|(snow_wolf, options)| batch.targets(*snow_wolf, Prompt::SnowWolfFreeze, options, 1));
     let mut asked = vec![];
     for player in players {
         if !behavior_for(player.role).requires().is_empty() || skip.contains(&player.id) {
@@ -1104,17 +1202,28 @@ pub async fn resolve_night_with_freeze(
             presenter.narrate(NarrationEvent::Private { to: player.id, note }).await;
             continue;
         }
-        let mut a = Asked { player: *player, cupid: None, target: None, toggle: None };
+        let mut a = Asked {
+            player: *player,
+            cupid: None,
+            target: None,
+            toggle: None,
+        };
         if player.role == Role::Cupid {
             a.cupid = Some(batch.targets(player.id, Prompt::CupidLink, &alive, 2));
         } else if player.role == Role::Arsonist {
-            let options: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != player.id && !doused.contains(&id)).collect();
+            let options: Vec<PlayerId> = alive
+                .iter()
+                .copied()
+                .filter(|&id| id != player.id && !doused.contains(&id))
+                .collect();
             let living_doused: Vec<PlayerId> = alive.iter().copied().filter(|id| doused.contains(id)).collect();
             let text = if living_doused.is_empty() {
                 Message::new("AskArsonistNoDoused", vec![])
             } else {
-                Message::new("AskArsonist", vec![])
-                    .followed_by(Message::new("AlreadyDousedList", vec![MessageArg::PlayersAnd(living_doused.clone())]))
+                Message::new("AskArsonist", vec![]).followed_by(Message::new(
+                    "AlreadyDousedList",
+                    vec![MessageArg::PlayersAnd(living_doused.clone())],
+                ))
             };
             a.target = Some(batch.targets_with_text(player.id, Prompt::ArsonistDouse, &options, text));
             if !living_doused.is_empty() {
@@ -1149,7 +1258,12 @@ pub async fn resolve_night_with_freeze(
             wolf_target: None,
             toggle_choice: toggle_answer(&answers, a.toggle),
         };
-        actions.extend(behavior.night_action(&ctx, state).into_iter().map(|act| (a.player.id, act)));
+        actions.extend(
+            behavior
+                .night_action(&ctx, state)
+                .into_iter()
+                .map(|act| (a.player.id, act)),
+        );
     }
 
     // Tally the wolves' target: majority vote among EatVote actions, tie
@@ -1222,7 +1336,6 @@ fn majority_target(votes: impl Iterator<Item = PlayerId>) -> Option<PlayerId> {
         Some(*first.0)
     }
 }
-
 
 /// Maps a role to its day-phase question, if it has one. Most roles have
 /// no day action, which is the default `RoleBehavior::day_action` already
@@ -1308,7 +1421,14 @@ struct LynchVotes<'a> {
 
 impl<'a> LynchVotes<'a> {
     fn new(rules: &'a GameRules, rng: &'a mut dyn RngSource, alive: usize) -> Self {
-        LynchVotes { ballots: vec![], alive, rules, rng, cast: vec![], excluded: vec![] }
+        LynchVotes {
+            ballots: vec![],
+            alive,
+            rules,
+            rng,
+            cast: vec![],
+            excluded: vec![],
+        }
     }
 
     fn ask(&mut self, batch: &mut BatchBuilder, voter: &AlivePlayer, alive: &[PlayerId]) {
@@ -1338,8 +1458,14 @@ impl OnAnswer for LynchVotes<'_> {
         };
         self.cast.push((voter.id, target));
         let announcement = match self.rules.secret_lynch {
-            None => Announcement::PlayerVotedLynch { voter: voter.id, target },
-            Some(_) => Announcement::PlayerVoteCounts { voted: self.cast.len() as u32, alive: self.alive as u32 },
+            None => Announcement::PlayerVotedLynch {
+                voter: voter.id,
+                target,
+            },
+            Some(_) => Announcement::PlayerVoteCounts {
+                voted: self.cast.len() as u32,
+                alive: self.alive as u32,
+            },
         };
         vec![NarrationEvent::Announce(announcement)]
     }
@@ -1373,15 +1499,21 @@ impl DayAnswers<'_> {
     /// The Gunner's shot kills at once (Werewolf.cs:2873-2898): its line
     /// is told now, and the victim is out of the rest of the day.
     fn shoot(&mut self, gunner: AlivePlayer, answer: &Answer) -> Vec<NarrationEvent> {
-        let Answer::Targets(Some(picked)) = answer else { return vec![] };
+        let Answer::Targets(Some(picked)) = answer else {
+            return vec![];
+        };
         let Some(&target) = picked.first() else { return vec![] };
-        let Some(victim) = self.players.iter().find(|p| p.id == target && p.id != gunner.id) else { return vec![] };
+        let Some(victim) = self.players.iter().find(|p| p.id == target && p.id != gunner.id) else {
+            return vec![];
+        };
         if self.votes.excluded.contains(&target) {
             return vec![];
         }
         self.votes.excluded.push(target);
         self.fired.push(gunner.id);
-        self.votes.cast.retain(|&(voter, voted)| voter != target && voted != target);
+        self.votes
+            .cast
+            .retain(|&(voter, voted)| voter != target && voted != target);
         let message = death_message(&DeathContext {
             victim: target,
             role: victim.role,
@@ -1392,10 +1524,18 @@ impl DayAnswers<'_> {
             pack_size: 0,
             killed_by: Some(Role::Gunner),
         });
-        let mut said =
-            vec![NarrationEvent::Death { victim: target, role: victim.role, method: KillMethod::Shoot, reveal_role: self.reveal, message }];
+        let mut said = vec![NarrationEvent::Death {
+            victim: target,
+            role: victim.role,
+            method: KillMethod::Shoot,
+            reveal_role: self.reveal,
+            message,
+        }];
         if victim.role == Role::WiseElder {
-            said.push(NarrationEvent::Announce(Announcement::GunnerShotWiseElder { gunner: gunner.id, elder: target }));
+            said.push(NarrationEvent::Announce(Announcement::GunnerShotWiseElder {
+                gunner: gunner.id,
+                elder: target,
+            }));
         }
         said
     }
@@ -1440,7 +1580,11 @@ impl OnAnswer for DayAnswers<'_> {
     }
 
     fn closed_key(&self, index: usize) -> &'static str {
-        if self.peace_closed(index) && !self.shot_asked(index) { "LynchPeaceTimeout" } else { "TimesUp" }
+        if self.peace_closed(index) && !self.shot_asked(index) {
+            "LynchPeaceTimeout"
+        } else {
+            "TimesUp"
+        }
     }
 }
 
@@ -1467,11 +1611,19 @@ fn secret_lynch_results(
     let secret = rules.secret_lynch.filter(|s| s.show_votes)?;
     let mut tallies: Vec<SecretTally> = vec![];
     for &(voter, target) in votes_by_voter {
-        let weight = if is_revealed_mayor(voter, players, states) { 2 } else { 1 };
+        let weight = if is_revealed_mayor(voter, players, states) {
+            2
+        } else {
+            1
+        };
         let tally = match tallies.iter_mut().find(|t| t.target == target) {
             Some(t) => t,
             None => {
-                tallies.push(SecretTally { target, votes: 0, voters: secret.show_voters.then(Vec::new) });
+                tallies.push(SecretTally {
+                    target,
+                    votes: 0,
+                    voters: secret.show_voters.then(Vec::new),
+                });
                 tallies.last_mut().expect("just pushed")
             }
         };
@@ -1500,7 +1652,11 @@ fn tally_lynch(
         return LynchResult::NoVotes;
     }
     let votes = votes_by_voter.iter().flat_map(|&(voter, target)| {
-        let weight = if is_revealed_mayor(voter, players, states) { 2 } else { 1 };
+        let weight = if is_revealed_mayor(voter, players, states) {
+            2
+        } else {
+            1
+        };
         std::iter::repeat(target).take(weight)
     });
     match majority_target(votes) {
@@ -1562,7 +1718,8 @@ pub async fn resolve_day(
         day.votes.ask(&mut batch, player, &alive);
         let state = states.entry(player.id).or_default();
         let others: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != player.id).collect();
-        let target = one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &others, 1));
+        let target =
+            one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &others, 1));
         if let (Some(index), Role::Gunner) = (target, player.role) {
             day.shots.push((index, *player));
         }
@@ -1659,8 +1816,8 @@ pub fn apply_day_results(
 
     if !pacified {
         if let Some(target) = lynch_target {
-            let prince_has_immunity = lynch_target_role == Some(Role::Prince)
-                && !states.entry(target).or_default().primary_used;
+            let prince_has_immunity =
+                lynch_target_role == Some(Role::Prince) && !states.entry(target).or_default().primary_used;
             if prince_has_immunity {
                 states.entry(target).or_default().primary_used = true;
             } else {
@@ -1720,12 +1877,7 @@ mod apply_day_results_tests {
     fn pacify_vetoes_the_lynch_entirely() {
         let target = PlayerId(1);
         let mut states = HashMap::new();
-        let deaths = apply_day_results(
-            &[DayAction::Pacify],
-            Some(target),
-            Some(Role::Villager),
-            &mut states,
-        );
+        let deaths = apply_day_results(&[DayAction::Pacify], Some(target), Some(Role::Villager), &mut states);
         assert_eq!(deaths, vec![], "Pacifist's veto should cancel the lynch");
     }
 
@@ -1735,7 +1887,13 @@ mod apply_day_results_tests {
         let shot_target = PlayerId(2);
         let mut states = HashMap::new();
         let deaths = apply_day_results(
-            &[DayAction::Pacify, DayAction::Shoot { shooter: PlayerId(99), target: shot_target }],
+            &[
+                DayAction::Pacify,
+                DayAction::Shoot {
+                    shooter: PlayerId(99),
+                    target: shot_target,
+                },
+            ],
             Some(lynch_target),
             Some(Role::Villager),
             &mut states,
@@ -1767,15 +1925,33 @@ mod apply_day_results_tests {
     #[test]
     fn a_revealed_mayor_counts_twice_on_later_days() {
         let players = vec![
-            AlivePlayer { id: PlayerId(1), role: Role::Mayor },
-            AlivePlayer { id: PlayerId(2), role: Role::Villager },
-            AlivePlayer { id: PlayerId(3), role: Role::Villager },
+            AlivePlayer {
+                id: PlayerId(1),
+                role: Role::Mayor,
+            },
+            AlivePlayer {
+                id: PlayerId(2),
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: PlayerId(3),
+                role: Role::Villager,
+            },
         ];
         let mut states = HashMap::new();
         let votes = [pair(1, 2), pair(2, 3)];
         assert_eq!(tally_lynch(&votes, &players, &states), LynchResult::Tie);
-        states.insert(PlayerId(1), RoleState { primary_used: true, ..Default::default() });
-        assert_eq!(tally_lynch(&votes, &players, &states), LynchResult::Lynched(PlayerId(2)));
+        states.insert(
+            PlayerId(1),
+            RoleState {
+                primary_used: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            tally_lynch(&votes, &players, &states),
+            LynchResult::Lynched(PlayerId(2))
+        );
         assert_eq!(tally_lynch(&[], &players, &states), LynchResult::NoVotes);
     }
 
@@ -1783,7 +1959,10 @@ mod apply_day_results_tests {
     /// a random living player other than themselves.
     #[test]
     fn a_clumsy_guys_vote_can_go_astray() {
-        let clumsy = AlivePlayer { id: PlayerId(1), role: Role::ClumsyGuy };
+        let clumsy = AlivePlayer {
+            id: PlayerId(1),
+            role: Role::ClumsyGuy,
+        };
         let alive = [PlayerId(1), PlayerId(2), PlayerId(3)];
         let rules = GameRules::default();
         let cast = |rng: &mut dyn RngSource| {
@@ -1799,7 +1978,10 @@ mod apply_day_results_tests {
         // The announcement names where the vote landed.
         assert_eq!(
             said,
-            vec![NarrationEvent::Announce(Announcement::PlayerVotedLynch { voter: PlayerId(1), target: PlayerId(3) })]
+            vec![NarrationEvent::Announce(Announcement::PlayerVotedLynch {
+                voter: PlayerId(1),
+                target: PlayerId(3)
+            })]
         );
         let mut rng = crate::rng::ScriptedRngSource::new().with_chance(false);
         assert_eq!(cast(&mut rng).0, vec![(PlayerId(1), PlayerId(2))]);
@@ -1809,7 +1991,10 @@ mod apply_day_results_tests {
     /// counted.
     #[test]
     fn votes_count_once_and_never_for_yourself() {
-        let voter = AlivePlayer { id: PlayerId(1), role: Role::Villager };
+        let voter = AlivePlayer {
+            id: PlayerId(1),
+            role: Role::Villager,
+        };
         let alive = [PlayerId(1), PlayerId(2)];
         let rules = GameRules::default();
         let mut rng = crate::rng::ScriptedRngSource::new();
@@ -1834,7 +2019,10 @@ mod apply_day_results_tests {
             &mut states,
         );
         assert!(deaths.is_empty());
-        assert_eq!(last_day_veto(&[DayAction::Trouble, DayAction::Pacify]), Some(DayAction::Pacify));
+        assert_eq!(
+            last_day_veto(&[DayAction::Trouble, DayAction::Pacify]),
+            Some(DayAction::Pacify)
+        );
     }
 }
 
@@ -1999,13 +2187,19 @@ pub async fn resolve_hunter_shots_by(
         // (Werewolf.cs:5453-5463).
         match presenter.ask_targets(hunter_id, prompt, &options, 1).await {
             Some(picked) if picked.is_empty() => {
-                let announcement = Announcement::HunterSkipChoice { hunter: hunter_id, lynched };
+                let announcement = Announcement::HunterSkipChoice {
+                    hunter: hunter_id,
+                    lynched,
+                };
                 presenter.narrate(NarrationEvent::Announce(announcement)).await;
             }
             picked => match picked.and_then(|p| validate_pick(p, &options, 1)) {
                 Some(target) => shots.push((target[0], hunter_id)),
                 None => {
-                    let announcement = Announcement::HunterNoChoice { hunter: hunter_id, lynched };
+                    let announcement = Announcement::HunterNoChoice {
+                        hunter: hunter_id,
+                        lynched,
+                    };
                     presenter.narrate(NarrationEvent::Announce(announcement)).await;
                 }
             },
@@ -2040,8 +2234,7 @@ pub fn resolve_lover_deaths(
             continue;
         };
         let partner_alive = alive.iter().any(|p| p.id == partner);
-        let already_dying = new_deaths.iter().any(|&(v, _)| v == partner)
-            || chain.iter().any(|&(v, _)| v == partner);
+        let already_dying = new_deaths.iter().any(|&(v, _)| v == partner) || chain.iter().any(|&(v, _)| v == partner);
         if partner_alive && !already_dying {
             chain.push((partner, KillMethod::LoverDied));
         }
@@ -2093,10 +2286,7 @@ pub(crate) fn grave_digger_fall_chance_percent(dug_graves: u32, visitor_is_villa
 /// both still run unconditionally right after, regardless of which
 /// branch of that `switch` fired — so it's flavor/achievement bookkeeping
 /// only, safe to skip without changing lethality.
-pub fn resolve_spumpkin_detonation(
-    day_actions: &[DayAction],
-    rng: &mut dyn RngSource,
-) -> Vec<(PlayerId, KillMethod)> {
+pub fn resolve_spumpkin_detonation(day_actions: &[DayAction], rng: &mut dyn RngSource) -> Vec<(PlayerId, KillMethod)> {
     day_actions
         .iter()
         .filter_map(|a| match a {
@@ -2144,9 +2334,7 @@ mod apply_night_results_tests {
     #[test]
     fn protecting_someone_else_does_not_cancel_the_wolf_kill() {
         let target = PlayerId(1);
-        let actions = [NightAction::Protect {
-            target: PlayerId(2),
-        }];
+        let actions = [NightAction::Protect { target: PlayerId(2) }];
         let deaths = apply_night_results(&actions, Some(target), false);
         assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
     }
@@ -2154,9 +2342,7 @@ mod apply_night_results_tests {
     #[test]
     fn heal_on_someone_else_does_not_cancel_the_wolf_kill() {
         let target = PlayerId(1);
-        let actions = [NightAction::Heal {
-            target: PlayerId(2),
-        }];
+        let actions = [NightAction::Heal { target: PlayerId(2) }];
         let deaths = apply_night_results(&actions, Some(target), false);
         assert_eq!(deaths, vec![(target, KillMethod::Eat)]);
     }
@@ -2170,10 +2356,7 @@ mod apply_night_results_tests {
         deaths.sort_by_key(|(id, _)| id.0);
         assert_eq!(
             deaths,
-            vec![
-                (wolf_target, KillMethod::Eat),
-                (poisoned, KillMethod::Poison)
-            ]
+            vec![(wolf_target, KillMethod::Eat), (poisoned, KillMethod::Poison)]
         );
     }
 
@@ -2247,8 +2430,14 @@ mod hunter_shot_tests {
 
     fn alive_roster() -> Vec<AlivePlayer> {
         vec![
-            AlivePlayer { id: PlayerId(2), role: Role::Villager },
-            AlivePlayer { id: PlayerId(3), role: Role::Seer },
+            AlivePlayer {
+                id: PlayerId(2),
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: PlayerId(3),
+                role: Role::Seer,
+            },
         ]
     }
 
@@ -2306,7 +2495,10 @@ mod hunter_shot_tests {
         let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
 
         assert_eq!(shots, vec![]);
-        assert!(presenter.asked.is_empty(), "a wolf-eaten hunter should never be asked for a final shot");
+        assert!(
+            presenter.asked.is_empty(),
+            "a wolf-eaten hunter should never be asked for a final shot"
+        );
     }
 
     #[tokio::test]
@@ -2337,7 +2529,10 @@ mod hunter_shot_tests {
         let shots = resolve_hunter_shots(&new_deaths, &died_with_roles, &alive_roster(), &mut presenter).await;
 
         assert_eq!(shots, vec![]);
-        assert!(presenter.asked.is_empty(), "a non-Hunter death should never trigger a final-shot question");
+        assert!(
+            presenter.asked.is_empty(),
+            "a non-Hunter death should never trigger a final-shot question"
+        );
     }
 }
 
@@ -2347,8 +2542,14 @@ mod lover_death_tests {
 
     fn alive_pair() -> Vec<AlivePlayer> {
         vec![
-            AlivePlayer { id: PlayerId(2), role: Role::Villager },
-            AlivePlayer { id: PlayerId(3), role: Role::Seer },
+            AlivePlayer {
+                id: PlayerId(2),
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: PlayerId(3),
+                role: Role::Seer,
+            },
         ]
     }
 
@@ -2463,9 +2664,7 @@ mod grave_digger_fall_tests {
         let chance = grave_digger_fall_chance_percent(20, false);
         assert!((49..=50).contains(&chance), "expected ~50, got {chance}");
     }
-
 }
-
 
 #[cfg(test)]
 mod day_tests {
@@ -2534,13 +2733,19 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (day_actions, lynch_target) = resolve_day(
+            &players,
+            &mut states,
+            &GameRules::default(),
+            &mut presenter,
+            &mut crate::rng::ScriptedRngSource::new(),
+        )
+        .await;
         let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, Some(target));
 
         let mut states2 = HashMap::new();
-        let deaths =
-            apply_day_results(&day_actions, lynch_target, Some(Role::Villager), &mut states2);
+        let deaths = apply_day_results(&day_actions, lynch_target, Some(Role::Villager), &mut states2);
         assert_eq!(deaths, vec![(target, KillMethod::Lynch)]);
     }
 
@@ -2579,7 +2784,14 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (day_actions, lynch_target) = resolve_day(
+            &players,
+            &mut states,
+            &GameRules::default(),
+            &mut presenter,
+            &mut crate::rng::ScriptedRngSource::new(),
+        )
+        .await;
         let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, None);
         let mut states2 = HashMap::new();
@@ -2618,21 +2830,26 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (day_actions, lynch) = resolve_day(
+            &players,
+            &mut states,
+            &GameRules::default(),
+            &mut presenter,
+            &mut crate::rng::ScriptedRngSource::new(),
+        )
+        .await;
         let lynch = lynch.target();
         assert_eq!(lynch, Some(lynch_target));
-        assert!(day_actions.iter().any(|a| matches!(a, DayAction::Shoot { target, .. } if *target == shot_target)));
+        assert!(day_actions
+            .iter()
+            .any(|a| matches!(a, DayAction::Shoot { target, .. } if *target == shot_target)));
 
         let mut states2 = HashMap::new();
-        let mut deaths =
-            apply_day_results(&day_actions, lynch, Some(Role::Villager), &mut states2);
+        let mut deaths = apply_day_results(&day_actions, lynch, Some(Role::Villager), &mut states2);
         deaths.sort_by_key(|(id, _)| id.0);
         assert_eq!(
             deaths,
-            vec![
-                (lynch_target, KillMethod::Lynch),
-                (shot_target, KillMethod::Shoot),
-            ]
+            vec![(lynch_target, KillMethod::Lynch), (shot_target, KillMethod::Shoot),]
         );
     }
 
@@ -2675,7 +2892,14 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (_day_actions, lynch_target) = resolve_day(
+            &players,
+            &mut states,
+            &GameRules::default(),
+            &mut presenter,
+            &mut crate::rng::ScriptedRngSource::new(),
+        )
+        .await;
         let lynch_target = lynch_target.target();
         assert_eq!(
             lynch_target,
@@ -2721,7 +2945,14 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &GameRules::default(), &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let (_day_actions, lynch_target) = resolve_day(
+            &players,
+            &mut states,
+            &GameRules::default(),
+            &mut presenter,
+            &mut crate::rng::ScriptedRngSource::new(),
+        )
+        .await;
         let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, None);
     }

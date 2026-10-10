@@ -35,7 +35,11 @@ impl LangFile {
         let pack = LanguagePack::load(path)?;
         let modified = fs::metadata(path).and_then(|m| m.modified()).map_err(LoadError::Io)?;
         Ok(LangFile {
-            file_name: path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string(),
+            file_name: path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string(),
             path: path.to_path_buf(),
             pack,
             updated: Timestamp::from_system_time(modified),
@@ -152,7 +156,12 @@ pub struct LanguageError {
 
 impl LanguageError {
     fn new(file: &str, key: &str, message: impl Into<String>, level: ErrorLevel) -> Self {
-        LanguageError { file: file.into(), key: key.into(), message: message.into(), level }
+        LanguageError {
+            file: file.into(),
+            key: key.into(),
+            message: message.into(),
+            level,
+        }
     }
 }
 
@@ -167,7 +176,12 @@ fn check_language_node(file: &LangFile, errors: &mut Vec<LanguageError>) {
         (&meta.variant, "Variant is missing"),
     ] {
         if value.trim().is_empty() {
-            errors.push(LanguageError::new(&file.file_name, NODE, message, ErrorLevel::FatalError));
+            errors.push(LanguageError::new(
+                &file.file_name,
+                NODE,
+                message,
+                ErrorLevel::FatalError,
+            ));
         }
     }
 }
@@ -179,27 +193,51 @@ fn check_strings(file: &LangFile, master: &LanguagePack, errors: &mut Vec<Langua
     // The C# only looked for CultConvertSerialKiller and CupidChosen; any
     // duplicate has the same effect (the second one is never used).
     for key in &file.pack.duplicate_keys {
-        errors.push(LanguageError::new(name, key, format!("{key} duplication"), ErrorLevel::DuplicatedString));
+        errors.push(LanguageError::new(
+            name,
+            key,
+            format!("{key} duplication"),
+            ErrorLevel::DuplicatedString,
+        ));
     }
 
     let mut keys: Vec<&str> = master.keys().collect();
     keys.sort_unstable();
     for key in keys {
         let Some(values) = file.pack.variants(key) else {
-            errors.push(LanguageError::new(name, key, "Values missing", ErrorLevel::MissingString));
+            errors.push(LanguageError::new(
+                name,
+                key,
+                "Values missing",
+                ErrorLevel::MissingString,
+            ));
             continue;
         };
         let english = master.get(key).unwrap_or_default();
-        let placeholders = (0..5).filter(|i| english.contains(&format!("{{{i}}}"))).map(|i| i + 1).max().unwrap_or(0);
+        let placeholders = (0..5)
+            .filter(|i| english.contains(&format!("{{{i}}}")))
+            .map(|i| i + 1)
+            .max()
+            .unwrap_or(0);
         let is_gif = master.gif_keys.iter().any(|k| k == key);
 
         for value in values {
             for i in 0..5 {
                 let has = value.contains(&format!("{{{i}}}"));
                 if !has && i < placeholders {
-                    errors.push(LanguageError::new(name, key, format!("Missing {{{i}}}"), ErrorLevel::Error));
+                    errors.push(LanguageError::new(
+                        name,
+                        key,
+                        format!("Missing {{{i}}}"),
+                        ErrorLevel::Error,
+                    ));
                 } else if has && i >= placeholders {
-                    errors.push(LanguageError::new(name, key, format!("Extra {{{i}}}"), ErrorLevel::Error));
+                    errors.push(LanguageError::new(
+                        name,
+                        key,
+                        format!("Extra {{{i}}}"),
+                        ErrorLevel::Error,
+                    ));
                 }
             }
             if is_gif && value.chars().count() > 1000 {
@@ -215,7 +253,12 @@ fn check_strings(file: &LangFile, master: &LanguagePack, errors: &mut Vec<Langua
                 errors.push(LanguageError::new(name, key, "", ErrorLevel::JoinLink));
             }
             if contains_ad(value) {
-                errors.push(LanguageError::new(name, key, "No usernames or links in the langfile!", ErrorLevel::Ads));
+                errors.push(LanguageError::new(
+                    name,
+                    key,
+                    "No usernames or links in the langfile!",
+                    ErrorLevel::Ads,
+                ));
             }
         }
     }
@@ -235,8 +278,14 @@ pub fn check_file(file: &LangFile, master: &LanguagePack) -> Vec<LanguageError> 
 }
 
 /// Accounts the bot itself runs; mentioning them isn't advertising.
-const HOUSE_ACCOUNTS: [&str; 6] =
-    ["werewolfbot", "werewolfbetabot", "greywolfdev", "werewolfsupport", "greywolfsupport", "para949"];
+const HOUSE_ACCOUNTS: [&str; 6] = [
+    "werewolfbot",
+    "werewolfbetabot",
+    "greywolfdev",
+    "werewolfsupport",
+    "greywolfsupport",
+    "para949",
+];
 
 /// The C#'s ad pattern (LanguageHelper.cs:659), case-insensitive: a group
 /// invite link (`t.me/+…`, `telegram.me/joinchat/…`), or ` @name` for any
@@ -247,7 +296,8 @@ pub fn contains_ad(text: &str) -> bool {
         lower.match_indices(host).any(|(at, _)| {
             let rest = &lower[at + host.len()..];
             let code = rest.strip_prefix('+').or_else(|| rest.strip_prefix("joinchat/"));
-            code.and_then(|c| c.chars().next()).is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            code.and_then(|c| c.chars().next())
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         })
     });
     let mention = lower.match_indices(" @").any(|(at, _)| {
@@ -267,13 +317,20 @@ fn count(errors: &[LanguageError], level: ErrorLevel) -> usize {
 }
 
 fn keys_joined(errors: &[LanguageError], level: ErrorLevel) -> String {
-    of_level(errors, level).map(|e| e.key.as_str()).collect::<Vec<_>>().join(", ")
+    of_level(errors, level)
+        .map(|e| e.key.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// `/validatelangs` on one file (`ValidateLanguageFile`,
 /// LanguageHelper.cs:120-178). Telegram Markdown.
 pub fn file_report(file: &LangFile, errors: &[LanguageError]) -> String {
-    let mut out = format!("*{}.xml* (Last updated: {})\n", file.file_name, file.updated.month_day());
+    let mut out = format!(
+        "*{}.xml* (Last updated: {})\n",
+        file.file_name,
+        file.updated.month_day()
+    );
     if count(errors, ErrorLevel::Ads) > 0 {
         out += "*ADS DETECTED*\n";
         for e in of_level(errors, ErrorLevel::Ads) {
@@ -293,7 +350,10 @@ pub fn file_report(file: &LangFile, errors: &[LanguageError]) -> String {
             }
         }
         if count(errors, ErrorLevel::DuplicatedString) > 0 {
-            out += &format!("\n_Duplicated Strings:_\n{}\n", keys_joined(errors, ErrorLevel::DuplicatedString));
+            out += &format!(
+                "\n_Duplicated Strings:_\n{}\n",
+                keys_joined(errors, ErrorLevel::DuplicatedString)
+            );
         }
         if count(errors, ErrorLevel::JoinLink) > 0 {
             out += &format!("\n_Join commands:_\n{}\n", keys_joined(errors, ErrorLevel::JoinLink));
@@ -325,23 +385,36 @@ pub fn file_report(file: &LangFile, errors: &[LanguageError]) -> String {
 pub fn summary_report(files: &[LangFile], master: &LanguagePack) -> (String, String) {
     let mut details = String::new();
     let mut all_errors = vec![];
-    for file in files.iter().filter(|f| f.file_name != MASTER_FILE.trim_end_matches(".xml")) {
+    for file in files
+        .iter()
+        .filter(|f| f.file_name != MASTER_FILE.trim_end_matches(".xml"))
+    {
         let errors = check_file(file, master);
         if errors.is_empty() {
             continue;
         }
-        details += &format!("*{}.xml* (Last updated: {})\n", file.file_name, file.updated.month_day());
+        details += &format!(
+            "*{}.xml* (Last updated: {})\n",
+            file.file_name,
+            file.updated.month_day()
+        );
         if count(&errors, ErrorLevel::Ads) > 0 {
             details += &format!("*Ads detected:* {}\n", keys_joined(&errors, ErrorLevel::Ads));
         } else {
             if count(&errors, ErrorLevel::DuplicatedString) > 0 {
-                details += &format!("_Duplicated Strings: _{}\n", keys_joined(&errors, ErrorLevel::DuplicatedString));
+                details += &format!(
+                    "_Duplicated Strings: _{}\n",
+                    keys_joined(&errors, ErrorLevel::DuplicatedString)
+                );
             }
             if count(&errors, ErrorLevel::JoinLink) > 0 {
                 details += &format!("_Join commands: _{}\n", keys_joined(&errors, ErrorLevel::JoinLink));
             }
             details += &format!("_Missing strings:_ {}\n", count(&errors, ErrorLevel::MissingString));
-            for e in errors.iter().filter(|e| matches!(e.level, ErrorLevel::Error | ErrorLevel::FatalError)) {
+            for e in errors
+                .iter()
+                .filter(|e| matches!(e.level, ErrorLevel::Error | ErrorLevel::FatalError))
+            {
                 details += &format!("_{:?} - {}_\n{}\n", e.level, e.key, e.message);
             }
             details += "\n";
@@ -461,7 +534,8 @@ pub fn check_upload(new: &LangFile, installed: &[LangFile], master: &LanguagePac
             for e in of_level(&errors, ErrorLevel::JoinLink) {
                 report += &format!("{}\n", e.key);
             }
-            report += "These strings won't be used, and will fall back to English, until you remove `/join` from them.\n\n";
+            report +=
+                "These strings won't be used, and will fall back to English, until you remove `/join` from them.\n\n";
         }
         if count(&errors, ErrorLevel::FatalError) > 0 {
             report += "\n*Fatal errors:*\n";
@@ -510,8 +584,14 @@ pub fn check_upload(new: &LangFile, installed: &[LangFile], master: &LanguagePac
         }
     }
 
-    let can_upload = !errors.iter().any(|e| matches!(e.level, ErrorLevel::FatalError | ErrorLevel::Ads));
-    UploadCheck { report, errors, can_upload }
+    let can_upload = !errors
+        .iter()
+        .any(|e| matches!(e.level, ErrorLevel::FatalError | ErrorLevel::Ads));
+    UploadCheck {
+        report,
+        errors,
+        can_upload,
+    }
 }
 
 /// C# prints booleans as `True`/`False`.
@@ -544,8 +624,14 @@ pub fn install(uploaded: &Path, language_dir: &Path) -> Result<Installed, LoadEr
     let (installed, _) = load_dir(language_dir).map_err(LoadError::Io)?;
     let meta = &new.pack.meta;
 
-    if let Some(same_name) = installed.iter().find(|x| x.pack.meta.name == meta.name && x.path != target) {
-        log += &format!("Found duplicate language (name attribute) with filename {}\n", same_name.file_name);
+    if let Some(same_name) = installed
+        .iter()
+        .find(|x| x.pack.meta.name == meta.name && x.path != target)
+    {
+        log += &format!(
+            "Found duplicate language (name attribute) with filename {}\n",
+            same_name.file_name
+        );
         target = same_name.path.clone();
     } else if let Some(clash) = installed
         .iter()
@@ -561,7 +647,10 @@ pub fn install(uploaded: &Path, language_dir: &Path) -> Result<Installed, LoadEr
     fs::copy(uploaded, &target).map_err(LoadError::Io)?;
     fs::remove_file(uploaded).map_err(LoadError::Io)?;
     log += "File copied to bot\n\n<b>Operation complete.</b>";
-    Ok(Installed { log, path: Some(target) })
+    Ok(Installed {
+        log,
+        path: Some(target),
+    })
 }
 
 #[cfg(test)]
@@ -644,18 +733,33 @@ mod tests {
 
     #[test]
     fn ids_resolve_to_files_and_bases() {
-        let files = [lang("German", "Deutsch", "German", "Normal", ""), lang("Pirate", "Arr", "English", "Pirate", "")];
-        assert_eq!(file_by_id(&files, LanguageId::of("Pirate")).map(|f| f.pack.meta.name.as_str()), Some("Arr"));
+        let files = [
+            lang("German", "Deutsch", "German", "Normal", ""),
+            lang("Pirate", "Arr", "English", "Pirate", ""),
+        ];
+        assert_eq!(
+            file_by_id(&files, LanguageId::of("Pirate")).map(|f| f.pack.meta.name.as_str()),
+            Some("Arr")
+        );
         assert_eq!(base_by_id(&files, LanguageId::of("English")), Some("English"));
         assert_eq!(file_by_id(&files, LanguageId::of("Gone")).map(|f| &f.file_name), None);
     }
 
     #[test]
     fn missing_strings_skip_deprecated_ones() {
-        let file = lang("German", "Deutsch", "German", "Normal", r#"<string key="Joined"><value>{0}</value></string>"#);
+        let file = lang(
+            "German",
+            "Deutsch",
+            "German",
+            "Normal",
+            r#"<string key="Joined"><value>{0}</value></string>"#,
+        );
         assert_eq!(
             levels(&check_file(&file, &master())),
-            vec![("Killed".into(), ErrorLevel::MissingString), ("Start".into(), ErrorLevel::MissingString)]
+            vec![
+                ("Killed".into(), ErrorLevel::MissingString),
+                ("Start".into(), ErrorLevel::MissingString)
+            ]
         );
     }
 
@@ -666,7 +770,10 @@ mod tests {
             <string key="Start"><value>Los!</value></string>"#;
         let errors = check_file(&lang("German", "Deutsch", "German", "Normal", body), &master());
         let messages: Vec<_> = errors.iter().map(|e| format!("{} {}", e.key, e.message)).collect();
-        assert_eq!(messages, vec!["Joined Missing {0}", "Joined Extra {1}", "Killed Missing {0}"]);
+        assert_eq!(
+            messages,
+            vec!["Joined Missing {0}", "Joined Extra {1}", "Killed Missing {0}"]
+        );
         assert!(errors.iter().all(|e| e.level == ErrorLevel::Error));
     }
 
@@ -708,7 +815,10 @@ mod tests {
         assert!(!contains_ad("t.me/werewolfsupport"));
         assert!(!contains_ad("mail me@example.com"));
         assert!(!contains_ad("just @ alone"));
-        assert!(!contains_ad("@start of a value"), "the C# pattern needs a space before @");
+        assert!(
+            !contains_ad("@start of a value"),
+            "the C# pattern needs a space before @"
+        );
     }
 
     #[test]
@@ -735,8 +845,20 @@ mod tests {
     fn summary_reports_each_file_with_problems() {
         let mut clean = lang("German", "Deutsch", "German", "Normal", COMPLETE);
         clean.updated = Timestamp::from_utc(2026, 1, 5, 0, 0, 0);
-        let ads = lang("GermanAds", "Werbung", "German", "Ads", &COMPLETE.replace("Los!", "Los @spam"));
-        let missing = lang("GermanShort", "Kurz", "German", "Short", r#"<string key="Joined"><value>da</value></string>"#);
+        let ads = lang(
+            "GermanAds",
+            "Werbung",
+            "German",
+            "Ads",
+            &COMPLETE.replace("Los!", "Los @spam"),
+        );
+        let missing = lang(
+            "GermanShort",
+            "Kurz",
+            "German",
+            "Short",
+            r#"<string key="Joined"><value>da</value></string>"#,
+        );
         let (details, summary) = summary_report(&[clean, ads, missing], &master());
         assert_eq!(
             details,
@@ -766,7 +888,13 @@ mod tests {
 
     #[test]
     fn uploading_a_clean_update_compares_with_the_old_file() {
-        let installed = [lang("German", "Deutsch", "German", "Normal", r#"<string key="Joined"><value>x</value></string>"#)];
+        let installed = [lang(
+            "German",
+            "Deutsch",
+            "German",
+            "Normal",
+            r#"<string key="Joined"><value>x</value></string>"#,
+        )];
         let mut new = lang("German", "Deutsch", "German", "Normal", COMPLETE);
         new.pack.meta.is_default = Some(true);
         let check = check_upload(&new, &installed, &master());
@@ -799,15 +927,25 @@ mod tests {
             let check = check_upload(&clash, &installed, &master());
             assert!(!check.can_upload, "{}", clash.file_name);
             assert!(check.report.contains("partially matches the same language node"));
-            assert!(check.report.contains("*German.xml*\n_Name:_Deutsch\n_Base:_German\n_Variant:_Normal"));
+            assert!(check
+                .report
+                .contains("*German.xml*\n_Name:_Deutsch\n_Base:_German\n_Variant:_Normal"));
         }
     }
 
     #[test]
     fn ads_block_an_upload() {
-        let new = lang("German", "Deutsch", "German", "Normal", &COMPLETE.replace("Los!", "t.me/+x"));
+        let new = lang(
+            "German",
+            "Deutsch",
+            "German",
+            "Normal",
+            &COMPLETE.replace("Los!", "t.me/+x"),
+        );
         let check = check_upload(&new, &[], &master());
         assert!(!check.can_upload);
-        assert!(check.report.starts_with("NEW FILE\n*German.xml - (Deutsch)*\n*ADS DETECTED*\nStart\n"));
+        assert!(check
+            .report
+            .starts_with("NEW FILE\n*German.xml - (Deutsch)*\n*ADS DETECTED*\nStart\n"));
     }
 }

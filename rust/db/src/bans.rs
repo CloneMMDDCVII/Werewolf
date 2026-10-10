@@ -112,9 +112,9 @@ impl Bans<'_> {
         let rows = sqlx::query(select_bans!(
             "lifted_at IS NULL AND (expires_at IS NULL OR expires_at > $1) ORDER BY id"
         ))
-            .bind(now)
-            .fetch_all(self.store.pool())
-            .await?;
+        .bind(now)
+        .fetch_all(self.store.pool())
+        .await?;
         rows.iter().map(from_row).collect()
     }
 

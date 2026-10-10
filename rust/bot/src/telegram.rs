@@ -266,7 +266,12 @@ impl Command {
 pub enum Incoming {
     Command(Command),
     /// A press on one of the bot's inline buttons.
-    Callback { id: String, from: User, message: Option<MsgRef>, data: String },
+    Callback {
+        id: String,
+        from: User,
+        message: Option<MsgRef>,
+        data: String,
+    },
 }
 
 /// Splits `/Start@WerewolfBot join-100` into `("start", "join-100")`.
@@ -300,11 +305,20 @@ mod tests {
 
     #[test]
     fn commands_parse() {
-        assert_eq!(parse_command("/startgame", "wolfbot"), Some(("startgame".into(), "".into())));
-        assert_eq!(parse_command("/Start@WolfBot join-100", "wolfbot"), Some(("start".into(), "join-100".into())));
+        assert_eq!(
+            parse_command("/startgame", "wolfbot"),
+            Some(("startgame".into(), "".into()))
+        );
+        assert_eq!(
+            parse_command("/Start@WolfBot join-100", "wolfbot"),
+            Some(("start".into(), "join-100".into()))
+        );
         assert_eq!(parse_command("/extend@otherbot 30", "wolfbot"), None);
         assert_eq!(parse_command("hello", "wolfbot"), None);
-        assert_eq!(parse_command("/extend   30 ", "wolfbot"), Some(("extend".into(), "30".into())));
+        assert_eq!(
+            parse_command("/extend   30 ", "wolfbot"),
+            Some(("extend".into(), "30".into()))
+        );
     }
 
     struct Flaky {
@@ -352,7 +366,9 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn rate_limits_are_waited_out() {
-        let tg = Retrying::new(Flaky { failures: std::sync::Mutex::new(1) });
+        let tg = Retrying::new(Flaky {
+            failures: std::sync::Mutex::new(1),
+        });
         let start = tokio::time::Instant::now();
         assert!(tg.send(1, "hi", None).await.is_ok());
         assert_eq!(start.elapsed(), Duration::from_secs(5));
@@ -360,7 +376,9 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn retries_give_up_eventually() {
-        let tg = Retrying::new(Flaky { failures: std::sync::Mutex::new(100) });
+        let tg = Retrying::new(Flaky {
+            failures: std::sync::Mutex::new(100),
+        });
         assert_eq!(tg.send(1, "hi", None).await, Err(SendError::RetryAfter(5)));
     }
 }

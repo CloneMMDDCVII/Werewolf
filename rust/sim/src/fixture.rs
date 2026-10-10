@@ -103,20 +103,16 @@ impl std::fmt::Display for FixtureError {
 impl std::error::Error for FixtureError {}
 
 fn parse_role(game_id: i64, s: &str) -> Result<Role, FixtureError> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|_| {
-        FixtureError::UnknownRole {
-            game_id,
-            role: s.to_string(),
-        }
+    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|_| FixtureError::UnknownRole {
+        game_id,
+        role: s.to_string(),
     })
 }
 
 fn parse_kill_method(game_id: i64, s: &str) -> Result<KillMethod, FixtureError> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|_| {
-        FixtureError::UnknownKillMethod {
-            game_id,
-            method: s.to_string(),
-        }
+    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|_| FixtureError::UnknownKillMethod {
+        game_id,
+        method: s.to_string(),
     })
 }
 
@@ -127,11 +123,9 @@ pub fn load_fixtures(path: impl AsRef<Path>) -> Result<Vec<GameFixture>, Fixture
     root.games
         .into_iter()
         .map(|g| {
-            let winner = Winner::from_legacy_str(&g.winner).ok_or_else(|| {
-                FixtureError::UnknownWinner {
-                    game_id: g.game_id,
-                    winner: g.winner.clone(),
-                }
+            let winner = Winner::from_legacy_str(&g.winner).ok_or_else(|| FixtureError::UnknownWinner {
+                game_id: g.game_id,
+                winner: g.winner.clone(),
             })?;
 
             let players = g

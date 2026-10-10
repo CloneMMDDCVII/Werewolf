@@ -233,11 +233,10 @@ impl Role {
     pub fn team(self) -> Team {
         use Role::*;
         match self {
-            Villager | Cursed | Drunk | Beholder | ApprenticeSeer | Traitor | Mason | Hunter
-            | Mayor | ClumsyGuy | Prince | WolfMan | Pacifist | WiseElder | Blacksmith
-            | Troublemaker | Fool | Harlot | CultistHunter | Seer | GuardianAngel | WildChild
-            | Cupid | Sandman | Oracle | Chemist | Detective | Gunner | Spumpkin | Augur
-            | GraveDigger | Chef | Barkeep | Witch => Team::Village,
+            Villager | Cursed | Drunk | Beholder | ApprenticeSeer | Traitor | Mason | Hunter | Mayor | ClumsyGuy
+            | Prince | WolfMan | Pacifist | WiseElder | Blacksmith | Troublemaker | Fool | Harlot | CultistHunter
+            | Seer | GuardianAngel | WildChild | Cupid | Sandman | Oracle | Chemist | Detective | Gunner | Spumpkin
+            | Augur | GraveDigger | Chef | Barkeep | Witch => Team::Village,
             Doppelganger | Thief => Team::Thief,
             Sorcerer | AlphaWolf | WolfCub | Wolf | Lycan | SnowWolf => Team::Wolf,
             Tanner => Team::Tanner,

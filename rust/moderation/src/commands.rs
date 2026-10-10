@@ -9,7 +9,10 @@ use shared::time::Timestamp;
 /// `FormatHTML` (Extensions.cs:28-31): every player-supplied string that
 /// goes into an HTML-mode message passes through this.
 pub fn escape_html(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Who `/smite` removes from the group's game (AdminCommands.cs:26-63), in
@@ -51,9 +54,9 @@ const PERM_BAN_THRESHOLD_SECS: i64 = 365 * 86_400;
 /// issuing admin's name, or the rule (or migrated issuer name) otherwise.
 pub fn issuer_name(issuer: &BanIssuer, players: &dyn PlayerDirectory) -> String {
     match issuer {
-        BanIssuer::Admin { telegram_id } => {
-            players.by_id(*telegram_id).map_or_else(|| telegram_id.to_string(), |p| p.name)
-        }
+        BanIssuer::Admin { telegram_id } => players
+            .by_id(*telegram_id)
+            .map_or_else(|| telegram_id.to_string(), |p| p.name),
         BanIssuer::System { rule } => rule.clone(),
     }
 }
@@ -90,7 +93,10 @@ pub fn getban_report(
         }
     };
     let first_seen = first_seen.map_or_else(|| "Hasn't played ever!".to_string(), Timestamp::legacy_format);
-    format!("Player: {}\nCurrent Status: {status}\nPlayer first seen: {first_seen}", escape_html(&player.name))
+    format!(
+        "Player: {}\nCurrent Status: {status}\nPlayer first seen: {first_seen}",
+        escape_html(&player.name)
+    )
 }
 
 /// What a ban command decided. Nothing is stored yet: the caller records
@@ -118,7 +124,12 @@ pub struct BanReport {
 /// and then didn't use it. Text mentions are matched against the
 /// argument by the mentioned user's name, so the presenter can pass the
 /// message text through unchanged.
-pub fn permban(message: &CommandMessage, issuer: &BanIssuer, players: &dyn PlayerDirectory, now: Timestamp) -> BanReport {
+pub fn permban(
+    message: &CommandMessage,
+    issuer: &BanIssuer,
+    players: &dyn PlayerDirectory,
+    now: Timestamp,
+) -> BanReport {
     let reason = ban_reason(message);
     let mut report = BanReport::default();
     let ban = |player: &PlayerRecord, report: &mut BanReport| {
@@ -153,13 +164,19 @@ pub fn permban(message: &CommandMessage, issuer: &BanIssuer, players: &dyn Playe
     }
     for id in message.numeric_ids() {
         let player = players.by_id(id).unwrap_or_else(|| {
-            let unknown = PlayerRecord { telegram_id: id, name: "Unknown User".into(), username: None };
+            let unknown = PlayerRecord {
+                telegram_id: id,
+                name: "Unknown User".into(),
+                username: None,
+            };
             report.new_players.push(unknown.clone());
             unknown
         });
         ban(&player, &mut report);
         let username = player.username.as_deref().unwrap_or("");
-        report.replies.push(format!("User {} (@{username}) has been banned", player.name));
+        report
+            .replies
+            .push(format!("User {} (@{username}) has been banned", player.name));
     }
     report
 }
@@ -191,7 +208,11 @@ pub fn remban(message: &CommandMessage, players: &dyn PlayerDirectory, bans: &Ba
             lifted.push(id);
         }
     }
-    BanReport { replies: vec!["User has been unbanned.".to_string(); lifted.len()], lifted, ..Default::default() }
+    BanReport {
+        replies: vec!["User has been unbanned.".to_string(); lifted.len()],
+        lifted,
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]
@@ -209,7 +230,12 @@ mod tests {
     }
 
     fn command(argument: &str, mentions: Vec<Mention>) -> CommandMessage {
-        CommandMessage { sender_id: 1, reply_to: None, mentions, argument: Some(argument.into()) }
+        CommandMessage {
+            sender_id: 1,
+            reply_to: None,
+            mentions,
+            argument: Some(argument.into()),
+        }
     }
 
     fn ban_until(expires_at: Option<Timestamp>) -> Ban {
@@ -238,7 +264,10 @@ mod tests {
     fn smite_collects_reply_mentions_and_id_in_order() {
         let message = CommandMessage {
             sender_id: 1,
-            reply_to: Some(ReplyTo { from: 5, forwarded_from: Some(6) }),
+            reply_to: Some(ReplyTo {
+                from: 5,
+                forwarded_from: Some(6),
+            }),
             mentions: vec![Mention::Username("paul".into()), Mention::User(player(3, "Rita", None))],
             argument: None,
         };
@@ -258,8 +287,14 @@ mod tests {
     #[test]
     fn smite_skips_unknown_usernames_and_duplicates() {
         let message = CommandMessage {
-            reply_to: Some(ReplyTo { from: 2, forwarded_from: None }),
-            ..command("@nobody @paul", vec![Mention::Username("nobody".into()), Mention::Username("paul".into())])
+            reply_to: Some(ReplyTo {
+                from: 2,
+                forwarded_from: None,
+            }),
+            ..command(
+                "@nobody @paul",
+                vec![Mention::Username("nobody".into()), Mention::Username("paul".into())],
+            )
         };
         assert_eq!(smite_targets(&message, &roster()), vec![2]);
     }
@@ -269,7 +304,13 @@ mod tests {
     #[test]
     fn getban_shows_a_temporary_ban() {
         let expires = now().plus_seconds(3 * 86_400 + 4 * 3600 + 5 * 60 + 30);
-        let report = getban_report(&player(2, "Paul", None), Some(&ban_until(Some(expires))), &roster(), None, now());
+        let report = getban_report(
+            &player(2, "Paul", None),
+            Some(&ban_until(Some(expires))),
+            &roster(),
+            None,
+            now(),
+        );
         assert_eq!(
             report,
             "Player: Paul\nCurrent Status: <b>Banned for: spam</b>\nBy: Alice on 01OCT2026 12:00:00 +00:00\n\
@@ -289,9 +330,13 @@ mod tests {
     #[test]
     fn getban_shows_far_off_and_permanent_bans_as_perm() {
         let far = ban_until(Some(now().plus_seconds(400 * 86_400)));
-        assert!(getban_report(&player(2, "Paul", None), Some(&far), &roster(), None, now()).contains("<b>Perm Ban</b>"));
+        assert!(
+            getban_report(&player(2, "Paul", None), Some(&far), &roster(), None, now()).contains("<b>Perm Ban</b>")
+        );
         let perm = ban_until(None);
-        assert!(getban_report(&player(2, "Paul", None), Some(&perm), &roster(), None, now()).contains("<b>Perm Ban</b>"));
+        assert!(
+            getban_report(&player(2, "Paul", None), Some(&perm), &roster(), None, now()).contains("<b>Perm Ban</b>")
+        );
     }
 
     #[test]
@@ -381,11 +426,17 @@ mod tests {
     #[test]
     fn remban_lifts_by_mention_and_id() {
         let mut bans = BanList::new();
-        apply(&mut bans, &permban(&command("2 3 spam", vec![]), &alice(), &roster(), now()));
+        apply(
+            &mut bans,
+            &permban(&command("2 3 spam", vec![]), &alice(), &roster(), now()),
+        );
         let message = command("@paul 3 2", vec![Mention::Username("paul".into())]);
         let report = remban(&message, &roster(), &bans, now());
         assert_eq!(report.lifted, vec![2, 3]);
-        assert_eq!(report.replies, vec!["User has been unbanned.", "User has been unbanned."]);
+        assert_eq!(
+            report.replies,
+            vec!["User has been unbanned.", "User has been unbanned."]
+        );
         apply(&mut bans, &report);
         assert!(bans.is_empty());
     }
@@ -399,7 +450,10 @@ mod tests {
     #[test]
     fn migrated_bans_are_lifted_the_same_way() {
         let mut bans = BanList::new();
-        bans.issue(Ban { source: BanSource::Migrated, ..ban_until(None) });
+        bans.issue(Ban {
+            source: BanSource::Migrated,
+            ..ban_until(None)
+        });
         assert!(bans.is_banned(2, now()));
         assert_eq!(remban(&command("2", vec![]), &roster(), &bans, now()).lifted, vec![2]);
     }

@@ -65,9 +65,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             wolf.night_action(&ctx, &mut state),
-            vec![NightAction::EatVote {
-                target: PlayerId(2)
-            }]
+            vec![NightAction::EatVote { target: PlayerId(2) }]
         );
     }
 }

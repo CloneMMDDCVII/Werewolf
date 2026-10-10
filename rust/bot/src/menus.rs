@@ -8,7 +8,9 @@ use crate::core::BotCore;
 use crate::game::unix_now;
 use crate::telegram::{Button, Command, Keyboard, MsgRef, SendError, User};
 use control::group_config::{run_callback, run_config_command, run_remlink_command, run_setlink_command, CommandChat};
-use control::language_picker::{player_language, run_language_callback, run_setlang_command, CommandUser, LanguageTarget};
+use control::language_picker::{
+    player_language, run_language_callback, run_setlang_command, CommandUser, LanguageTarget,
+};
 use control::menu::{Action, Actor, ButtonAction, CallbackOutcome, CommandOutcome, Message, Screen, Text};
 use game_engine::rng::SeededRngSource;
 use i18n::LanguageId;
@@ -56,7 +58,10 @@ impl BotCore {
                         .map(|b| {
                             let text = self.render_text(lang, &b.label);
                             match &b.action {
-                                ButtonAction::Callback(action) => Button::Callback { text, data: action.encode() },
+                                ButtonAction::Callback(action) => Button::Callback {
+                                    text,
+                                    data: action.encode(),
+                                },
                                 ButtonAction::StartBotLink => Button::Url {
                                     text,
                                     url: format!("https://t.me/{}?start=config", self.telegram.bot_username()),
@@ -70,7 +75,13 @@ impl BotCore {
     }
 
     async fn show(&self, chat: i64, lang: &str, screen: &Screen) -> Result<MsgRef, SendError> {
-        self.telegram.send(chat, &self.render_message(lang, &screen.message), self.render_keyboard(lang, screen)).await
+        self.telegram
+            .send(
+                chat,
+                &self.render_message(lang, &screen.message),
+                self.render_keyboard(lang, screen),
+            )
+            .await
     }
 
     async fn can_configure(&self, group: i64, user: i64) -> bool {
@@ -79,18 +90,20 @@ impl BotCore {
 
     async fn play_out(&self, cmd: &Command, lang: &str, outcome: CommandOutcome) {
         match outcome {
-            CommandOutcome::SendPrivately { menu, chat_notice, fallback } => {
-                match self.show(cmd.from.id, lang, &menu).await {
-                    Err(SendError::Unreachable) => {
-                        let _ = self.show(cmd.chat.id, lang, &fallback).await;
-                    }
-                    _ => {
-                        if let Some(notice) = chat_notice {
-                            self.say(cmd.chat.id, &self.render_message(lang, &notice)).await;
-                        }
+            CommandOutcome::SendPrivately {
+                menu,
+                chat_notice,
+                fallback,
+            } => match self.show(cmd.from.id, lang, &menu).await {
+                Err(SendError::Unreachable) => {
+                    let _ = self.show(cmd.chat.id, lang, &fallback).await;
+                }
+                _ => {
+                    if let Some(notice) = chat_notice {
+                        self.say(cmd.chat.id, &self.render_message(lang, &notice)).await;
                     }
                 }
-            }
+            },
             CommandOutcome::Refuse(message) => self.say(cmd.chat.id, &self.render_message(lang, &message)).await,
             CommandOutcome::Reply(html) => self.say(cmd.chat.id, &html).await,
         }
@@ -105,7 +118,9 @@ impl BotCore {
             is_group: cmd.chat.is_group(),
         };
         let actor = || async {
-            Actor { can_configure: cmd.chat.is_group() && self.can_configure(cmd.chat.id, cmd.from.id).await }
+            Actor {
+                can_configure: cmd.chat.is_group() && self.can_configure(cmd.chat.id, cmd.from.id).await,
+            }
         };
         let outcome = match cmd.name.as_str() {
             "config" => run_config_command(&self.store, &chat, actor().await, now).await,
@@ -120,8 +135,11 @@ impl BotCore {
                     name: cmd.from.name.clone(),
                     username: cmd.from.username.clone(),
                 };
-                let player_lang = player_language(&self.store, cmd.from.id).await.unwrap_or_else(|_| lang.to_string());
-                let outcome = run_setlang_command(&self.store, &self.texts().choices(), &user, !cmd.chat.is_group(), now).await;
+                let player_lang = player_language(&self.store, cmd.from.id)
+                    .await
+                    .unwrap_or_else(|_| lang.to_string());
+                let outcome =
+                    run_setlang_command(&self.store, &self.texts().choices(), &user, !cmd.chat.is_group(), now).await;
                 if let Ok(o) = outcome {
                     self.play_out(cmd, &player_lang, o).await;
                 }
@@ -152,7 +170,9 @@ impl BotCore {
         let now = unix_now();
         let (outcome, lang) = match &action {
             Action::Config(a) => {
-                let actor = Actor { can_configure: self.can_configure(a.group_id, from.id).await };
+                let actor = Actor {
+                    can_configure: self.can_configure(a.group_id, from.id).await,
+                };
                 let mut rng = SeededRngSource::new(rand::random());
                 let lang = self.settings(a.group_id).await.language;
                 (run_callback(&self.store, *a, actor, &mut rng, now).await, lang)
@@ -160,12 +180,18 @@ impl BotCore {
             Action::Language(a) => {
                 let (can_configure, lang) = match a.target {
                     LanguageTarget::Group(g) => (self.can_configure(g, from.id).await, self.settings(g).await.language),
-                    LanguageTarget::Player(_) => {
-                        (false, player_language(&self.store, from.id).await.unwrap_or_else(|_| "English".into()))
-                    }
+                    LanguageTarget::Player(_) => (
+                        false,
+                        player_language(&self.store, from.id)
+                            .await
+                            .unwrap_or_else(|_| "English".into()),
+                    ),
                 };
                 let actor = Actor { can_configure };
-                (run_language_callback(&self.store, &self.texts().choices(), a, actor, now).await, lang)
+                (
+                    run_language_callback(&self.store, &self.texts().choices(), a, actor, now).await,
+                    lang,
+                )
             }
         };
         let outcome = match outcome {
@@ -182,7 +208,10 @@ impl BotCore {
                 let _ = self.telegram.answer_callback(id, toast.as_deref()).await;
                 if let Some(msg) = message {
                     let text = self.render_message(&lang, &screen.message);
-                    let _ = self.telegram.edit(msg, &text, self.render_keyboard(&lang, &screen)).await;
+                    let _ = self
+                        .telegram
+                        .edit(msg, &text, self.render_keyboard(&lang, &screen))
+                        .await;
                 }
             }
             CallbackOutcome::Notify(notice) => {
@@ -213,17 +242,27 @@ impl BotCore {
         let buttons: Vec<Button> = choices
             .bases()
             .into_iter()
-            .map(|b| Button::Callback { text: b.to_string(), data: format!("gl|{}|b|{}", cmd.chat.id, LanguageId::of(b)) })
+            .map(|b| Button::Callback {
+                text: b.to_string(),
+                data: format!("gl|{}|b|{}", cmd.chat.id, LanguageId::of(b)),
+            })
             .collect();
-        let mut rows: Keyboard = vec![vec![Button::Callback { text: "All".into(), data: format!("gl|{}|all|", cmd.chat.id) }]];
+        let mut rows: Keyboard = vec![vec![Button::Callback {
+            text: "All".into(),
+            data: format!("gl|{}|all|", cmd.chat.id),
+        }]];
         rows.extend(buttons.chunks(2).map(|c| c.to_vec()));
-        let _ = self.telegram.send(cmd.chat.id, &self.texts().key(lang, "GetLang", &[]), Some(rows)).await;
+        let _ = self
+            .telegram
+            .send(cmd.chat.id, &self.texts().key(lang, "GetLang", &[]), Some(rows))
+            .await;
     }
 
     async fn getlang_callback(&self, id: &str, _from: &User, rest: &str) {
         let _ = self.telegram.answer_callback(id, None).await;
         let mut parts = rest.splitn(3, '|');
-        let (Some(Ok(chat)), Some(step), Some(value)) = (parts.next().map(str::parse::<i64>), parts.next(), parts.next())
+        let (Some(Ok(chat)), Some(step), Some(value)) =
+            (parts.next().map(str::parse::<i64>), parts.next(), parts.next())
         else {
             return;
         };
@@ -243,20 +282,35 @@ impl BotCore {
                     [] => {}
                     [only] => self.send_language_file(chat, &only.file.clone()).await,
                     many => {
-                        let mut rows: Keyboard =
-                            vec![vec![Button::Callback { text: "All".into(), data: format!("gl|{chat}|v|{id}") }]];
+                        let mut rows: Keyboard = vec![vec![Button::Callback {
+                            text: "All".into(),
+                            data: format!("gl|{chat}|v|{id}"),
+                        }]];
                         rows.extend(many.iter().map(|f| {
-                            let text = if f.variant.is_empty() { f.file.clone() } else { f.variant.clone() };
-                            vec![Button::Callback { text, data: format!("gl|{chat}|f|{}", LanguageId::of(&f.file)) }]
+                            let text = if f.variant.is_empty() {
+                                f.file.clone()
+                            } else {
+                                f.variant.clone()
+                            };
+                            vec![Button::Callback {
+                                text,
+                                data: format!("gl|{chat}|f|{}", LanguageId::of(&f.file)),
+                            }]
                         }));
-                        let _ = self.telegram.send(chat, &self.texts().key("English", "WhatVariant", &[base]), Some(rows)).await;
+                        let _ = self
+                            .telegram
+                            .send(chat, &self.texts().key("English", "WhatVariant", &[base]), Some(rows))
+                            .await;
                     }
                 }
             }
             "v" => {
                 let Some(base) = choices.base_by_id(id) else { return };
                 let files: Vec<String> = choices.variants(base).iter().map(|f| f.file.clone()).collect();
-                let zip_name: String = base.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+                let zip_name: String = base
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                    .collect();
                 self.send_language_zip(chat, &format!("{zip_name}.zip"), &files).await;
             }
             "f" => {
@@ -270,7 +324,11 @@ impl BotCore {
 
     async fn send_language_zip(&self, chat: i64, zip_name: &str, files: &[String]) {
         let texts = self.texts();
-        let zipped = zip_files(files.iter().filter_map(|f| Some((format!("{f}.xml"), texts.file_bytes(f)?))));
+        let zipped = zip_files(
+            files
+                .iter()
+                .filter_map(|f| Some((format!("{f}.xml"), texts.file_bytes(f)?))),
+        );
         match zipped {
             Ok(bytes) => {
                 if let Err(e) = self.telegram.send_document(chat, zip_name, bytes).await {

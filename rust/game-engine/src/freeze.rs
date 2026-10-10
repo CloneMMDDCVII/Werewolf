@@ -142,7 +142,9 @@ pub fn apply_freeze(
             .iter()
             .any(|(_, a)| matches!(a, NightAction::Protect { target: t } if *t == target)) =>
         {
-            outcome.events.push(tell(snow_wolf, Note::GuardBlockedSnowWolf { target }));
+            outcome
+                .events
+                .push(tell(snow_wolf, Note::GuardBlockedSnowWolf { target }));
             outcome.saved = Some(target);
             return outcome;
         }
@@ -185,10 +187,22 @@ mod tests {
 
     fn roster(target_role: Role) -> Vec<AlivePlayer> {
         vec![
-            AlivePlayer { id: SW, role: Role::SnowWolf },
-            AlivePlayer { id: T, role: target_role },
-            AlivePlayer { id: PlayerId(3), role: Role::Wolf },
-            AlivePlayer { id: PlayerId(4), role: Role::GuardianAngel },
+            AlivePlayer {
+                id: SW,
+                role: Role::SnowWolf,
+            },
+            AlivePlayer {
+                id: T,
+                role: target_role,
+            },
+            AlivePlayer {
+                id: PlayerId(3),
+                role: Role::Wolf,
+            },
+            AlivePlayer {
+                id: PlayerId(4),
+                role: Role::GuardianAngel,
+            },
         ]
     }
 
@@ -199,19 +213,42 @@ mod tests {
     #[test]
     fn a_frozen_seer_loses_their_reading() {
         let mut actions = vec![(T, NightAction::CheckTeam { target: PlayerId(3) })];
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::Seer), 0, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::Seer),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert!(actions.is_empty());
         assert_eq!(out.frozen, Some(T));
         assert_eq!(
             out.events,
-            vec![private(T, Note::Frozen(FrozenNotice::Seeing)), private(SW, Note::SuccessfulFreeze { target: T })]
+            vec![
+                private(T, Note::Frozen(FrozenNotice::Seeing)),
+                private(SW, Note::SuccessfulFreeze { target: T })
+            ]
         );
     }
 
     #[test]
     fn a_frozen_harlot_stays_home() {
-        let mut actions = vec![(T, NightAction::Visit { visitor: T, target: PlayerId(3) })];
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::Harlot), 0, false, &mut ScriptedRngSource::new());
+        let mut actions = vec![(
+            T,
+            NightAction::Visit {
+                visitor: T,
+                target: PlayerId(3),
+            },
+        )];
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::Harlot),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert!(actions.is_empty());
         assert_eq!(out.events[0], private(T, Note::Frozen(FrozenNotice::Harlot)));
     }
@@ -219,7 +256,14 @@ mod tests {
     #[test]
     fn the_arsonist_acts_despite_the_freeze() {
         let mut actions = vec![(T, NightAction::Douse { target: PlayerId(3) })];
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::Arsonist), 0, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::Arsonist),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert_eq!(actions.len(), 1);
         assert_eq!(out.frozen, Some(T), "still counts as frozen for tomorrow's menu");
         assert_eq!(out.events[0], private(T, Note::Frozen(FrozenNotice::ArsonistNotFrozen)));
@@ -231,7 +275,14 @@ mod tests {
             (PlayerId(4), NightAction::Protect { target: T }),
             (T, NightAction::CheckTeam { target: PlayerId(3) }),
         ];
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::Seer), 0, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::Seer),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert_eq!(actions.len(), 2);
         assert_eq!(out.frozen, None);
         assert_eq!(out.events, vec![private(SW, Note::GuardBlockedSnowWolf { target: T })]);
@@ -241,7 +292,14 @@ mod tests {
     fn a_frozen_guardian_angel_protects_nobody() {
         let ga = PlayerId(4);
         let mut actions = vec![(ga, NightAction::Protect { target: PlayerId(3) })];
-        let out = apply_freeze(Some((SW, ga)), &mut actions, &roster(Role::Villager), 0, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, ga)),
+            &mut actions,
+            &roster(Role::Villager),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert!(actions.is_empty());
         assert_eq!(out.events[0], private(ga, Note::Frozen(FrozenNotice::GuardianAngel)));
     }
@@ -250,7 +308,14 @@ mod tests {
     fn the_serial_killer_is_frozen_when_the_snow_wolf_survives_the_visit() {
         let mut actions = vec![(T, NightAction::SerialKillVote { target: PlayerId(3) })];
         let mut rng = ScriptedRngSource::new().with_chance(false);
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::SerialKiller), 0, false, &mut rng);
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::SerialKiller),
+            0,
+            false,
+            &mut rng,
+        );
         assert!(actions.is_empty(), "no kill tonight");
         assert_eq!(out.events[0], private(T, Note::Frozen(FrozenNotice::SerialKiller)));
     }
@@ -259,7 +324,14 @@ mod tests {
     fn the_snow_wolf_usually_dies_visiting_the_serial_killer() {
         let mut actions = vec![(T, NightAction::SerialKillVote { target: PlayerId(3) })];
         let mut rng = ScriptedRngSource::new().with_chance(true);
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::SerialKiller), 0, false, &mut rng);
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::SerialKiller),
+            0,
+            false,
+            &mut rng,
+        );
         assert_eq!(actions.len(), 1);
         assert_eq!(out.deaths, vec![(SW, KillMethod::VisitKiller)]);
         assert_eq!(out.frozen, None);
@@ -268,7 +340,14 @@ mod tests {
     #[test]
     fn a_serial_killer_staying_home_always_kills_the_snow_wolf() {
         let mut actions = vec![];
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::SerialKiller), 0, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::SerialKiller),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert_eq!(out.deaths, vec![(SW, KillMethod::VisitKiller)]);
     }
 
@@ -297,9 +376,23 @@ mod tests {
 
     #[test]
     fn the_grave_digger_notice_depends_on_dug_graves() {
-        let out = apply_freeze(Some((SW, T)), &mut vec![], &roster(Role::GraveDigger), 2, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut vec![],
+            &roster(Role::GraveDigger),
+            2,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert_eq!(out.events[0], private(T, Note::Frozen(FrozenNotice::GraveDigger)));
-        let out = apply_freeze(Some((SW, T)), &mut vec![], &roster(Role::GraveDigger), 0, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut vec![],
+            &roster(Role::GraveDigger),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert_eq!(out.events[0], private(T, Note::Frozen(FrozenNotice::Default)));
     }
 
@@ -307,11 +400,25 @@ mod tests {
     fn only_a_full_mode_thief_is_stopped_by_the_freeze() {
         let steal = || vec![(T, NightAction::StealRole { thief: T, target: SW })];
         let mut actions = steal();
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::Thief), 0, false, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::Thief),
+            0,
+            false,
+            &mut ScriptedRngSource::new(),
+        );
         assert_eq!(out.events[0], private(T, Note::Frozen(FrozenNotice::Default)));
         assert_eq!(actions.len(), 1);
         let mut actions = steal();
-        let out = apply_freeze(Some((SW, T)), &mut actions, &roster(Role::Thief), 0, true, &mut ScriptedRngSource::new());
+        let out = apply_freeze(
+            Some((SW, T)),
+            &mut actions,
+            &roster(Role::Thief),
+            0,
+            true,
+            &mut ScriptedRngSource::new(),
+        );
         assert_eq!(out.events[0], private(T, Note::Frozen(FrozenNotice::Thief)));
         assert!(actions.is_empty());
     }
@@ -320,7 +427,13 @@ mod tests {
 
     #[async_trait(?Send)]
     impl Presenter for PickFirst {
-        async fn ask_targets(&mut self, _: PlayerId, _: Prompt, options: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+        async fn ask_targets(
+            &mut self,
+            _: PlayerId,
+            _: Prompt,
+            options: &[PlayerId],
+            _: usize,
+        ) -> Option<Vec<PlayerId>> {
             self.0.push(options.to_vec());
             options.first().map(|&o| vec![o])
         }
@@ -338,7 +451,10 @@ mod tests {
     #[tokio::test]
     async fn silver_means_no_freeze_question() {
         let mut presenter = PickFirst(vec![]);
-        assert_eq!(ask_freeze(&roster(Role::Villager), None, true, &mut presenter).await, None);
+        assert_eq!(
+            ask_freeze(&roster(Role::Villager), None, true, &mut presenter).await,
+            None
+        );
         assert!(presenter.0.is_empty());
     }
 }

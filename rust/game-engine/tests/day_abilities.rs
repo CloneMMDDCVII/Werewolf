@@ -31,15 +31,26 @@ struct Day {
 
 impl Day {
     fn new(target: PlayerId, yes: &[Prompt]) -> Self {
-        Day { target, yes: yes.to_vec(), shoot: None, log: vec![] }
+        Day {
+            target,
+            yes: yes.to_vec(),
+            shoot: None,
+            log: vec![],
+        }
     }
 
     fn position(&self, entry: &Log) -> usize {
-        self.log.iter().position(|l| l == entry).unwrap_or_else(|| panic!("{entry:?} not in {:#?}", self.log))
+        self.log
+            .iter()
+            .position(|l| l == entry)
+            .unwrap_or_else(|| panic!("{entry:?} not in {:#?}", self.log))
     }
 
     fn said(&self, announcement: Announcement) -> usize {
-        self.log.iter().filter(|l| **l == Log::Said(NarrationEvent::Announce(announcement.clone()))).count()
+        self.log
+            .iter()
+            .filter(|l| **l == Log::Said(NarrationEvent::Announce(announcement.clone())))
+            .count()
     }
 
     fn votes_asked(&self) -> Vec<PlayerId> {
@@ -55,7 +66,13 @@ impl Day {
 
 #[async_trait(?Send)]
 impl Presenter for Day {
-    async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+    async fn ask_targets(
+        &mut self,
+        player: PlayerId,
+        prompt: Prompt,
+        options: &[PlayerId],
+        _: usize,
+    ) -> Option<Vec<PlayerId>> {
         self.log.push(Log::Asked(player, prompt));
         if let Prompt::GunnerShoot { .. } = prompt {
             return self.shoot.map(|s| vec![s]);
@@ -63,7 +80,11 @@ impl Presenter for Day {
         if prompt != Prompt::LynchVote {
             return None;
         }
-        let pick = if options.contains(&self.target) { self.target } else { options[0] };
+        let pick = if options.contains(&self.target) {
+            self.target
+        } else {
+            options[0]
+        };
         Some(vec![pick])
     }
 
@@ -78,7 +99,14 @@ impl Presenter for Day {
 }
 
 fn roster(roles: &[Role]) -> Vec<AlivePlayer> {
-    roles.iter().enumerate().map(|(i, &role)| AlivePlayer { id: PlayerId(i as u64 + 1), role }).collect()
+    roles
+        .iter()
+        .enumerate()
+        .map(|(i, &role)| AlivePlayer {
+            id: PlayerId(i as u64 + 1),
+            role,
+        })
+        .collect()
 }
 
 const P1: PlayerId = PlayerId(1);
@@ -89,24 +117,55 @@ const P5: PlayerId = PlayerId(5);
 
 async fn day(players: &[AlivePlayer], presenter: &mut Day) -> (Vec<DayAction>, LynchResult) {
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
-    resolve_day(players, &mut states, &GameRules::default(), presenter, &mut SeededRngSource::new(0)).await
+    resolve_day(
+        players,
+        &mut states,
+        &GameRules::default(),
+        presenter,
+        &mut SeededRngSource::new(0),
+    )
+    .await
 }
 
 #[tokio::test]
 async fn each_ability_is_announced_as_soon_as_it_is_used() {
     let cases = [
-        (Role::Mayor, Prompt::MayorReveal, Announcement::MayorReveal { mayor: P1 }),
-        (Role::Pacifist, Prompt::PacifistPeace, Announcement::PacifistNoLynch { pacifist: P1 }),
-        (Role::Blacksmith, Prompt::BlacksmithSilver, Announcement::BlacksmithSpreadSilver { blacksmith: P1 }),
-        (Role::Troublemaker, Prompt::TroublemakerTrouble, Announcement::TroublemakerDoubleLynch { troublemaker: P1 }),
-        (Role::Sandman, Prompt::SandmanSleep, Announcement::SandmanSleepAll { sandman: P1 }),
+        (
+            Role::Mayor,
+            Prompt::MayorReveal,
+            Announcement::MayorReveal { mayor: P1 },
+        ),
+        (
+            Role::Pacifist,
+            Prompt::PacifistPeace,
+            Announcement::PacifistNoLynch { pacifist: P1 },
+        ),
+        (
+            Role::Blacksmith,
+            Prompt::BlacksmithSilver,
+            Announcement::BlacksmithSpreadSilver { blacksmith: P1 },
+        ),
+        (
+            Role::Troublemaker,
+            Prompt::TroublemakerTrouble,
+            Announcement::TroublemakerDoubleLynch { troublemaker: P1 },
+        ),
+        (
+            Role::Sandman,
+            Prompt::SandmanSleep,
+            Announcement::SandmanSleepAll { sandman: P1 },
+        ),
     ];
     for (role, prompt, announcement) in cases {
         let players = roster(&[role, Role::Villager, Role::Villager, Role::Villager, Role::Wolf]);
         let mut presenter = Day::new(P5, &[prompt]);
         day(&players, &mut presenter).await;
         let told = presenter.position(&Log::Said(NarrationEvent::Announce(announcement.clone())));
-        assert_eq!(told, presenter.position(&Log::Asked(P1, prompt)) + 1, "{role:?}: told right after answering");
+        assert_eq!(
+            told,
+            presenter.position(&Log::Asked(P1, prompt)) + 1,
+            "{role:?}: told right after answering"
+        );
         assert_eq!(presenter.said(announcement), 1, "{role:?}: told once");
     }
 }
@@ -115,27 +174,51 @@ async fn each_ability_is_announced_as_soon_as_it_is_used() {
 async fn nothing_is_announced_again_after_the_day() {
     let players = roster(&[Role::Mayor, Role::Villager, Role::Villager, Role::Villager, Role::Wolf]);
     let mut presenter = Day::new(P5, &[Prompt::MayorReveal]);
-    run_game_with_rules(&players, ALL_ROLES, &GameRules::default(), &mut presenter, &mut SeededRngSource::new(0), 1)
-        .await;
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &GameRules::default(),
+        &mut presenter,
+        &mut SeededRngSource::new(0),
+        1,
+    )
+    .await;
     assert_eq!(presenter.said(Announcement::MayorReveal { mayor: P1 }), 1);
 }
 
 #[tokio::test]
 async fn a_used_ability_is_not_offered_again() {
-    let players = roster(&[Role::Mayor, Role::Villager, Role::Villager, Role::Villager, Role::Villager, Role::Wolf]);
+    let players = roster(&[
+        Role::Mayor,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+    ]);
     let mut presenter = Day::new(PlayerId(6), &[Prompt::MayorReveal]);
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
     let rules = GameRules::default();
     let mut rng = SeededRngSource::new(0);
     resolve_day(&players, &mut states, &rules, &mut presenter, &mut rng).await;
     resolve_day(&players, &mut states, &rules, &mut presenter, &mut rng).await;
-    let offers = presenter.log.iter().filter(|l| **l == Log::Asked(P1, Prompt::MayorReveal)).count();
+    let offers = presenter
+        .log
+        .iter()
+        .filter(|l| **l == Log::Asked(P1, Prompt::MayorReveal))
+        .count();
     assert_eq!(offers, 1);
 }
 
 #[tokio::test]
 async fn peace_closes_the_votes_still_open() {
-    let players = roster(&[Role::Villager, Role::Pacifist, Role::Villager, Role::Villager, Role::Wolf]);
+    let players = roster(&[
+        Role::Villager,
+        Role::Pacifist,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+    ]);
     let mut presenter = Day::new(P5, &[Prompt::PacifistPeace]);
     let (actions, lynch) = day(&players, &mut presenter).await;
     // P1 and P2 voted before the peace; nobody after it is asked.
@@ -146,21 +229,37 @@ async fn peace_closes_the_votes_still_open() {
 
 #[tokio::test]
 async fn trouble_after_peace_brings_the_vote_back() {
-    let players = roster(&[Role::Pacifist, Role::Troublemaker, Role::Villager, Role::Villager, Role::Wolf]);
+    let players = roster(&[
+        Role::Pacifist,
+        Role::Troublemaker,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+    ]);
     let mut presenter = Day::new(P5, &[Prompt::PacifistPeace, Prompt::TroublemakerTrouble]);
     let (actions, lynch) = day(&players, &mut presenter).await;
     // P2's vote came up while the peace stood, so it was closed; the
     // trouble reopens the vote for everyone after.
     assert_eq!(presenter.votes_asked(), vec![P1, P3, P4, P5]);
     assert_eq!(lynch, LynchResult::Lynched(P5));
-    assert_eq!(actions.last(), Some(&DayAction::Trouble), "the trouble came last, so it stands");
+    assert_eq!(
+        actions.last(),
+        Some(&DayAction::Trouble),
+        "the trouble came last, so it stands"
+    );
 }
 
 #[tokio::test]
 async fn peace_after_trouble_wins_even_when_the_pacifist_is_listed_first() {
     // The Troublemaker (P2) answers before the Pacifist (P3) in batch
     // order, so peace is the later answer.
-    let players = roster(&[Role::Villager, Role::Troublemaker, Role::Pacifist, Role::Villager, Role::Wolf]);
+    let players = roster(&[
+        Role::Villager,
+        Role::Troublemaker,
+        Role::Pacifist,
+        Role::Villager,
+        Role::Wolf,
+    ]);
     let mut presenter = Day::new(P5, &[Prompt::PacifistPeace, Prompt::TroublemakerTrouble]);
     let (actions, lynch) = day(&players, &mut presenter).await;
     assert_eq!(lynch, LynchResult::NoVotes);
@@ -169,14 +268,40 @@ async fn peace_after_trouble_wins_even_when_the_pacifist_is_listed_first() {
 
 #[tokio::test]
 async fn a_game_with_peace_lynches_nobody_and_says_so() {
-    let players = roster(&[Role::Pacifist, Role::Villager, Role::Villager, Role::Villager, Role::Villager, Role::Wolf]);
+    let players = roster(&[
+        Role::Pacifist,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+    ]);
     let mut presenter = Day::new(PlayerId(6), &[Prompt::PacifistPeace]);
-    run_game_with_rules(&players, ALL_ROLES, &GameRules::default(), &mut presenter, &mut SeededRngSource::new(0), 1)
-        .await;
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &GameRules::default(),
+        &mut presenter,
+        &mut SeededRngSource::new(0),
+        1,
+    )
+    .await;
     assert_eq!(presenter.said(Announcement::PacifistNoLynchNow), 1);
-    let lynched = presenter.log.iter().any(|l| matches!(l, Log::Said(NarrationEvent::Death { method: KillMethod::Lynch, .. })));
+    let lynched = presenter.log.iter().any(|l| {
+        matches!(
+            l,
+            Log::Said(NarrationEvent::Death {
+                method: KillMethod::Lynch,
+                ..
+            })
+        )
+    });
     assert!(!lynched);
-    assert_eq!(presenter.said(Announcement::NoLynchVotes), 0, "peace isn't a vote that found nobody");
+    assert_eq!(
+        presenter.said(Announcement::NoLynchVotes),
+        0,
+        "peace isn't a vote that found nobody"
+    );
 }
 
 /// Like `Day`, but the Gunner shoots `shot`.
@@ -202,25 +327,63 @@ async fn the_gunners_shot_kills_at_once() {
     // Everyone voted for P4: the votes cast before the shot are dropped,
     // and those after it don't count.
     assert_eq!(lynch, LynchResult::NoVotes);
-    assert!(actions.contains(&DayAction::Shoot { shooter: P2, target: P4 }));
+    assert!(actions.contains(&DayAction::Shoot {
+        shooter: P2,
+        target: P4
+    }));
 }
 
 #[tokio::test]
 async fn a_shot_is_told_once_in_a_whole_game() {
-    let players = roster(&[Role::Villager, Role::Gunner, Role::Villager, Role::Villager, Role::Villager, Role::Wolf]);
+    let players = roster(&[
+        Role::Villager,
+        Role::Gunner,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+    ]);
     let mut presenter = gunner_day(PlayerId(6), P4);
-    run_game_with_rules(&players, ALL_ROLES, &GameRules::default(), &mut presenter, &mut SeededRngSource::new(0), 1).await;
-    let told = presenter.log.iter().filter(|l| matches!(l, Log::Said(NarrationEvent::Death { victim, .. }) if *victim == P4)).count();
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &GameRules::default(),
+        &mut presenter,
+        &mut SeededRngSource::new(0),
+        1,
+    )
+    .await;
+    let told = presenter
+        .log
+        .iter()
+        .filter(|l| matches!(l, Log::Said(NarrationEvent::Death { victim, .. }) if *victim == P4))
+        .count();
     assert_eq!(told, 1);
 }
 
 #[tokio::test]
 async fn shooting_the_wise_elder_is_told_right_after_the_shot() {
-    let players = roster(&[Role::Villager, Role::Gunner, Role::Villager, Role::WiseElder, Role::Wolf]);
+    let players = roster(&[
+        Role::Villager,
+        Role::Gunner,
+        Role::Villager,
+        Role::WiseElder,
+        Role::Wolf,
+    ]);
     let mut presenter = gunner_day(P5, P4);
     day(&players, &mut presenter).await;
-    let death = presenter.log.iter().position(|l| matches!(l, Log::Said(NarrationEvent::Death { victim, .. }) if *victim == P4)).unwrap();
-    assert_eq!(presenter.log[death + 1], Log::Said(NarrationEvent::Announce(Announcement::GunnerShotWiseElder { gunner: P2, elder: P4 })));
+    let death = presenter
+        .log
+        .iter()
+        .position(|l| matches!(l, Log::Said(NarrationEvent::Death { victim, .. }) if *victim == P4))
+        .unwrap();
+    assert_eq!(
+        presenter.log[death + 1],
+        Log::Said(NarrationEvent::Announce(Announcement::GunnerShotWiseElder {
+            gunner: P2,
+            elder: P4
+        }))
+    );
 }
 
 #[tokio::test]
@@ -230,7 +393,13 @@ async fn a_gunner_shot_after_firing_still_killed() {
     struct Shots(Vec<Log>);
     #[async_trait(?Send)]
     impl Presenter for Shots {
-        async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, _: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            _: &[PlayerId],
+            _: usize,
+        ) -> Option<Vec<PlayerId>> {
             self.0.push(Log::Asked(player, prompt));
             match (player, prompt) {
                 (P4, Prompt::GunnerShoot { .. }) => Some(vec![P1]),
@@ -245,8 +414,26 @@ async fn a_gunner_shot_after_firing_still_killed() {
     // Ask P4 first, so their shot lands before P2's.
     let players: Vec<AlivePlayer> = [3, 0, 1, 2, 4].iter().map(|&i| players[i]).collect();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
-    let (actions, _) =
-        resolve_day(&players, &mut states, &GameRules::default(), &mut Shots(vec![]), &mut SeededRngSource::new(0)).await;
-    assert!(actions.contains(&DayAction::Shoot { shooter: P4, target: P1 }), "{actions:?}");
-    assert!(actions.contains(&DayAction::Shoot { shooter: P2, target: P4 }), "{actions:?}");
+    let (actions, _) = resolve_day(
+        &players,
+        &mut states,
+        &GameRules::default(),
+        &mut Shots(vec![]),
+        &mut SeededRngSource::new(0),
+    )
+    .await;
+    assert!(
+        actions.contains(&DayAction::Shoot {
+            shooter: P4,
+            target: P1
+        }),
+        "{actions:?}"
+    );
+    assert!(
+        actions.contains(&DayAction::Shoot {
+            shooter: P2,
+            target: P4
+        }),
+        "{actions:?}"
+    );
 }

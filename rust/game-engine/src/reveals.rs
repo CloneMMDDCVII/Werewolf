@@ -86,15 +86,22 @@ pub fn resolve_night_readings(
     };
 
     for (seer, target) in readings(Role::Seer).collect::<Vec<_>>() {
-        let Some(role) = role_of(target, survivors, start_of_night) else { continue };
+        let Some(role) = role_of(target, survivors, start_of_night) else {
+            continue;
+        };
         let role = seer_reading(role, rng);
         events.push(tell(seer, Note::SeerSees { target, role }));
     }
 
     for (sorcerer, target) in readings(Role::Sorcerer).collect::<Vec<_>>() {
-        let Some(role) = role_of(target, survivors, start_of_night) else { continue };
+        let Some(role) = role_of(target, survivors, start_of_night) else {
+            continue;
+        };
         let note = match role {
-            Role::AlphaWolf | Role::Wolf | Role::WolfCub => Note::SeerSees { target, role: Role::Wolf },
+            Role::AlphaWolf | Role::Wolf | Role::WolfCub => Note::SeerSees {
+                target,
+                role: Role::Wolf,
+            },
             Role::Seer | Role::SnowWolf => Note::SeerSees { target, role },
             _ => Note::SorcererOther { target },
         };
@@ -122,7 +129,9 @@ pub fn resolve_night_readings(
     // The Oracle is shown a random living role the target doesn't have
     // (Werewolf.cs:4027-4033), or nothing if every survivor shares it.
     for (oracle, target) in readings(Role::Oracle).collect::<Vec<_>>() {
-        let Some(target_role) = role_of(target, survivors, start_of_night) else { continue };
+        let Some(target_role) = role_of(target, survivors, start_of_night) else {
+            continue;
+        };
         let pool: Vec<Role> = survivors
             .iter()
             .filter(|p| p.id != oracle && p.role != target_role)
@@ -179,17 +188,30 @@ pub fn resolve_detective(
 ) -> Vec<NarrationEvent> {
     let mut events = vec![];
     for action in day_actions {
-        let DayAction::Snoop { detective, target } = *action else { continue };
+        let DayAction::Snoop { detective, target } = *action else {
+            continue;
+        };
         if deaths_before_lynch.contains(&detective) {
             continue;
         }
-        let Some(role) = alive.iter().find(|p| p.id == target).map(|p| p.role) else { continue };
+        let Some(role) = alive.iter().find(|p| p.id == target).map(|p| p.role) else {
+            continue;
+        };
         if rng.chance(DETECTIVE_CAUGHT_PERCENT) {
-            for wolf in alive.iter().filter(|p| is_legacy_wolf_role(p.role) || p.role == Role::SnowWolf) {
-                events.push(NarrationEvent::Private { to: wolf.id, note: Note::DetectiveCaught { detective } });
+            for wolf in alive
+                .iter()
+                .filter(|p| is_legacy_wolf_role(p.role) || p.role == Role::SnowWolf)
+            {
+                events.push(NarrationEvent::Private {
+                    to: wolf.id,
+                    note: Note::DetectiveCaught { detective },
+                });
             }
         }
-        events.push(NarrationEvent::Private { to: detective, note: Note::DetectiveSnoop { target, role } });
+        events.push(NarrationEvent::Private {
+            to: detective,
+            note: Note::DetectiveSnoop { target, role },
+        });
     }
     events
 }
@@ -225,7 +247,13 @@ mod tests {
         ] {
             assert_eq!(
                 seer_reads(actual, &mut ScriptedRngSource::new()),
-                vec![private(1, Note::SeerSees { target: PlayerId(2), role: shown })],
+                vec![private(
+                    1,
+                    Note::SeerSees {
+                        target: PlayerId(2),
+                        role: shown
+                    }
+                )],
                 "{actual:?}"
             );
         }
@@ -234,9 +262,27 @@ mod tests {
     #[test]
     fn the_traitor_reads_as_wolf_or_villager() {
         let wolf = seer_reads(Role::Traitor, &mut ScriptedRngSource::new().with_chance(true));
-        assert_eq!(wolf, vec![private(1, Note::SeerSees { target: PlayerId(2), role: Role::Wolf })]);
+        assert_eq!(
+            wolf,
+            vec![private(
+                1,
+                Note::SeerSees {
+                    target: PlayerId(2),
+                    role: Role::Wolf
+                }
+            )]
+        );
         let villager = seer_reads(Role::Traitor, &mut ScriptedRngSource::new().with_chance(false));
-        assert_eq!(villager, vec![private(1, Note::SeerSees { target: PlayerId(2), role: Role::Villager })]);
+        assert_eq!(
+            villager,
+            vec![private(
+                1,
+                Note::SeerSees {
+                    target: PlayerId(2),
+                    role: Role::Villager
+                }
+            )]
+        );
     }
 
     #[test]
@@ -258,14 +304,43 @@ mod tests {
 
     #[test]
     fn the_sorcerer_only_recognises_wolves_and_seers() {
-        let roster = vec![p(1, Role::Sorcerer), p(2, Role::WolfCub), p(3, Role::Seer), p(4, Role::SnowWolf), p(5, Role::Lycan)];
+        let roster = vec![
+            p(1, Role::Sorcerer),
+            p(2, Role::WolfCub),
+            p(3, Role::Seer),
+            p(4, Role::SnowWolf),
+            p(5, Role::Lycan),
+        ];
         for (target, note) in [
-            (2, Note::SeerSees { target: PlayerId(2), role: Role::Wolf }),
-            (3, Note::SeerSees { target: PlayerId(3), role: Role::Seer }),
-            (4, Note::SeerSees { target: PlayerId(4), role: Role::SnowWolf }),
+            (
+                2,
+                Note::SeerSees {
+                    target: PlayerId(2),
+                    role: Role::Wolf,
+                },
+            ),
+            (
+                3,
+                Note::SeerSees {
+                    target: PlayerId(3),
+                    role: Role::Seer,
+                },
+            ),
+            (
+                4,
+                Note::SeerSees {
+                    target: PlayerId(4),
+                    role: Role::SnowWolf,
+                },
+            ),
             (5, Note::SorcererOther { target: PlayerId(5) }),
         ] {
-            let actions = vec![(PlayerId(1), NightAction::Investigate { target: PlayerId(target) })];
+            let actions = vec![(
+                PlayerId(1),
+                NightAction::Investigate {
+                    target: PlayerId(target),
+                },
+            )];
             let events = resolve_night_readings(
                 &actions,
                 &roster,
@@ -281,7 +356,12 @@ mod tests {
 
     #[test]
     fn the_fool_sees_a_random_non_seer_role_with_wolf_types_flattened() {
-        let roster = vec![p(1, Role::Fool), p(2, Role::Seer), p(3, Role::AlphaWolf), p(4, Role::Villager)];
+        let roster = vec![
+            p(1, Role::Fool),
+            p(2, Role::Seer),
+            p(3, Role::AlphaWolf),
+            p(4, Role::Villager),
+        ];
         let actions = vec![(PlayerId(1), NightAction::Investigate { target: PlayerId(4) })];
         // Pool is [AlphaWolf, Villager]; index 0 picks AlphaWolf.
         let events = resolve_night_readings(
@@ -293,12 +373,26 @@ mod tests {
             &mut AugurMemory::default(),
             &mut ScriptedRngSource::new().with_index(0),
         );
-        assert_eq!(events, vec![private(1, Note::SeerSees { target: PlayerId(4), role: Role::Wolf })]);
+        assert_eq!(
+            events,
+            vec![private(
+                1,
+                Note::SeerSees {
+                    target: PlayerId(4),
+                    role: Role::Wolf
+                }
+            )]
+        );
     }
 
     #[test]
     fn the_oracle_sees_a_role_the_target_is_not() {
-        let roster = vec![p(1, Role::Oracle), p(2, Role::Villager), p(3, Role::Villager), p(4, Role::Wolf)];
+        let roster = vec![
+            p(1, Role::Oracle),
+            p(2, Role::Villager),
+            p(3, Role::Villager),
+            p(4, Role::Wolf),
+        ];
         let actions = vec![(PlayerId(1), NightAction::Investigate { target: PlayerId(2) })];
         let events = resolve_night_readings(
             &actions,
@@ -309,7 +403,16 @@ mod tests {
             &mut AugurMemory::default(),
             &mut ScriptedRngSource::new().with_index(0),
         );
-        assert_eq!(events, vec![private(1, Note::NegSeerSees { target: PlayerId(2), role: Role::Wolf })]);
+        assert_eq!(
+            events,
+            vec![private(
+                1,
+                Note::NegSeerSees {
+                    target: PlayerId(2),
+                    role: Role::Wolf
+                }
+            )]
+        );
     }
 
     #[test]
@@ -351,13 +454,29 @@ mod tests {
             &mut AugurMemory::default(),
             &mut ScriptedRngSource::new().with_index(0),
         );
-        assert_eq!(events, vec![private(1, Note::AugurSees { role: Role::ApprenticeSeer })]);
+        assert_eq!(
+            events,
+            vec![private(
+                1,
+                Note::AugurSees {
+                    role: Role::ApprenticeSeer
+                }
+            )]
+        );
     }
 
     #[test]
     fn the_detective_learns_the_exact_role_and_may_be_caught() {
-        let roster = vec![p(1, Role::Detective), p(2, Role::Lycan), p(3, Role::Wolf), p(4, Role::SnowWolf)];
-        let actions = [DayAction::Snoop { detective: PlayerId(1), target: PlayerId(2) }];
+        let roster = vec![
+            p(1, Role::Detective),
+            p(2, Role::Lycan),
+            p(3, Role::Wolf),
+            p(4, Role::SnowWolf),
+        ];
+        let actions = [DayAction::Snoop {
+            detective: PlayerId(1),
+            target: PlayerId(2),
+        }];
         let caught = resolve_detective(&actions, &roster, &[], &mut ScriptedRngSource::new().with_chance(true));
         assert_eq!(
             caught,
@@ -365,17 +484,35 @@ mod tests {
                 private(2, Note::DetectiveCaught { detective: PlayerId(1) }),
                 private(3, Note::DetectiveCaught { detective: PlayerId(1) }),
                 private(4, Note::DetectiveCaught { detective: PlayerId(1) }),
-                private(1, Note::DetectiveSnoop { target: PlayerId(2), role: Role::Lycan }),
+                private(
+                    1,
+                    Note::DetectiveSnoop {
+                        target: PlayerId(2),
+                        role: Role::Lycan
+                    }
+                ),
             ]
         );
         let unseen = resolve_detective(&actions, &roster, &[], &mut ScriptedRngSource::new().with_chance(false));
-        assert_eq!(unseen, vec![private(1, Note::DetectiveSnoop { target: PlayerId(2), role: Role::Lycan })]);
+        assert_eq!(
+            unseen,
+            vec![private(
+                1,
+                Note::DetectiveSnoop {
+                    target: PlayerId(2),
+                    role: Role::Lycan
+                }
+            )]
+        );
     }
 
     #[test]
     fn a_detective_shot_today_learns_nothing() {
         let roster = vec![p(1, Role::Detective), p(2, Role::Wolf)];
-        let actions = [DayAction::Snoop { detective: PlayerId(1), target: PlayerId(2) }];
+        let actions = [DayAction::Snoop {
+            detective: PlayerId(1),
+            target: PlayerId(2),
+        }];
         assert!(resolve_detective(&actions, &roster, &[PlayerId(1)], &mut ScriptedRngSource::new()).is_empty());
     }
 }

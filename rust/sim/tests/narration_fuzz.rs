@@ -28,7 +28,10 @@ use shared::ALL_ROLES;
 use sim::TranscriptPresenter;
 use std::collections::HashMap;
 
-const LANGUAGE_PACK_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages/English.xml");
+const LANGUAGE_PACK_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../Werewolf for Telegram/Languages/English.xml"
+);
 const SEEDS: u64 = 300;
 
 struct Xorshift64(u64);
@@ -103,8 +106,7 @@ async fn fuzzed_games_never_leak_placeholders_or_miscount_deaths() {
         let mut roster_rng = Xorshift64(seed);
         let players = random_roster(&mut roster_rng);
 
-        let names: HashMap<PlayerId, String> =
-            players.iter().map(|p| (p.id, format!("P{}", p.id.0))).collect();
+        let names: HashMap<PlayerId, String> = players.iter().map(|p| (p.id, format!("P{}", p.id.0))).collect();
 
         let mut inner = RandomPresenter {
             rng: Xorshift64(seed.wrapping_mul(2_654_435_761).max(1)),
@@ -125,7 +127,12 @@ async fn fuzzed_games_never_leak_placeholders_or_miscount_deaths() {
             .lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| outcome.deaths.iter().any(|&(_, method)| l.ends_with(&format!("({method:?})"))))
+            .filter(|(_, l)| {
+                outcome
+                    .deaths
+                    .iter()
+                    .any(|&(_, method)| l.ends_with(&format!("({method:?})")))
+            })
             .map(|(i, _)| i)
             .collect();
         assert_eq!(

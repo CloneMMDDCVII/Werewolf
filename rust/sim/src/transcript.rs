@@ -18,11 +18,8 @@
 //! from `GameOutcome` after the whole game ends.
 
 use async_trait::async_trait;
-use game_engine::orchestrator::{
-    prompt_locale_key, NarrationEvent,
-    Presenter, Prompt,
-};
 use game_engine::messages::{render, Message};
+use game_engine::orchestrator::{prompt_locale_key, NarrationEvent, Presenter, Prompt};
 use game_engine::roles::PlayerId;
 use i18n::LanguagePack;
 use std::collections::HashMap;
@@ -76,11 +73,7 @@ pub struct TranscriptPresenter<'a> {
 }
 
 impl<'a> TranscriptPresenter<'a> {
-    pub fn new(
-        inner: &'a mut dyn Presenter,
-        pack: &'a LanguagePack,
-        names: &'a HashMap<PlayerId, String>,
-    ) -> Self {
+    pub fn new(inner: &'a mut dyn Presenter, pack: &'a LanguagePack, names: &'a HashMap<PlayerId, String>) -> Self {
         TranscriptPresenter {
             inner,
             pack,
@@ -200,7 +193,12 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
 
     async fn narrate(&mut self, event: NarrationEvent) {
         match event {
-            NarrationEvent::Death { victim, message, method, .. } => {
+            NarrationEvent::Death {
+                victim,
+                message,
+                method,
+                ..
+            } => {
                 // The engine picks the line (`game_engine::death_text`).
                 // `None` means another line already covers this death; a
                 // bot sends nothing, but the transcript still notes it so
@@ -214,7 +212,8 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
             NarrationEvent::Transform { player, from, to } => {
                 // What the player is told comes as `Tell`s (see
                 // `game_engine::role_info`); this marks the change itself.
-                self.lines.push(format!("[{} turns from {from:?} to {to:?}]", self.name(player)));
+                self.lines
+                    .push(format!("[{} turns from {from:?} to {to:?}]", self.name(player)));
             }
             NarrationEvent::Tell { to, message } => {
                 let text = self.render_message(&message);

@@ -21,7 +21,12 @@ struct Night {
 
 impl Night {
     fn new(answers: &[(Prompt, PlayerId)]) -> Self {
-        Night { answers: answers.to_vec(), asked: vec![], round: 1, narrated: vec![] }
+        Night {
+            answers: answers.to_vec(),
+            asked: vec![],
+            round: 1,
+            narrated: vec![],
+        }
     }
 
     fn notes_to(&self, to: PlayerId) -> Vec<Note> {
@@ -35,13 +40,23 @@ impl Night {
     }
 
     fn asked_on(&self, player: PlayerId, prompt: Prompt) -> Vec<u32> {
-        self.asked.iter().filter(|(p, pr, _)| *p == player && *pr == prompt).map(|a| a.2).collect()
+        self.asked
+            .iter()
+            .filter(|(p, pr, _)| *p == player && *pr == prompt)
+            .map(|a| a.2)
+            .collect()
     }
 }
 
 #[async_trait(?Send)]
 impl Presenter for Night {
-    async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+    async fn ask_targets(
+        &mut self,
+        player: PlayerId,
+        prompt: Prompt,
+        options: &[PlayerId],
+        _: usize,
+    ) -> Option<Vec<PlayerId>> {
         self.asked.push((player, prompt, self.round));
         let answer = self.answers.iter().find(|(p, _)| *p == prompt).map(|&(_, t)| t)?;
         options.contains(&answer).then(|| vec![answer])
@@ -61,7 +76,14 @@ impl Presenter for Night {
 }
 
 fn roster(roles: &[Role]) -> Vec<AlivePlayer> {
-    roles.iter().enumerate().map(|(i, &role)| AlivePlayer { id: PlayerId(i as u64 + 1), role }).collect()
+    roles
+        .iter()
+        .enumerate()
+        .map(|(i, &role)| AlivePlayer {
+            id: PlayerId(i as u64 + 1),
+            role,
+        })
+        .collect()
 }
 
 const P1: PlayerId = PlayerId(1);
@@ -70,7 +92,15 @@ const P3: PlayerId = PlayerId(3);
 
 async fn play(players: &[AlivePlayer], presenter: &mut Night, seed: u64, rounds: u32) {
     let rules = GameRules::default();
-    run_game_with_rules(players, ALL_ROLES, &rules, presenter, &mut SeededRngSource::new(seed), rounds).await;
+    run_game_with_rules(
+        players,
+        ALL_ROLES,
+        &rules,
+        presenter,
+        &mut SeededRngSource::new(seed),
+        rounds,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -78,12 +108,21 @@ async fn a_quiet_night_is_announced() {
     let players = roster(&[Role::Wolf, Role::Villager, Role::Villager, Role::Villager]);
     let mut night = Night::new(&[]);
     play(&players, &mut night, 0, 1).await;
-    assert!(night.narrated.contains(&NarrationEvent::Announce(Announcement::NoAttack)));
+    assert!(night
+        .narrated
+        .contains(&NarrationEvent::Announce(Announcement::NoAttack)));
 }
 
 #[tokio::test]
 async fn the_chemist_brews_on_the_first_night_and_is_asked_on_the_second() {
-    let players = roster(&[Role::Chemist, Role::Wolf, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::Chemist,
+        Role::Wolf,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut night = Night::new(&[(Prompt::ChemistBrew, P3)]);
     play(&players, &mut night, 0, 2).await;
     assert_eq!(night.asked_on(P1, Prompt::ChemistBrew), vec![2]);
@@ -92,7 +131,14 @@ async fn the_chemist_brews_on_the_first_night_and_is_asked_on_the_second() {
 
 #[tokio::test]
 async fn wolves_who_ate_the_drunk_skip_the_next_night() {
-    let players = roster(&[Role::Wolf, Role::Drunk, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::Wolf,
+        Role::Drunk,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut night = Night::new(&[(Prompt::WolfEat, P2)]);
     play(&players, &mut night, 0, 3).await;
     assert_eq!(night.asked_on(P1, Prompt::WolfEat), vec![1, 3]);
@@ -101,13 +147,22 @@ async fn wolves_who_ate_the_drunk_skip_the_next_night() {
 
 #[tokio::test]
 async fn a_bitten_player_is_told_once_the_night_is_over() {
-    let players = roster(&[Role::AlphaWolf, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::AlphaWolf,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut bitten = 0;
     for seed in 0..30 {
         let mut night = Night::new(&[(Prompt::WolfEat, P2)]);
         play(&players, &mut night, seed, 1).await;
         let told = night.notes_to(P2).contains(&Note::Night(NightNote::PlayerBitten));
-        let died = night.narrated.iter().any(|e| matches!(e, NarrationEvent::Death { victim, .. } if *victim == P2));
+        let died = night
+            .narrated
+            .iter()
+            .any(|e| matches!(e, NarrationEvent::Death { victim, .. } if *victim == P2));
         assert!(told != died, "seed {seed}: either bitten or eaten");
         bitten += told as u32;
     }
@@ -116,14 +171,27 @@ async fn a_bitten_player_is_told_once_the_night_is_over() {
 
 #[tokio::test]
 async fn the_burned_share_one_line_when_roles_are_shown() {
-    let players = roster(&[Role::Arsonist, Role::Villager, Role::Villager, Role::Wolf, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::Arsonist,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+        Role::Villager,
+        Role::Villager,
+    ]);
     // Douses P2 on night one and P3 on night two, then sparks on night three.
     struct Arsonist {
         inner: Night,
     }
     #[async_trait(?Send)]
     impl Presenter for Arsonist {
-        async fn ask_targets(&mut self, player: PlayerId, prompt: Prompt, options: &[PlayerId], n: usize) -> Option<Vec<PlayerId>> {
+        async fn ask_targets(
+            &mut self,
+            player: PlayerId,
+            prompt: Prompt,
+            options: &[PlayerId],
+            n: usize,
+        ) -> Option<Vec<PlayerId>> {
             if prompt == Prompt::ArsonistDouse {
                 let target = if self.inner.round == 1 { P2 } else { P3 };
                 return options.contains(&target).then(|| vec![target]);
@@ -142,13 +210,26 @@ async fn the_burned_share_one_line_when_roles_are_shown() {
     }
     let mut arsonist = Arsonist { inner: Night::new(&[]) };
     let rules = GameRules::default();
-    run_game_with_rules(&players, ALL_ROLES, &rules, &mut arsonist, &mut SeededRngSource::new(0), 3).await;
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &rules,
+        &mut arsonist,
+        &mut SeededRngSource::new(0),
+        3,
+    )
+    .await;
     let burns: Vec<_> = arsonist
         .inner
         .narrated
         .iter()
         .filter_map(|e| match e {
-            NarrationEvent::Death { victim, method: KillMethod::Burn, message, .. } => Some((*victim, message.as_ref().map(|m| m.key))),
+            NarrationEvent::Death {
+                victim,
+                method: KillMethod::Burn,
+                message,
+                ..
+            } => Some((*victim, message.as_ref().map(|m| m.key))),
             _ => None,
         })
         .collect();
@@ -157,20 +238,32 @@ async fn the_burned_share_one_line_when_roles_are_shown() {
 
 #[tokio::test]
 async fn the_grave_digger_is_told_whose_graves_to_dig() {
-    let players = roster(&[Role::GraveDigger, Role::Wolf, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::GraveDigger,
+        Role::Wolf,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut night = Night::new(&[(Prompt::WolfEat, P3)]);
     play(&players, &mut night, 0, 2).await;
     let graves: Vec<Message> = night
         .narrated
         .iter()
         .filter_map(|e| match e {
-            NarrationEvent::Tell { to, message } if *to == P1 && message.key.starts_with("Dig") => Some(message.clone()),
+            NarrationEvent::Tell { to, message } if *to == P1 && message.key.starts_with("Dig") => {
+                Some(message.clone())
+            }
             _ => None,
         })
         .collect();
     assert_eq!(
         graves,
-        vec![Message::new("DigNoGraves", vec![]), Message::new("DigGraves", vec![MessageArg::PlayersAnd(vec![P3])])]
+        vec![
+            Message::new("DigNoGraves", vec![]),
+            Message::new("DigGraves", vec![MessageArg::PlayersAnd(vec![P3])])
+        ]
     );
 }
 
@@ -204,9 +297,10 @@ async fn the_arsonist_is_shown_the_houses_already_doused() {
             let answers = questions
                 .iter()
                 .map(|q| match q {
-                    Question::Targets { prompt: Prompt::ArsonistDouse, .. } if phase == Phase::Night => {
-                        Answer::Targets(Some(vec![if night == 0 { P2 } else { P3 }]))
-                    }
+                    Question::Targets {
+                        prompt: Prompt::ArsonistDouse,
+                        ..
+                    } if phase == Phase::Night => Answer::Targets(Some(vec![if night == 0 { P2 } else { P3 }])),
                     Question::Targets { .. } => Answer::Targets(None),
                     Question::Toggle { .. } => Answer::Toggle(false),
                 })
@@ -217,52 +311,110 @@ async fn the_arsonist_is_shown_the_houses_already_doused() {
             answers
         }
     }
-    let players = roster(&[Role::Arsonist, Role::Villager, Role::Villager, Role::Wolf, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::Arsonist,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut douser = Douser::default();
     let rules = GameRules::default();
-    run_game_with_rules(&players, ALL_ROLES, &rules, &mut douser, &mut SeededRngSource::new(0), 2).await;
-    let arsonist = |night: usize| -> Vec<Question> { douser.nights[night].iter().filter(|q| q.player() == P1).cloned().collect() };
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &rules,
+        &mut douser,
+        &mut SeededRngSource::new(0),
+        2,
+    )
+    .await;
+    let arsonist = |night: usize| -> Vec<Question> {
+        douser.nights[night]
+            .iter()
+            .filter(|q| q.player() == P1)
+            .cloned()
+            .collect()
+    };
 
     let first = arsonist(0);
     assert_eq!(first.len(), 1, "no spark before anything is doused: {first:?}");
     assert!(matches!(&first[0], Question::Targets { text: Some(m), .. } if m.key == "AskArsonistNoDoused"));
 
     let second = arsonist(1);
-    let Question::Targets { options, text: Some(text), .. } = &second[0] else { panic!("{second:?}") };
+    let Question::Targets {
+        options,
+        text: Some(text),
+        ..
+    } = &second[0]
+    else {
+        panic!("{second:?}")
+    };
     assert!(!options.contains(&P2), "a doused house isn't offered again");
     assert_eq!(text.key, "AskArsonist");
-    assert_eq!(text.then.as_deref(), Some(&Message::new("AlreadyDousedList", vec![MessageArg::PlayersAnd(vec![P2])])));
-    assert!(second.iter().any(|q| q.prompt() == Prompt::ArsonistSpark), "spark is offered once a house is doused");
+    assert_eq!(
+        text.then.as_deref(),
+        Some(&Message::new(
+            "AlreadyDousedList",
+            vec![MessageArg::PlayersAnd(vec![P2])]
+        ))
+    );
+    assert!(
+        second.iter().any(|q| q.prompt() == Prompt::ArsonistSpark),
+        "spark is offered once a house is doused"
+    );
 }
 
 #[tokio::test]
 async fn the_seer_reads_before_the_morning_and_not_once_eaten() {
-    let players = roster(&[Role::Seer, Role::Wolf, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
-    let reading = |e: &NarrationEvent| matches!(e, NarrationEvent::Private { to, note: Note::SeerSees { .. } } if *to == P1);
+    let players = roster(&[
+        Role::Seer,
+        Role::Wolf,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
+    let reading =
+        |e: &NarrationEvent| matches!(e, NarrationEvent::Private { to, note: Note::SeerSees { .. } } if *to == P1);
 
     let mut night = Night::new(&[(Prompt::SeerCheck, P2), (Prompt::WolfEat, P3)]);
     play(&players, &mut night, 0, 1).await;
     let read_at = night.narrated.iter().position(reading).expect("the seer read");
-    let death_at = night.narrated.iter().position(|e| matches!(e, NarrationEvent::Death { .. })).expect("P3 died");
+    let death_at = night
+        .narrated
+        .iter()
+        .position(|e| matches!(e, NarrationEvent::Death { .. }))
+        .expect("P3 died");
     assert!(read_at < death_at, "the reading comes before the death notices");
 
     let mut night = Night::new(&[(Prompt::SeerCheck, P2), (Prompt::WolfEat, P1)]);
     play(&players, &mut night, 0, 1).await;
-    assert!(!night.narrated.iter().any(reading), "a seer eaten before their turn learns nothing");
+    assert!(
+        !night.narrated.iter().any(reading),
+        "a seer eaten before their turn learns nothing"
+    );
 }
 
 /// Records every batch, answers each question with `pick`, and runs the
 /// batch's `OnAnswer` like a real presenter, keeping what it says.
-struct Recorder<F: FnMut(game_engine::orchestrator::Phase, u32, &game_engine::orchestrator::Question) -> Option<PlayerId>> {
+struct Recorder<
+    F: FnMut(game_engine::orchestrator::Phase, u32, &game_engine::orchestrator::Question) -> Option<PlayerId>,
+> {
     pick: F,
     round: u32,
-    batches: Vec<(game_engine::orchestrator::Phase, u32, Vec<game_engine::orchestrator::Question>)>,
+    batches: Vec<(
+        game_engine::orchestrator::Phase,
+        u32,
+        Vec<game_engine::orchestrator::Question>,
+    )>,
     narrated: Vec<NarrationEvent>,
 }
 
 #[async_trait(?Send)]
-impl<F: FnMut(game_engine::orchestrator::Phase, u32, &game_engine::orchestrator::Question) -> Option<PlayerId>> Presenter
-    for Recorder<F>
+impl<F: FnMut(game_engine::orchestrator::Phase, u32, &game_engine::orchestrator::Question) -> Option<PlayerId>>
+    Presenter for Recorder<F>
 {
     async fn ask_targets(&mut self, _: PlayerId, _: Prompt, _: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
         None
@@ -294,10 +446,17 @@ impl<F: FnMut(game_engine::orchestrator::Phase, u32, &game_engine::orchestrator:
     }
 }
 
-fn recorder<F: FnMut(game_engine::orchestrator::Phase, u32, &game_engine::orchestrator::Question) -> Option<PlayerId>>(
+fn recorder<
+    F: FnMut(game_engine::orchestrator::Phase, u32, &game_engine::orchestrator::Question) -> Option<PlayerId>,
+>(
     pick: F,
 ) -> Recorder<F> {
-    Recorder { pick, round: 1, batches: vec![], narrated: vec![] }
+    Recorder {
+        pick,
+        round: 1,
+        batches: vec![],
+        narrated: vec![],
+    }
 }
 
 #[tokio::test]
@@ -319,13 +478,31 @@ async fn night_menus_leave_out_the_player_and_their_team() {
     let but = |out: &[u64]| -> Vec<PlayerId> { all.iter().copied().filter(|id| !out.contains(&id.0)).collect() };
     let mut presenter = recorder(|_, _, _| None);
     let rules = GameRules::default();
-    run_game_with_rules(&players, ALL_ROLES, &rules, &mut presenter, &mut SeededRngSource::new(0), 1).await;
-    let night = &presenter.batches.iter().find(|(phase, _, _)| *phase == Phase::Night).unwrap().2;
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &rules,
+        &mut presenter,
+        &mut SeededRngSource::new(0),
+        1,
+    )
+    .await;
+    let night = &presenter
+        .batches
+        .iter()
+        .find(|(phase, _, _)| *phase == Phase::Night)
+        .unwrap()
+        .2;
     let menu = |player: u64, prompt: Prompt| -> Vec<PlayerId> {
         night
             .iter()
             .find_map(|q| match q {
-                Question::Targets { player: p, prompt: pr, options, .. } if p.0 == player && *pr == prompt => Some(options.clone()),
+                Question::Targets {
+                    player: p,
+                    prompt: pr,
+                    options,
+                    ..
+                } if p.0 == player && *pr == prompt => Some(options.clone()),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("P{player} wasn't asked {prompt:?}: {night:#?}"))
@@ -343,12 +520,20 @@ async fn night_menus_leave_out_the_player_and_their_team() {
 
 #[tokio::test]
 async fn the_serial_killer_kills_at_night() {
-    let players = roster(&[Role::SerialKiller, Role::Villager, Role::Villager, Role::Villager, Role::Wolf]);
+    let players = roster(&[
+        Role::SerialKiller,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Wolf,
+    ]);
     let mut night = Night::new(&[(Prompt::SerialKillerKill, P2)]);
     play(&players, &mut night, 0, 1).await;
     assert_eq!(night.asked_on(P1, Prompt::SerialKillerKill), vec![1]);
     assert!(
-        night.narrated.iter().any(|e| matches!(e, NarrationEvent::Death { victim, method: KillMethod::SerialKilled, .. } if *victim == P2)),
+        night.narrated.iter().any(
+            |e| matches!(e, NarrationEvent::Death { victim, method: KillMethod::SerialKilled, .. } if *victim == P2)
+        ),
         "{:#?}",
         night.narrated
     );
@@ -358,27 +543,37 @@ async fn the_serial_killer_kills_at_night() {
 async fn teammates_hear_each_vote_as_it_is_cast() {
     use game_engine::orchestrator::{Phase, Question};
     let players = roster(&[
-        Role::Villager,  // P1
-        Role::Villager,  // P2
-        Role::Wolf,      // P3
-        Role::Wolf,      // P4
-        Role::SnowWolf,  // P5
-        Role::Cultist,   // P6
-        Role::Cultist,   // P7
-        Role::Villager,  // P8
+        Role::Villager, // P1
+        Role::Villager, // P2
+        Role::Wolf,     // P3
+        Role::Wolf,     // P4
+        Role::SnowWolf, // P5
+        Role::Cultist,  // P6
+        Role::Cultist,  // P7
+        Role::Villager, // P8
     ]);
     let mut presenter = recorder(|phase, _, q| match q {
         Question::Targets { player, .. } if phase == Phase::Night && (player.0 == 3 || player.0 == 6) => Some(P2),
         _ => None,
     });
     let rules = GameRules::default();
-    run_game_with_rules(&players, ALL_ROLES, &rules, &mut presenter, &mut SeededRngSource::new(0), 1).await;
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &rules,
+        &mut presenter,
+        &mut SeededRngSource::new(0),
+        1,
+    )
+    .await;
     let told = |to: u64| -> Vec<Message> {
         presenter
             .narrated
             .iter()
             .filter_map(|e| match e {
-                NarrationEvent::Tell { to: t, message } if t.0 == to && message.key.contains("Voted") => Some(message.clone()),
+                NarrationEvent::Tell { to: t, message } if t.0 == to && message.key.contains("Voted") => {
+                    Some(message.clone())
+                }
                 _ => None,
             })
             .collect()
@@ -387,7 +582,10 @@ async fn teammates_hear_each_vote_as_it_is_cast() {
     assert_eq!(told(4), vec![vote("WolfVotedKill", P3)]);
     assert_eq!(told(7), vec![vote("CultistVotedConvert", PlayerId(6))]);
     assert!(told(5).is_empty(), "the Snow Wolf doesn't vote, and isn't told");
-    assert!(told(3).is_empty() && told(6).is_empty(), "voters aren't told their own vote");
+    assert!(
+        told(3).is_empty() && told(6).is_empty(),
+        "voters aren't told their own vote"
+    );
 }
 
 #[tokio::test]
@@ -405,14 +603,28 @@ async fn the_second_kill_is_asked_of_every_wolf_at_once() {
     ]);
     // Lynch the cub on day 1; on night 2 P2 picks P4 for both kills.
     let mut presenter = recorder(|phase, round, q| match q {
-        Question::Targets { prompt: Prompt::LynchVote, options, .. } if round == 1 && options.contains(&P1) => Some(P1),
-        Question::Targets { player, prompt: Prompt::WolfCubBonusKill, .. } if phase == Phase::Night && *player == P2 => {
-            Some(PlayerId(5))
-        }
+        Question::Targets {
+            prompt: Prompt::LynchVote,
+            options,
+            ..
+        } if round == 1 && options.contains(&P1) => Some(P1),
+        Question::Targets {
+            player,
+            prompt: Prompt::WolfCubBonusKill,
+            ..
+        } if phase == Phase::Night && *player == P2 => Some(PlayerId(5)),
         _ => None,
     });
     let rules = GameRules::default();
-    run_game_with_rules(&players, ALL_ROLES, &rules, &mut presenter, &mut SeededRngSource::new(0), 2).await;
+    run_game_with_rules(
+        &players,
+        ALL_ROLES,
+        &rules,
+        &mut presenter,
+        &mut SeededRngSource::new(0),
+        2,
+    )
+    .await;
     let second: Vec<_> = presenter
         .batches
         .iter()
@@ -422,6 +634,15 @@ async fn the_second_kill_is_asked_of_every_wolf_at_once() {
     let mut asked: Vec<PlayerId> = second[0].2.iter().map(|q| q.player()).collect();
     asked.sort_by_key(|p| p.0);
     assert_eq!(asked, vec![P2, P3]);
-    let heard = Message::new("WolfVotedKill", vec![MessageArg::Player(P2), MessageArg::Player(PlayerId(5))]);
-    assert!(presenter.narrated.contains(&NarrationEvent::Tell { to: P3, message: heard }), "{:#?}", presenter.narrated);
+    let heard = Message::new(
+        "WolfVotedKill",
+        vec![MessageArg::Player(P2), MessageArg::Player(PlayerId(5))],
+    );
+    assert!(
+        presenter
+            .narrated
+            .contains(&NarrationEvent::Tell { to: P3, message: heard }),
+        "{:#?}",
+        presenter.narrated
+    );
 }

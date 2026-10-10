@@ -36,10 +36,7 @@ impl Presenter for ScriptedPresenter {
         if count == 2 {
             return self.two_target_answer.clone();
         }
-        self.one_target_answers
-            .get(&(player, prompt))
-            .copied()
-            .map(|p| vec![p])
+        self.one_target_answers.get(&(player, prompt)).copied().map(|p| vec![p])
     }
 }
 
@@ -52,11 +49,26 @@ const SEER: PlayerId = PlayerId(5);
 #[tokio::test]
 async fn witch_is_asked_only_after_the_wolves_target_resolves() {
     let players = vec![
-        AlivePlayer { id: WOLF_A, role: Role::Wolf },
-        AlivePlayer { id: WOLF_B, role: Role::Wolf },
-        AlivePlayer { id: VICTIM, role: Role::Villager },
-        AlivePlayer { id: WITCH, role: Role::Witch },
-        AlivePlayer { id: SEER, role: Role::Seer },
+        AlivePlayer {
+            id: WOLF_A,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: WOLF_B,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: VICTIM,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: WITCH,
+            role: Role::Witch,
+        },
+        AlivePlayer {
+            id: SEER,
+            role: Role::Seer,
+        },
     ];
 
     let mut answers = HashMap::new();
@@ -96,9 +108,18 @@ async fn witch_is_asked_only_after_the_wolves_target_resolves() {
 #[tokio::test]
 async fn witch_heal_does_not_fire_if_her_choice_disagrees_with_the_resolved_wolf_target() {
     let players = vec![
-        AlivePlayer { id: WOLF_A, role: Role::Wolf },
-        AlivePlayer { id: VICTIM, role: Role::Villager },
-        AlivePlayer { id: WITCH, role: Role::Witch },
+        AlivePlayer {
+            id: WOLF_A,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: VICTIM,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: WITCH,
+            role: Role::Witch,
+        },
     ];
 
     let mut answers = HashMap::new();
@@ -126,10 +147,22 @@ async fn a_tied_wolf_vote_resolves_to_no_target() {
     let wolf_c = PlayerId(6);
     let other_victim = PlayerId(7);
     let players = vec![
-        AlivePlayer { id: WOLF_A, role: Role::Wolf },
-        AlivePlayer { id: wolf_c, role: Role::Wolf },
-        AlivePlayer { id: VICTIM, role: Role::Villager },
-        AlivePlayer { id: other_victim, role: Role::Villager },
+        AlivePlayer {
+            id: WOLF_A,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: wolf_c,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: VICTIM,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: other_victim,
+            role: Role::Villager,
+        },
     ];
 
     let mut answers = HashMap::new();
@@ -154,8 +187,14 @@ async fn a_tied_wolf_vote_resolves_to_no_target() {
 async fn cupid_link_is_rejected_if_the_presenter_returns_a_duplicate_target() {
     let target = PlayerId(8);
     let players = vec![
-        AlivePlayer { id: PlayerId(9), role: Role::Cupid },
-        AlivePlayer { id: target, role: Role::Villager },
+        AlivePlayer {
+            id: PlayerId(9),
+            role: Role::Cupid,
+        },
+        AlivePlayer {
+            id: target,
+            role: Role::Villager,
+        },
     ];
 
     let mut presenter = ScriptedPresenter {

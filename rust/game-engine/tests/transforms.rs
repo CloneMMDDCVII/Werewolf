@@ -5,8 +5,8 @@
 
 use async_trait::async_trait;
 use game_engine::orchestrator::{AlivePlayer, Presenter, Prompt};
-use game_engine::roles::PlayerId;
 use game_engine::rng::SeededRngSource;
+use game_engine::roles::PlayerId;
 use game_engine::{run_game, WinOutcome};
 use shared::{Role, Team};
 use std::collections::HashMap;
@@ -84,14 +84,8 @@ async fn traitor_becomes_a_wolf_once_the_last_wolf_dies_and_helps_wolves_win() {
     assert_eq!(outcome.winner, WinOutcome::Team(Team::Wolf));
     // Sanity: the Wolf died to the day-1 lynch, and villager1 to the
     // Traitor-turned-Wolf's night-2 eat - both deaths should be present.
-    assert!(outcome
-        .deaths
-        .iter()
-        .any(|&(id, _)| id == wolf));
-    assert!(outcome
-        .deaths
-        .iter()
-        .any(|&(id, _)| id == villager1));
+    assert!(outcome.deaths.iter().any(|&(id, _)| id == wolf));
+    assert!(outcome.deaths.iter().any(|&(id, _)| id == villager1));
 }
 
 /// Wild Child's role model dying should turn her into a Wolf.

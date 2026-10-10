@@ -31,7 +31,10 @@ struct ScriptedPresenter {
 impl ScriptedPresenter {
     fn new(answer: impl FnMut(&Script, PlayerId, Prompt, &[PlayerId]) -> Option<PlayerId> + 'static) -> Self {
         ScriptedPresenter {
-            script: Script { second_lynch: false, round: 1 },
+            script: Script {
+                second_lynch: false,
+                round: 1,
+            },
             answer: Box::new(answer),
             toggles: vec![],
             asked: vec![],
@@ -113,7 +116,10 @@ fn roster(roles: &[Role]) -> Vec<AlivePlayer> {
     roles
         .iter()
         .enumerate()
-        .map(|(i, &role)| AlivePlayer { id: PlayerId(i as u64 + 1), role })
+        .map(|(i, &role)| AlivePlayer {
+            id: PlayerId(i as u64 + 1),
+            role,
+        })
         .collect()
 }
 
@@ -125,7 +131,14 @@ const P5: PlayerId = PlayerId(5);
 
 #[tokio::test]
 async fn the_troublemaker_causes_a_second_lynch_the_same_day() {
-    let players = roster(&[Role::Wolf, Role::Troublemaker, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::Wolf,
+        Role::Troublemaker,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut presenter = ScriptedPresenter::new(|script, voter, prompt, _| match prompt {
         Prompt::LynchVote if !script.second_lynch => Some(if voter == P3 { P4 } else { P3 }),
         Prompt::LynchVote => Some(if voter == P4 { P5 } else { P4 }),
@@ -147,7 +160,13 @@ async fn the_troublemaker_causes_a_second_lynch_the_same_day() {
 
 #[tokio::test]
 async fn a_pacifist_acting_after_the_troublemaker_cancels_both_lynches() {
-    let players = roster(&[Role::Wolf, Role::Troublemaker, Role::Pacifist, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::Wolf,
+        Role::Troublemaker,
+        Role::Pacifist,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut presenter = ScriptedPresenter::new(|_, _, prompt, _| match prompt {
         Prompt::LynchVote => Some(P4),
         _ => None,
@@ -185,7 +204,14 @@ async fn nobody_voting_is_announced() {
 
 #[tokio::test]
 async fn a_frozen_seer_learns_nothing_and_cannot_be_frozen_twice_in_a_row() {
-    let players = roster(&[Role::SnowWolf, Role::Wolf, Role::Seer, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::SnowWolf,
+        Role::Wolf,
+        Role::Seer,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut presenter = ScriptedPresenter::new(|_, _, prompt, options| match prompt {
         Prompt::SnowWolfFreeze if options.contains(&P3) => Some(P3),
         Prompt::SnowWolfFreeze => options.first().copied(),
@@ -198,7 +224,13 @@ async fn a_frozen_seer_learns_nothing_and_cannot_be_frozen_twice_in_a_row() {
     let seer_notes = presenter.private_notes_to(P3);
     assert_eq!(seer_notes[0], Note::Frozen(FrozenNotice::Seeing));
     // Night 2: the Seer is not frozen and reads the wolf.
-    assert_eq!(seer_notes[1], Note::SeerSees { target: P2, role: Role::Wolf });
+    assert_eq!(
+        seer_notes[1],
+        Note::SeerSees {
+            target: P2,
+            role: Role::Wolf
+        }
+    );
     let freeze_menus: Vec<&Vec<PlayerId>> = presenter
         .asked
         .iter()
@@ -212,7 +244,14 @@ async fn a_frozen_seer_learns_nothing_and_cannot_be_frozen_twice_in_a_row() {
 
 #[tokio::test]
 async fn a_hunter_shot_by_a_hunter_shoots_too() {
-    let players = roster(&[Role::Hunter, Role::Hunter, Role::Wolf, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::Hunter,
+        Role::Hunter,
+        Role::Wolf,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut presenter = ScriptedPresenter::new(|_, player, prompt, _| match prompt {
         Prompt::LynchVote => Some(if player == P1 { P2 } else { P1 }),
         Prompt::HunterFinalShotLynched => Some(P2),
@@ -224,7 +263,11 @@ async fn a_hunter_shot_by_a_hunter_shoots_too() {
 
     assert_eq!(
         outcome.deaths,
-        vec![(P1, KillMethod::Lynch), (P2, KillMethod::HunterShot), (P3, KillMethod::HunterShot)]
+        vec![
+            (P1, KillMethod::Lynch),
+            (P2, KillMethod::HunterShot),
+            (P3, KillMethod::HunterShot)
+        ]
     );
 }
 
@@ -255,7 +298,10 @@ async fn the_gunner_is_told_how_many_bullets_remain_and_stops_when_empty() {
         .collect();
     assert_eq!(
         gunner_prompts,
-        vec![(Prompt::GunnerShoot { bullets: 2 }, 1), (Prompt::GunnerShoot { bullets: 1 }, 2)]
+        vec![
+            (Prompt::GunnerShoot { bullets: 2 }, 1),
+            (Prompt::GunnerShoot { bullets: 1 }, 2)
+        ]
     );
 }
 
@@ -269,7 +315,10 @@ async fn the_detective_snoops_by_day() {
 
     run_game(&players, &mut presenter, &mut SeededRngSource::new(0), 1).await;
 
-    assert!(presenter.private_notes_to(P2).contains(&Note::DetectiveSnoop { target: P1, role: Role::Wolf }));
+    assert!(presenter.private_notes_to(P2).contains(&Note::DetectiveSnoop {
+        target: P1,
+        role: Role::Wolf
+    }));
     let detective_round_prompts: Vec<u32> = presenter
         .asked
         .iter()
@@ -281,7 +330,14 @@ async fn the_detective_snoops_by_day() {
 
 #[tokio::test]
 async fn the_last_snow_wolf_becomes_a_wolf_and_starts_eating() {
-    let players = roster(&[Role::SnowWolf, Role::Wolf, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let players = roster(&[
+        Role::SnowWolf,
+        Role::Wolf,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+        Role::Villager,
+    ]);
     let mut presenter = ScriptedPresenter::new(|_, voter, prompt, _| match prompt {
         Prompt::LynchVote => Some(if voter == P2 { P3 } else { P2 }),
         _ => None,
@@ -289,8 +345,13 @@ async fn the_last_snow_wolf_becomes_a_wolf_and_starts_eating() {
 
     run_game(&players, &mut presenter, &mut SeededRngSource::new(0), 2).await;
 
+    assert!(presenter.narrated.contains(&NarrationEvent::Transform {
+        player: P1,
+        from: Role::SnowWolf,
+        to: Role::Wolf
+    }));
     assert!(presenter
-        .narrated
-        .contains(&NarrationEvent::Transform { player: P1, from: Role::SnowWolf, to: Role::Wolf }));
-    assert!(presenter.asked.iter().any(|(p, prompt, _, round)| *p == P1 && *prompt == Prompt::WolfEat && *round == 2));
+        .asked
+        .iter()
+        .any(|(p, prompt, _, round)| *p == P1 && *prompt == Prompt::WolfEat && *round == 2));
 }

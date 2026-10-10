@@ -6,24 +6,24 @@
 //! `fixture_day_replay.rs`) checked a single night or a single day in
 //! isolation.
 
-use crate::freeze::{apply_freeze, freeze_question};
 use crate::death_text::{death_message, DeathContext};
+use crate::freeze::{apply_freeze, freeze_question};
 use crate::game_end::{check_game_end, wolves_win_plural, EndContext, GameEnd};
 use crate::messages::{Announcement, Message, MessageArg, NightNote, Note};
-use crate::orchestrator::game_over_message;
-use crate::roles::gunner::bullets_left;
 use crate::night::{resolve_night_sequence, NightInput, NightMemory};
-use crate::role_info::{role_info, transform_tells, Cause};
-use crate::rules::GameRules;
-use crate::summary::{is_winner, GameSummary, SummaryEntry};
+use crate::orchestrator::game_over_message;
 use crate::orchestrator::{
-    apply_day_results, last_day_veto, resolve_day, resolve_hunter_shots_by, resolve_lover_deaths,
-    resolve_lynch_vote, resolve_night_with_freeze, resolve_spumpkin_detonation, AlivePlayer, NarrationEvent,
-    Answer, Phase, Presenter, Prompt, Question, TeamVotes,
+    apply_day_results, last_day_veto, resolve_day, resolve_hunter_shots_by, resolve_lover_deaths, resolve_lynch_vote,
+    resolve_night_with_freeze, resolve_spumpkin_detonation, AlivePlayer, Answer, NarrationEvent, Phase, Presenter,
+    Prompt, Question, TeamVotes,
 };
 use crate::reveals::resolve_detective;
 use crate::rng::RngSource;
+use crate::role_info::{role_info, transform_tells, Cause};
+use crate::roles::gunner::bullets_left;
 use crate::roles::{behavior_for, DayAction, LoversState, NightAction, PlayerId, RoleState};
+use crate::rules::GameRules;
+use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::{is_wolf_muscle, KillEvent, WinOutcome};
 use shared::{KillMethod, Role, Team};
 use std::collections::{HashMap, HashSet};
@@ -68,7 +68,11 @@ pub async fn run_game(
 /// balancer's pool when a caller has none (fixtures, tests); a real game
 /// should pass the pool from `balancing::balance_with_pool`.
 fn default_role_pool() -> Vec<Role> {
-    shared::ALL_ROLES.iter().copied().filter(|&r| behavior_for(r).is_available()).collect()
+    shared::ALL_ROLES
+        .iter()
+        .copied()
+        .filter(|&r| behavior_for(r).is_available())
+        .collect()
 }
 
 /// `run_game`, with the pool of roles the game was dealt from, which the
@@ -160,8 +164,19 @@ pub async fn run_game_with_rules(
         apply_pending_alpha_bites(&bitten_pending, &mut alive, presenter).await;
         bitten_pending.clear();
 
-        if let Some(outcome) =
-            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
+        if let Some(outcome) = check_for_game_end(
+            round,
+            &setup,
+            presenter,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            &bitten_pending,
+            rng,
+        )
+        .await
         {
             return outcome;
         }
@@ -171,7 +186,9 @@ pub async fn run_game_with_rules(
             // is reset (Werewolf.cs:3011-3020).
             wolf_cub_bonus_pending = false;
             memory.drunk.clear();
-            presenter.narrate(NarrationEvent::Announce(Announcement::SandmanNight)).await;
+            presenter
+                .narrate(NarrationEvent::Announce(Announcement::SandmanNight))
+                .await;
         } else {
             // Werewolf.cs:5295-5296 excludes Flee/Idle deaths from the count -
             // Flee is reachable now (see apply_fled_players), so this filter
@@ -185,14 +202,23 @@ pub async fn run_game_with_rules(
             deaths_counted_for_graves = deaths.len();
 
             let night_seconds = rules.night_seconds(round, &alive);
-            presenter.narrate(NarrationEvent::Announce(Announcement::NightTime { seconds: night_seconds })).await;
+            presenter
+                .narrate(NarrationEvent::Announce(Announcement::NightTime {
+                    seconds: night_seconds,
+                }))
+                .await;
             // Told as the night's questions go out (Werewolf.cs:5295-5310).
             let graves = match buried.as_slice() {
                 [] => Message::new("DigNoGraves", vec![]),
                 _ => Message::new("DigGraves", vec![MessageArg::PlayersAnd(buried.clone())]),
             };
             for digger in alive.iter().filter(|p| p.role == Role::GraveDigger) {
-                presenter.narrate(NarrationEvent::Tell { to: digger.id, message: graves.clone() }).await;
+                presenter
+                    .narrate(NarrationEvent::Tell {
+                        to: digger.id,
+                        message: graves.clone(),
+                    })
+                    .await;
             }
             if rules.thief_full {
                 // A full-mode Thief may try every night (Werewolf.cs:4166).
@@ -214,13 +240,19 @@ pub async fn run_game_with_rules(
             if round == 1 {
                 narrate_all(pick_missing_role_models(&alive, &mut states, rng), presenter).await;
             }
-            let wolf_cub_votes =
-                if wolf_cub_bonus_pending { ask_wolf_cub_votes(&alive, &skip, presenter).await } else { vec![] };
+            let wolf_cub_votes = if wolf_cub_bonus_pending {
+                ask_wolf_cub_votes(&alive, &skip, presenter).await
+            } else {
+                vec![]
+            };
             wolf_cub_bonus_pending = false;
             let freeze_outcome = apply_freeze(freeze, &mut tagged_actions, &alive, dug_graves, rules.thief_full, rng);
             narrate_all(freeze_outcome.events, presenter).await;
             frozen_last_night = freeze_outcome.frozen;
-            let frozen_role = freeze_outcome.frozen.and_then(|id| alive.iter().find(|p| p.id == id)).map(|p| p.role);
+            let frozen_role = freeze_outcome
+                .frozen
+                .and_then(|id| alive.iter().find(|p| p.id == id))
+                .map(|p| p.role);
             if frozen_role == Some(Role::GraveDigger) {
                 dug_graves = 0; // tonight's graves were never dug (Werewolf.cs:3163-3168)
             }
@@ -247,14 +279,23 @@ pub async fn run_game_with_rules(
             let night = resolve_night_sequence(&input, &mut alive, &mut states, &mut memory, rng);
             narrate_all(night.events, presenter).await;
             bitten_pending.extend(&night.bitten);
-            let mut night_deaths: Vec<(PlayerId, KillMethod)> =
-                freeze_outcome.deaths.iter().copied().chain(night.deaths.iter().map(|d| (d.victim, d.method))).collect();
+            let mut night_deaths: Vec<(PlayerId, KillMethod)> = freeze_outcome
+                .deaths
+                .iter()
+                .copied()
+                .chain(night.deaths.iter().map(|d| (d.victim, d.method)))
+                .collect();
             // Werewolf.cs:4198-4206: the Arsonist's victims are announced first.
             night_deaths.sort_by_key(|&(_, method)| method != KillMethod::Burn);
-            let night_by: Vec<(PlayerId, PlayerId)> =
-                night.deaths.iter().filter_map(|d| d.by.map(|by| (d.victim, by))).collect();
+            let night_by: Vec<(PlayerId, PlayerId)> = night
+                .deaths
+                .iter()
+                .filter_map(|d| d.by.map(|by| (d.victim, by)))
+                .collect();
             if night_deaths.is_empty() {
-                presenter.narrate(NarrationEvent::Announce(Announcement::NoAttack)).await;
+                presenter
+                    .narrate(NarrationEvent::Announce(Announcement::NoAttack))
+                    .await;
             }
             wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
                 &night_deaths,
@@ -270,25 +311,51 @@ pub async fn run_game_with_rules(
             )
             .await;
 
-            if let Some(outcome) =
-                check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
+            if let Some(outcome) = check_for_game_end(
+                round,
+                &setup,
+                presenter,
+                &mut alive,
+                &states,
+                &lovers,
+                &mut kills,
+                &mut deaths,
+                &bitten_pending,
+                rng,
+            )
+            .await
             {
                 return outcome;
             }
             // Werewolf.cs:4455-4458, after the end check.
             for &id in bitten_pending.iter().filter(|id| alive.iter().any(|p| p.id == **id)) {
-                presenter.narrate(NarrationEvent::Private { to: id, note: Note::Night(NightNote::PlayerBitten) }).await;
+                presenter
+                    .narrate(NarrationEvent::Private {
+                        to: id,
+                        note: Note::Night(NightNote::PlayerBitten),
+                    })
+                    .await;
             }
         }
 
         let day_seconds = rules.day_seconds(alive.len());
-        presenter.narrate(NarrationEvent::Announce(Announcement::DayTime { seconds: day_seconds })).await;
-        presenter.narrate(NarrationEvent::Announce(Announcement::Day { number: round })).await;
+        presenter
+            .narrate(NarrationEvent::Announce(Announcement::DayTime { seconds: day_seconds }))
+            .await;
+        presenter
+            .narrate(NarrationEvent::Announce(Announcement::Day { number: round }))
+            .await;
         let lynch_seconds = rules.timers.lynch_seconds;
-        presenter.narrate(NarrationEvent::Announce(Announcement::LynchTime { seconds: lynch_seconds })).await;
+        presenter
+            .narrate(NarrationEvent::Announce(Announcement::LynchTime {
+                seconds: lynch_seconds,
+            }))
+            .await;
         let (day_actions, lynch) = resolve_day(&alive, &mut states, rules, presenter, rng).await;
         let veto = last_day_veto(&day_actions);
-        let lynch_target_role = lynch.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
+        let lynch_target_role = lynch
+            .target()
+            .and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
         silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
         sandman_sleeps_tonight = day_actions.contains(&DayAction::Sleep);
@@ -305,12 +372,17 @@ pub async fn run_game_with_rules(
             }
             _ => None,
         });
-        let shot_today: Vec<PlayerId> =
-            day_deaths.iter().filter(|&&(_, m)| m != KillMethod::Lynch).map(|&(id, _)| id).collect();
+        let shot_today: Vec<PlayerId> = day_deaths
+            .iter()
+            .filter(|&&(_, m)| m != KillMethod::Lynch)
+            .map(|&(id, _)| id)
+            .collect();
         let snoops = resolve_detective(&day_actions, &alive, &shot_today, rng);
         narrate_all(snoops, presenter).await;
         if veto == Some(DayAction::Pacify) {
-            presenter.narrate(NarrationEvent::Announce(Announcement::PacifistNoLynchNow)).await;
+            presenter
+                .narrate(NarrationEvent::Announce(Announcement::PacifistNoLynchNow))
+                .await;
         } else if let Some(announcement) = lynch.announcement() {
             presenter.narrate(NarrationEvent::Announce(announcement)).await;
         }
@@ -347,16 +419,38 @@ pub async fn run_game_with_rules(
         )
         .await;
         if let Some((spumpkin, elder)) = detonated_elder {
-            presenter.narrate(NarrationEvent::Announce(Announcement::DetonatedWiseElder { spumpkin, elder })).await;
-            presenter.narrate(NarrationEvent::Transform { player: spumpkin, from: Role::Spumpkin, to: Role::Villager }).await;
+            presenter
+                .narrate(NarrationEvent::Announce(Announcement::DetonatedWiseElder {
+                    spumpkin,
+                    elder,
+                }))
+                .await;
+            presenter
+                .narrate(NarrationEvent::Transform {
+                    player: spumpkin,
+                    from: Role::Spumpkin,
+                    to: Role::Villager,
+                })
+                .await;
             // `kills` runs parallel to `deaths`.
             if let Some(i) = deaths.iter().position(|&(id, _)| id == spumpkin) {
                 kills[i].victim_role = Role::Villager;
             }
         }
 
-        if let Some(outcome) =
-            check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
+        if let Some(outcome) = check_for_game_end(
+            round,
+            &setup,
+            presenter,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            &bitten_pending,
+            rng,
+        )
+        .await
         {
             return outcome;
         }
@@ -364,10 +458,18 @@ pub async fn run_game_with_rules(
         // The Troublemaker's second lynch: the whole vote again, with no
         // other day actions (Werewolf.cs:2548-2846).
         if veto == Some(DayAction::Trouble) {
-            presenter.narrate(NarrationEvent::Announce(Announcement::TroubleDoubleLynchNow)).await;
-            presenter.narrate(NarrationEvent::Announce(Announcement::LynchTime { seconds: lynch_seconds })).await;
+            presenter
+                .narrate(NarrationEvent::Announce(Announcement::TroubleDoubleLynchNow))
+                .await;
+            presenter
+                .narrate(NarrationEvent::Announce(Announcement::LynchTime {
+                    seconds: lynch_seconds,
+                }))
+                .await;
             let second = resolve_lynch_vote(&alive, &states, rules, presenter, rng).await;
-            let second_role = second.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
+            let second_role = second
+                .target()
+                .and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
             let second_deaths = apply_day_results(&[], second.target(), second_role, &mut states);
             if let Some(announcement) = second.announcement() {
                 presenter.narrate(NarrationEvent::Announce(announcement)).await;
@@ -387,8 +489,19 @@ pub async fn run_game_with_rules(
             )
             .await;
 
-            if let Some(outcome) =
-                check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
+            if let Some(outcome) = check_for_game_end(
+                round,
+                &setup,
+                presenter,
+                &mut alive,
+                &states,
+                &lovers,
+                &mut kills,
+                &mut deaths,
+                &bitten_pending,
+                rng,
+            )
+            .await
             {
                 return outcome;
             }
@@ -397,11 +510,14 @@ pub async fn run_game_with_rules(
         presenter.advance_round();
     }
 
-    let winner = WinOutcome::Unimplemented(
-        "max_rounds reached without a resolved winner (likely repeated tied votes)",
-    );
+    let winner = WinOutcome::Unimplemented("max_rounds reached without a resolved winner (likely repeated tied votes)");
     let message = game_over_message(&winner, false);
-    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone(), message }).await;
+    presenter
+        .narrate(NarrationEvent::GameOver {
+            winner: winner.clone(),
+            message,
+        })
+        .await;
     let summary = game_summary(&setup, &winner, &alive, &lovers, &kills, &deaths);
     presenter.narrate(NarrationEvent::GameSummary(summary)).await;
     GameOutcome {
@@ -432,14 +548,23 @@ async fn check_for_game_end(
     } else {
         let reveal = setup.rules.show_roles_on_death;
         apply_fled_players(presenter, alive, states, lovers, kills, deaths, reveal).await;
-        if kills.iter().any(|k| k.method == KillMethod::Lynch && k.victim_role == Role::Tanner) {
+        if kills
+            .iter()
+            .any(|k| k.method == KillMethod::Lynch && k.victim_role == Role::Tanner)
+        {
             // Werewolf.cs:2768-2776: lynching the Tanner ends the game.
             WinOutcome::Team(Team::Tanner)
         } else {
             let in_love = |id: PlayerId| lovers.partner_of(id).is_some();
             let bullets = |id: PlayerId| states.get(&id).map(bullets_left).unwrap_or(2);
             let role_model = |id: PlayerId| states.get(&id).and_then(|s| s.remembered_player);
-            let ctx = EndContext { alive, in_love: &in_love, bullets: &bullets, role_model: &role_model, bitten };
+            let ctx = EndContext {
+                alive,
+                in_love: &in_love,
+                bullets: &bullets,
+                role_model: &role_model,
+                bitten,
+            };
             let end = check_game_end(&ctx, rng)?;
             play_out_ending(&end, alive, kills, deaths, reveal, presenter).await;
             WinOutcome::Team(end.winner)
@@ -447,7 +572,12 @@ async fn check_for_game_end(
     };
     let dead_snow_wolves = kills.iter().filter(|k| k.victim_role == Role::SnowWolf).count();
     let message = game_over_message(&winner, wolves_win_plural(alive, dead_snow_wolves));
-    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone(), message }).await;
+    presenter
+        .narrate(NarrationEvent::GameOver {
+            winner: winner.clone(),
+            message,
+        })
+        .await;
     let summary = game_summary(setup, &winner, alive, lovers, kills, deaths);
     presenter.narrate(NarrationEvent::GameSummary(summary)).await;
     Some(GameOutcome {
@@ -473,12 +603,26 @@ async fn play_out_ending(
     }
     let died_with_roles = record_deaths(alive, &end.deaths, kills, deaths);
     for (&(victim, method), &(_, role)) in end.deaths.iter().zip(&died_with_roles) {
-        presenter.narrate(NarrationEvent::Death { victim, role, method, reveal_role, message: None }).await;
+        presenter
+            .narrate(NarrationEvent::Death {
+                victim,
+                role,
+                method,
+                reveal_role,
+                message: None,
+            })
+            .await;
     }
     alive.retain(|p| !end.deaths.iter().any(|&(v, _)| v == p.id));
     for &id in &end.converted {
         if let Some(p) = alive.iter_mut().find(|p| p.id == id) {
-            presenter.narrate(NarrationEvent::Transform { player: id, from: p.role, to: Role::Cultist }).await;
+            presenter
+                .narrate(NarrationEvent::Transform {
+                    player: id,
+                    from: p.role,
+                    to: Role::Cultist,
+                })
+                .await;
             p.role = Role::Cultist;
         }
     }
@@ -495,7 +639,9 @@ fn game_summary(
     kills: &[KillEvent],
     deaths: &[(PlayerId, KillMethod)],
 ) -> GameSummary {
-    let lynched_tanner = kills.iter().any(|k| k.method == KillMethod::Lynch && k.victim_role == Role::Tanner);
+    let lynched_tanner = kills
+        .iter()
+        .any(|k| k.method == KillMethod::Lynch && k.victim_role == Role::Tanner);
     let in_love = |id: PlayerId| lovers.partner_of(id).is_some();
     let entry = |id: PlayerId, role: Role, alive: bool, fled: bool| SummaryEntry {
         id,
@@ -514,7 +660,10 @@ fn game_summary(
     for (&(id, method), kill) in deaths.iter().zip(kills) {
         entries.push(entry(id, kill.victim_role, false, method == KillMethod::Flee));
     }
-    GameSummary { end_roles: setup.rules.end_roles, entries }
+    GameSummary {
+        end_roles: setup.rules.end_roles,
+        entries,
+    }
 }
 
 /// Processes a batch of deaths, then every Hunter final shot they
@@ -539,8 +688,10 @@ async fn process_deaths_and_hunter_shots(
     let mut by = by.to_vec();
     let mut announced = announced.to_vec();
     while !batch.is_empty() {
-        let (processed, died_with_roles) =
-            process_deaths(&batch, &by, alive, states, lovers, kills, deaths, reveal, presenter, &announced).await;
+        let (processed, died_with_roles) = process_deaths(
+            &batch, &by, alive, states, lovers, kills, deaths, reveal, presenter, &announced,
+        )
+        .await;
         announced.clear();
         wolf_cub_died |= died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
         // Werewolf.cs:5473: a Hunter who shot the Wise Elder, right after
@@ -581,10 +732,7 @@ fn record_deaths(
             .find(|p| p.id == victim)
             .expect("a death should only ever name a player who was alive to be targeted")
             .role;
-        kills.push(KillEvent {
-            victim_role,
-            method,
-        });
+        kills.push(KillEvent { victim_role, method });
         died_with_roles.push((victim, victim_role));
     }
     deaths.extend(new_deaths.iter().copied());
@@ -628,7 +776,15 @@ async fn narrate_deaths(
         if reveal_role && method == KillMethod::Burn {
             let message = (!burn_line_sent).then(|| Message::new("Burning", vec![MessageArg::Reveals(burned.clone())]));
             burn_line_sent = true;
-            presenter.narrate(NarrationEvent::Death { victim, role, method, reveal_role, message }).await;
+            presenter
+                .narrate(NarrationEvent::Death {
+                    victim,
+                    role,
+                    method,
+                    reveal_role,
+                    message,
+                })
+                .await;
             continue;
         }
         let killer = match method {
@@ -637,15 +793,26 @@ async fn narrate_deaths(
         };
         let killer = killer.map(|k| {
             let role = still_alive.iter().find(|p| p.id == k).map(|p| p.role);
-            (k, role.unwrap_or(if method == KillMethod::HunterShot { Role::Hunter } else { Role::Villager }))
+            (
+                k,
+                role.unwrap_or(if method == KillMethod::HunterShot {
+                    Role::Hunter
+                } else {
+                    Role::Villager
+                }),
+            )
         });
-        let killer_was_lynched = killer
-            .is_some_and(|(k, _)| deaths.iter().any(|&(id, m)| id == k && m == KillMethod::Lynch));
+        let killer_was_lynched =
+            killer.is_some_and(|(k, _)| deaths.iter().any(|&(id, m)| id == k && m == KillMethod::Lynch));
         // A Harlot who visited a victim died to whoever killed them.
         let killed_by = match (method, killer) {
             (KillMethod::VisitVictim, Some((host, _))) => {
                 let host_method = new_deaths.iter().find(|&&(id, _)| id == host).map(|&(_, m)| m);
-                Some(if host_method == Some(KillMethod::SerialKilled) { Role::SerialKiller } else { Role::Wolf })
+                Some(if host_method == Some(KillMethod::SerialKilled) {
+                    Role::SerialKiller
+                } else {
+                    Role::Wolf
+                })
             }
             _ => killer.map(|(_, role)| role),
         };
@@ -660,7 +827,13 @@ async fn narrate_deaths(
             killed_by,
         });
         presenter
-            .narrate(NarrationEvent::Death { victim, role, method, reveal_role, message })
+            .narrate(NarrationEvent::Death {
+                victim,
+                role,
+                method,
+                reveal_role,
+                message,
+            })
             .await;
     }
 }
@@ -701,7 +874,18 @@ async fn process_deaths(
     all_deaths.extend(lover_chain);
 
     let died_with_roles = record_deaths(alive, &all_deaths, kills, deaths);
-    narrate_deaths(&all_deaths, &died_with_roles, by, alive, lovers, deaths, reveal_role, presenter, announced).await;
+    narrate_deaths(
+        &all_deaths,
+        &died_with_roles,
+        by,
+        alive,
+        lovers,
+        deaths,
+        reveal_role,
+        presenter,
+        announced,
+    )
+    .await;
     alive.retain(|p| !all_deaths.iter().any(|&(v, _)| v == p.id));
     for event in apply_transforms(alive, states, &died_with_roles) {
         let tells = tells_for_transform(&event, alive, states, &died_with_roles);
@@ -740,7 +924,19 @@ async fn apply_fled_players(
         .map(|id| (id, KillMethod::Flee))
         .collect();
     if !fled_deaths.is_empty() {
-        process_deaths(&fled_deaths, &[], alive, states, lovers, kills, deaths, reveal_role, presenter, &[]).await;
+        process_deaths(
+            &fled_deaths,
+            &[],
+            alive,
+            states,
+            lovers,
+            kills,
+            deaths,
+            reveal_role,
+            presenter,
+            &[],
+        )
+        .await;
     }
 }
 
@@ -753,7 +949,9 @@ async fn announce_prince(
 ) {
     if let (Some(prince), Some(Role::Prince)) = (target, target_role) {
         if !day_deaths.contains(&(prince, KillMethod::Lynch)) {
-            presenter.narrate(NarrationEvent::Announce(Announcement::PrinceLynched { prince })).await;
+            presenter
+                .narrate(NarrationEvent::Announce(Announcement::PrinceLynched { prince }))
+                .await;
         }
     }
 }
@@ -828,13 +1026,23 @@ async fn apply_pending_alpha_bites(
         if is_wolf_muscle(from) {
             continue;
         }
-        presenter.narrate(NarrationEvent::Transform { player, from, to: Role::Wolf }).await;
+        presenter
+            .narrate(NarrationEvent::Transform {
+                player,
+                from,
+                to: Role::Wolf,
+            })
+            .await;
         if let Some(p) = alive.iter_mut().find(|p| p.id == player) {
             p.role = Role::Wolf;
         }
         // No role info here, so whether the Thief steals every night
         // doesn't matter.
-        narrate_all(transform_tells(player, from, Role::Wolf, Cause::AlphaBitten, alive, false), presenter).await;
+        narrate_all(
+            transform_tells(player, from, Role::Wolf, Cause::AlphaBitten, alive, false),
+            presenter,
+        )
+        .await;
     }
 }
 
@@ -847,7 +1055,10 @@ fn pick_missing_role_models(
     rng: &mut dyn RngSource,
 ) -> Vec<NarrationEvent> {
     let mut told = vec![];
-    for p in alive.iter().filter(|p| matches!(p.role, Role::WildChild | Role::Doppelganger)) {
+    for p in alive
+        .iter()
+        .filter(|p| matches!(p.role, Role::WildChild | Role::Doppelganger))
+    {
         let state = states.entry(p.id).or_default();
         let others: Vec<PlayerId> = alive.iter().map(|o| o.id).filter(|&id| id != p.id).collect();
         if state.remembered_player.is_some() || others.is_empty() {
@@ -856,7 +1067,10 @@ fn pick_missing_role_models(
         let target = others[rng.pick_index(others.len())];
         state.remembered_player = Some(target);
         state.primary_used = true;
-        told.push(NarrationEvent::Private { to: p.id, note: Note::RoleModelChosen { target } });
+        told.push(NarrationEvent::Private {
+            to: p.id,
+            note: Note::RoleModelChosen { target },
+        });
     }
     told
 }
@@ -870,13 +1084,23 @@ async fn ask_wolf_cub_votes(
     presenter: &mut dyn Presenter,
 ) -> Vec<(PlayerId, PlayerId)> {
     let options: Vec<PlayerId> = alive.iter().filter(|p| !is_wolf_muscle(p.role)).map(|p| p.id).collect();
-    let wolves: Vec<PlayerId> = alive.iter().filter(|p| is_eating_wolf(p.role) && !skip.contains(&p.id)).map(|p| p.id).collect();
+    let wolves: Vec<PlayerId> = alive
+        .iter()
+        .filter(|p| is_eating_wolf(p.role) && !skip.contains(&p.id))
+        .map(|p| p.id)
+        .collect();
     if wolves.is_empty() {
         return vec![];
     }
     let questions: Vec<Question> = wolves
         .iter()
-        .map(|&player| Question::Targets { player, prompt: Prompt::WolfCubBonusKill, options: options.clone(), count: 1, text: None })
+        .map(|&player| Question::Targets {
+            player,
+            prompt: Prompt::WolfCubBonusKill,
+            options: options.clone(),
+            count: 1,
+            text: None,
+        })
         .collect();
     let mut told = TeamVotes::for_night(&questions, alive);
     let answers = presenter.ask_batch(Phase::Night, questions, &mut told).await;
@@ -906,13 +1130,18 @@ fn tells_for_transform(
     states: &HashMap<PlayerId, RoleState>,
     just_died: &[(PlayerId, Role)],
 ) -> Vec<NarrationEvent> {
-    let &NarrationEvent::Transform { player, from, to } = event else { return vec![] };
+    let &NarrationEvent::Transform { player, from, to } = event else {
+        return vec![];
+    };
     let model = || states.get(&player).and_then(|s| s.remembered_player);
     let cause = match from {
         Role::SnowWolf => Cause::SnowWolfAlone,
         Role::Traitor => Cause::Traitor,
         Role::ApprenticeSeer => Cause::ApprenticeSeer {
-            model: just_died.iter().find(|&&(_, role)| role == Role::Seer).map(|&(id, _)| id),
+            model: just_died
+                .iter()
+                .find(|&&(_, role)| role == Role::Seer)
+                .map(|&(id, _)| id),
         },
         Role::WildChild => match model() {
             Some(model) => Cause::WildChild { model },
@@ -1017,8 +1246,7 @@ fn apply_transforms(
             }
             Role::Doppelganger => {
                 if let Some(model) = states.get(&player.id).and_then(|s| s.remembered_player) {
-                    if let Some(&(_, model_role)) = just_died.iter().find(|&&(id, _)| id == model)
-                    {
+                    if let Some(&(_, model_role)) = just_died.iter().find(|&&(id, _)| id == model) {
                         events.push(NarrationEvent::Transform {
                             player: player.id,
                             from: player.role,
@@ -1063,7 +1291,10 @@ mod alpha_bite_transform_tests {
     #[tokio::test]
     async fn a_bitten_player_turns_wolf_at_the_start_of_the_next_night() {
         let bitten = PlayerId(1);
-        let mut alive = vec![AlivePlayer { id: bitten, role: Role::Seer }];
+        let mut alive = vec![AlivePlayer {
+            id: bitten,
+            role: Role::Seer,
+        }];
         let mut presenter = RecordingPresenter { transforms: vec![] };
 
         apply_pending_alpha_bites(&[bitten], &mut alive, &mut presenter).await;
@@ -1072,8 +1303,15 @@ mod alpha_bite_transform_tests {
         assert_eq!(
             presenter.transforms,
             vec![
-                NarrationEvent::Transform { player: bitten, from: Role::Seer, to: Role::Wolf },
-                NarrationEvent::Tell { to: bitten, message: Message::new("BittenTurned", vec![]) },
+                NarrationEvent::Transform {
+                    player: bitten,
+                    from: Role::Seer,
+                    to: Role::Wolf
+                },
+                NarrationEvent::Tell {
+                    to: bitten,
+                    message: Message::new("BittenTurned", vec![])
+                },
             ]
         );
     }
@@ -1090,7 +1328,10 @@ mod alpha_bite_transform_tests {
 
     #[tokio::test]
     async fn nothing_pending_means_no_transforms() {
-        let mut alive = vec![AlivePlayer { id: PlayerId(1), role: Role::Seer }];
+        let mut alive = vec![AlivePlayer {
+            id: PlayerId(1),
+            role: Role::Seer,
+        }];
         let mut presenter = RecordingPresenter { transforms: vec![] };
 
         apply_pending_alpha_bites(&[], &mut alive, &mut presenter).await;
@@ -1135,16 +1376,34 @@ mod fled_player_tests {
     async fn a_fled_player_dies_by_flee_and_is_removed() {
         let fled = PlayerId(1);
         let mut alive = vec![
-            AlivePlayer { id: fled, role: Role::Villager },
-            AlivePlayer { id: PlayerId(2), role: Role::Seer },
+            AlivePlayer {
+                id: fled,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: PlayerId(2),
+                role: Role::Seer,
+            },
         ];
         let states = HashMap::new();
         let lovers = LoversState::default();
         let mut kills = vec![];
         let mut deaths = vec![];
-        let mut presenter = FleeingPresenter { pending_fled: vec![fled], events: vec![] };
+        let mut presenter = FleeingPresenter {
+            pending_fled: vec![fled],
+            events: vec![],
+        };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
+        apply_fled_players(
+            &mut presenter,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            true,
+        )
+        .await;
 
         assert_eq!(alive.len(), 1);
         assert_eq!(alive[0].id, PlayerId(2));
@@ -1161,17 +1420,35 @@ mod fled_player_tests {
         let fled = PlayerId(1);
         let partner = PlayerId(2);
         let mut alive = vec![
-            AlivePlayer { id: fled, role: Role::Villager },
-            AlivePlayer { id: partner, role: Role::Seer },
+            AlivePlayer {
+                id: fled,
+                role: Role::Villager,
+            },
+            AlivePlayer {
+                id: partner,
+                role: Role::Seer,
+            },
         ];
         let states = HashMap::new();
         let mut lovers = LoversState::default();
         lovers.link(fled, partner);
         let mut kills = vec![];
         let mut deaths = vec![];
-        let mut presenter = FleeingPresenter { pending_fled: vec![fled], events: vec![] };
+        let mut presenter = FleeingPresenter {
+            pending_fled: vec![fled],
+            events: vec![],
+        };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
+        apply_fled_players(
+            &mut presenter,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            true,
+        )
+        .await;
 
         assert!(alive.is_empty());
         assert!(deaths.contains(&(partner, KillMethod::LoverDied)));
@@ -1179,14 +1456,29 @@ mod fled_player_tests {
 
     #[tokio::test]
     async fn no_fled_players_touches_nothing() {
-        let mut alive = vec![AlivePlayer { id: PlayerId(1), role: Role::Villager }];
+        let mut alive = vec![AlivePlayer {
+            id: PlayerId(1),
+            role: Role::Villager,
+        }];
         let states = HashMap::new();
         let lovers = LoversState::default();
         let mut kills = vec![];
         let mut deaths = vec![];
-        let mut presenter = FleeingPresenter { pending_fled: vec![], events: vec![] };
+        let mut presenter = FleeingPresenter {
+            pending_fled: vec![],
+            events: vec![],
+        };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
+        apply_fled_players(
+            &mut presenter,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            true,
+        )
+        .await;
 
         assert_eq!(alive.len(), 1);
         assert!(deaths.is_empty());
@@ -1195,15 +1487,30 @@ mod fled_player_tests {
 
     #[tokio::test]
     async fn a_fled_id_thats_already_dead_is_silently_ignored() {
-        let mut alive = vec![AlivePlayer { id: PlayerId(2), role: Role::Villager }];
+        let mut alive = vec![AlivePlayer {
+            id: PlayerId(2),
+            role: Role::Villager,
+        }];
         let states = HashMap::new();
         let lovers = LoversState::default();
         let mut kills = vec![];
         let mut deaths = vec![];
         // PlayerId(1) isn't in `alive` at all - already dead or never existed.
-        let mut presenter = FleeingPresenter { pending_fled: vec![PlayerId(1)], events: vec![] };
+        let mut presenter = FleeingPresenter {
+            pending_fled: vec![PlayerId(1)],
+            events: vec![],
+        };
 
-        apply_fled_players(&mut presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, true).await;
+        apply_fled_players(
+            &mut presenter,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            true,
+        )
+        .await;
 
         assert_eq!(alive.len(), 1);
         assert!(deaths.is_empty());

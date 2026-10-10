@@ -57,7 +57,10 @@ pub enum PlayerStatus {
     /// (checked directly: the role-and-love-emoji clause is nested
     /// *inside* that same `ShowRolesDeath` condition, not shown
     /// unconditionally).
-    Dead { fled: bool, revealed: Option<DeathReveal> },
+    Dead {
+        fled: bool,
+        revealed: Option<DeathReveal>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,8 +86,10 @@ pub fn render_player_list(roster: &[RosterEntry], reveal_roles_on_death: bool) -
             } else {
                 PlayerStatus::Dead {
                     fled: p.death_method == Some(KillMethod::Flee),
-                    revealed: reveal_roles_on_death
-                        .then_some(DeathReveal { role: p.role, was_in_love: p.was_in_love }),
+                    revealed: reveal_roles_on_death.then_some(DeathReveal {
+                        role: p.role,
+                        was_in_love: p.was_in_love,
+                    }),
                 }
             },
         })
@@ -96,7 +101,14 @@ mod tests {
     use super::*;
 
     fn alive(id: u64, name: &str, role: Role) -> RosterEntry {
-        RosterEntry { id: PlayerId(id), name: name.to_string(), role, alive: true, death_method: None, was_in_love: false }
+        RosterEntry {
+            id: PlayerId(id),
+            name: name.to_string(),
+            role,
+            alive: true,
+            death_method: None,
+            was_in_love: false,
+        }
     }
 
     fn dead(id: u64, name: &str, role: Role, method: KillMethod, in_love: bool) -> RosterEntry {
@@ -123,7 +135,13 @@ mod tests {
     fn a_dead_player_with_no_reveal_setting_shows_no_role() {
         let roster = vec![dead(1, "Alice", Role::Seer, KillMethod::Eat, false)];
         let list = render_player_list(&roster, false);
-        assert_eq!(list[0].status, PlayerStatus::Dead { fled: false, revealed: None });
+        assert_eq!(
+            list[0].status,
+            PlayerStatus::Dead {
+                fled: false,
+                revealed: None
+            }
+        );
     }
 
     #[test]
@@ -132,7 +150,13 @@ mod tests {
         let list = render_player_list(&roster, true);
         assert_eq!(
             list[0].status,
-            PlayerStatus::Dead { fled: false, revealed: Some(DeathReveal { role: Role::Seer, was_in_love: true }) }
+            PlayerStatus::Dead {
+                fled: false,
+                revealed: Some(DeathReveal {
+                    role: Role::Seer,
+                    was_in_love: true
+                })
+            }
         );
     }
 
@@ -143,13 +167,29 @@ mod tests {
             dead(2, "Bob", Role::Villager, KillMethod::Eat, false),
         ];
         let list = render_player_list(&roster, false);
-        assert_eq!(list[0].status, PlayerStatus::Dead { fled: true, revealed: None });
-        assert_eq!(list[1].status, PlayerStatus::Dead { fled: false, revealed: None });
+        assert_eq!(
+            list[0].status,
+            PlayerStatus::Dead {
+                fled: true,
+                revealed: None
+            }
+        );
+        assert_eq!(
+            list[1].status,
+            PlayerStatus::Dead {
+                fled: false,
+                revealed: None
+            }
+        );
     }
 
     #[test]
     fn preserves_roster_order() {
-        let roster = vec![alive(3, "Carl", Role::Wolf), alive(1, "Alice", Role::Seer), alive(2, "Bob", Role::Hunter)];
+        let roster = vec![
+            alive(3, "Carl", Role::Wolf),
+            alive(1, "Alice", Role::Seer),
+            alive(2, "Bob", Role::Hunter),
+        ];
         let list = render_player_list(&roster, false);
         let ids: Vec<u64> = list.iter().map(|p| p.id.0).collect();
         assert_eq!(ids, vec![3, 1, 2]);

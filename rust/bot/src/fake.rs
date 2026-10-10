@@ -46,7 +46,13 @@ impl Default for FakeTelegram {
 
 impl FakeTelegram {
     pub fn new(username: &str) -> Self {
-        FakeTelegram { username: username.into(), state: Mutex::new(State { next_id: 1, ..Default::default() }) }
+        FakeTelegram {
+            username: username.into(),
+            state: Mutex::new(State {
+                next_id: 1,
+                ..Default::default()
+            }),
+        }
     }
 
     pub fn make_admin(&self, chat: i64, user: i64) {
@@ -86,7 +92,11 @@ impl FakeTelegram {
 
     /// Texts sent to `chat`, in order, as they read now.
     pub fn texts(&self, chat: i64) -> Vec<String> {
-        self.messages().into_iter().filter(|m| m.msg.chat == chat).map(|m| m.text).collect()
+        self.messages()
+            .into_iter()
+            .filter(|m| m.msg.chat == chat)
+            .map(|m| m.text)
+            .collect()
     }
 
     /// Everything sent to `chat`, joined, for `contains` checks.
@@ -101,19 +111,26 @@ impl FakeTelegram {
     /// The newest message in `chat` that still has a button labelled
     /// `label`, and that button.
     pub fn find_button(&self, chat: i64, label: &str) -> Option<(MsgRef, Button)> {
-        self.messages().into_iter().rev().filter(|m| m.msg.chat == chat).find_map(|m| {
-            m.keyboard
-                .iter()
-                .flatten()
-                .flatten()
-                .find(|b| b.text() == label)
-                .map(|b| (m.msg, b.clone()))
-        })
+        self.messages()
+            .into_iter()
+            .rev()
+            .filter(|m| m.msg.chat == chat)
+            .find_map(|m| {
+                m.keyboard
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .find(|b| b.text() == label)
+                    .map(|b| (m.msg, b.clone()))
+            })
     }
 
     /// Messages in `chat` that still have buttons.
     pub fn open_keyboards(&self, chat: i64) -> Vec<FakeMessage> {
-        self.messages().into_iter().filter(|m| m.msg.chat == chat && m.keyboard.is_some()).collect()
+        self.messages()
+            .into_iter()
+            .filter(|m| m.msg.chat == chat && m.keyboard.is_some())
+            .collect()
     }
 
     pub fn callback_answers(&self) -> Vec<(String, Option<String>)> {
@@ -134,13 +151,23 @@ impl Telegram for FakeTelegram {
         }
         let msg = MsgRef { chat, id: s.next_id };
         s.next_id += 1;
-        s.messages.push(FakeMessage { msg, text: text.into(), keyboard, edits: 0, reply_to: None });
+        s.messages.push(FakeMessage {
+            msg,
+            text: text.into(),
+            keyboard,
+            edits: 0,
+            reply_to: None,
+        });
         Ok(msg)
     }
 
     async fn edit(&self, msg: MsgRef, text: &str, keyboard: Option<Keyboard>) -> Result<(), SendError> {
         let mut s = self.state.lock().unwrap();
-        let m = s.messages.iter_mut().find(|m| m.msg == msg).ok_or(SendError::Other("no such message".into()))?;
+        let m = s
+            .messages
+            .iter_mut()
+            .find(|m| m.msg == msg)
+            .ok_or(SendError::Other("no such message".into()))?;
         m.text = text.into();
         m.keyboard = keyboard;
         m.edits += 1;
@@ -156,11 +183,16 @@ impl Telegram for FakeTelegram {
     }
 
     async fn send_document(&self, chat: i64, file_name: &str, bytes: Vec<u8>) -> Result<MsgRef, SendError> {
-        self.send(chat, &format!("[file {file_name}, {} bytes]", bytes.len()), None).await
+        self.send(chat, &format!("[file {file_name}, {} bytes]", bytes.len()), None)
+            .await
     }
 
     async fn answer_callback(&self, callback_id: &str, text: Option<&str>) -> Result<(), SendError> {
-        self.state.lock().unwrap().callback_answers.push((callback_id.into(), text.map(str::to_string)));
+        self.state
+            .lock()
+            .unwrap()
+            .callback_answers
+            .push((callback_id.into(), text.map(str::to_string)));
         Ok(())
     }
 
@@ -182,7 +214,13 @@ impl Telegram for FakeTelegram {
     }
 
     async fn download(&self, file_id: &str) -> Result<Vec<u8>, SendError> {
-        self.state.lock().unwrap().files.get(file_id).cloned().ok_or(SendError::Other("no such file".into()))
+        self.state
+            .lock()
+            .unwrap()
+            .files
+            .get(file_id)
+            .cloned()
+            .ok_or(SendError::Other("no such file".into()))
     }
 
     fn bot_username(&self) -> &str {

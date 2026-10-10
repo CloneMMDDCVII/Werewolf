@@ -134,15 +134,11 @@ fn parse(raw: &str) -> Result<LanguagePack, LoadError> {
     let mut buf = Vec::new();
     loop {
         let pos_before = reader.buffer_position() as usize;
-        let event = reader
-            .read_event_into(&mut buf)
-            .map_err(LoadError::Xml)?;
+        let event = reader.read_event_into(&mut buf).map_err(LoadError::Xml)?;
 
         match event {
             Event::Eof => break,
-            Event::Empty(ref tag) | Event::Start(ref tag)
-                if tag.name().as_ref() == b"language" =>
-            {
+            Event::Empty(ref tag) | Event::Start(ref tag) if tag.name().as_ref() == b"language" => {
                 meta.name = attr_value(tag, "name").unwrap_or_default();
                 meta.base = attr_value(tag, "base").unwrap_or_default();
                 meta.variant = attr_value(tag, "variant").unwrap_or_default();
@@ -302,10 +298,7 @@ impl Catalog {
                 Err(e) => load_failures.push((stem, e)),
             }
         }
-        Ok(Catalog {
-            packs,
-            load_failures,
-        })
+        Ok(Catalog { packs, load_failures })
     }
 
     pub fn get(&self, name: &str) -> Option<&LanguagePack> {

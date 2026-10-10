@@ -29,11 +29,17 @@ pub struct Message {
 
 impl Message {
     pub fn new(key: &str) -> Self {
-        Message { key: key.to_string(), args: vec![] }
+        Message {
+            key: key.to_string(),
+            args: vec![],
+        }
     }
 
     pub fn with(key: &str, args: Vec<Text>) -> Self {
-        Message { key: key.to_string(), args }
+        Message {
+            key: key.to_string(),
+            args,
+        }
     }
 }
 
@@ -74,7 +80,11 @@ pub enum CommandOutcome {
     /// the chat the command came from. If the private message fails
     /// because they never started the bot, send `fallback` to that chat
     /// instead (`AdminCommands.cs:96-99`, `GeneralCommands.cs:147-153`).
-    SendPrivately { menu: Screen, chat_notice: Option<Message>, fallback: Screen },
+    SendPrivately {
+        menu: Screen,
+        chat_notice: Option<Message>,
+        fallback: Screen,
+    },
     /// Reply in the chat the command came from with this locale string.
     Refuse(Message),
     /// Reply in that chat with this HTML text. For the few legacy commands
@@ -137,7 +147,10 @@ pub struct DecodeError(pub String);
 pub fn start_me_prompt() -> Screen {
     Screen {
         message: Message::new("StartMe"),
-        rows: vec![vec![Button { label: Text::Raw("Start Me".to_string()), action: ButtonAction::StartBotLink }]],
+        rows: vec![vec![Button {
+            label: Text::Raw("Start Me".to_string()),
+            action: ButtonAction::StartBotLink,
+        }]],
     }
 }
 

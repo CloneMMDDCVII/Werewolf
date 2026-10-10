@@ -85,20 +85,28 @@ impl Texts {
     /// One variant of `key`'s raw template (picked at random, like
     /// [`Texts::get`]), in `lang` or English.
     pub fn lookup(&self, lang: &str, key: &str) -> Option<String> {
-        self.variants(lang, key).and_then(|v| v.choose(&mut rand::thread_rng())).cloned()
+        self.variants(lang, key)
+            .and_then(|v| v.choose(&mut rand::thread_rng()))
+            .cloned()
     }
 
     /// An engine message (`game_engine::messages::Message`) as text, with
     /// `name` giving each player's (already escaped) display name.
     pub fn render(&self, lang: &str, message: &Message, name: &dyn Fn(PlayerId) -> String) -> String {
-        strip_placeholders(&render(message, &|key| self.lookup(lang, key), name)).trim().to_string()
+        strip_placeholders(&render(message, &|key| self.lookup(lang, key), name))
+            .trim()
+            .to_string()
     }
 
     /// Every loaded language, for the `/setlang` and `/config` pickers.
     pub fn choices(&self) -> control::language_picker::LanguageChoices {
         let file = |name: &str, pack: &LanguagePack| control::language_picker::LanguageFile {
             file: name.to_string(),
-            base: if pack.meta.base.is_empty() { name.to_string() } else { pack.meta.base.clone() },
+            base: if pack.meta.base.is_empty() {
+                name.to_string()
+            } else {
+                pack.meta.base.clone()
+            },
             variant: pack.meta.variant.clone(),
             is_default: pack.meta.is_default == Some(true),
         };
@@ -248,8 +256,14 @@ mod tests {
     #[test]
     fn embedded_english_loads_and_fills() {
         let t = Texts::embedded();
-        assert_eq!(t.key("English", "SecondsLeftToJoin", &["30"]), "30 seconds left to Join");
-        assert_eq!(t.key("Klingon", "SecondsLeftToJoin", &["30"]), "30 seconds left to Join");
+        assert_eq!(
+            t.key("English", "SecondsLeftToJoin", &["30"]),
+            "30 seconds left to Join"
+        );
+        assert_eq!(
+            t.key("Klingon", "SecondsLeftToJoin", &["30"]),
+            "30 seconds left to Join"
+        );
     }
 
     #[test]

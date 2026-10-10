@@ -31,7 +31,12 @@ mod tests {
     use crate::roles::PlayerId;
 
     fn ctx(toggle_choice: bool) -> DayContext<'static> {
-        DayContext { alive: &[PlayerId(1), PlayerId(2)][..], self_id: PlayerId(1), chosen_target: None, toggle_choice }
+        DayContext {
+            alive: &[PlayerId(1), PlayerId(2)][..],
+            self_id: PlayerId(1),
+            chosen_target: None,
+            toggle_choice,
+        }
     }
 
     #[test]

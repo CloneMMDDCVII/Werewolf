@@ -59,7 +59,9 @@ impl Timestamp {
     }
 }
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /// Howard Hinnant's `days_from_civil`: days since 1970-01-01.
 fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {

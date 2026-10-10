@@ -53,9 +53,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             cultist.night_action(&ctx, &mut state),
-            vec![NightAction::ConvertVote {
-                target: PlayerId(2)
-            }]
+            vec![NightAction::ConvertVote { target: PlayerId(2) }]
         );
     }
 

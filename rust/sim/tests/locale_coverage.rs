@@ -22,7 +22,10 @@
 use i18n::LanguagePack;
 use std::collections::HashSet;
 
-const LANGUAGE_PACK_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages/English.xml");
+const LANGUAGE_PACK_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../Werewolf for Telegram/Languages/English.xml"
+);
 
 #[test]
 fn every_mapped_locale_key_actually_exists_in_english_xml() {
@@ -55,7 +58,13 @@ fn every_mapped_locale_key_actually_exists_in_english_xml() {
 fn fallback_texts_cover_only_keys_missing_from_english_xml() {
     let pack = LanguagePack::load(LANGUAGE_PACK_PATH).expect("English.xml should load");
     let all_keys: HashSet<&str> = pack.keys().collect();
-    let present: Vec<&str> =
-        game_engine::messages::FALLBACK_TEXTS.iter().map(|&(k, _)| k).filter(|k| all_keys.contains(k)).collect();
-    assert!(present.is_empty(), "English.xml has these now; drop their fallbacks: {present:?}");
+    let present: Vec<&str> = game_engine::messages::FALLBACK_TEXTS
+        .iter()
+        .map(|&(k, _)| k)
+        .filter(|k| all_keys.contains(k))
+        .collect();
+    assert!(
+        present.is_empty(),
+        "English.xml has these now; drop their fallbacks: {present:?}"
+    );
 }

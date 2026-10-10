@@ -3,7 +3,10 @@
 use i18n::LanguagePack;
 use moderation::Refusal;
 
-const LANGUAGE_PACK_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Werewolf for Telegram/Languages/English.xml");
+const LANGUAGE_PACK_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../Werewolf for Telegram/Languages/English.xml"
+);
 
 #[test]
 fn every_refusal_key_exists_in_english_xml() {

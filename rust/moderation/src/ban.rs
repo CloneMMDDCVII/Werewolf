@@ -1,8 +1,8 @@
 //! Global bans: the record, where it came from, and the in-memory list
 //! the bot consults on every command (`UpdateHandler.BanList`).
 
-use shared::time::Timestamp;
 use serde::{Deserialize, Serialize};
+use shared::time::Timestamp;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

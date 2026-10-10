@@ -36,7 +36,13 @@ pub struct JoinTimer {
 
 impl JoinTimer {
     pub fn new(players: usize) -> Self {
-        JoinTimer { elapsed: 0, ticks: 0, last_count: players, seconds_to_add: 0, force_start: false }
+        JoinTimer {
+            elapsed: 0,
+            ticks: 0,
+            last_count: players,
+            seconds_to_add: 0,
+            force_start: false,
+        }
     }
 
     pub fn seconds_left(&self) -> i64 {
@@ -83,7 +89,10 @@ impl JoinTimer {
         if self.seconds_to_add != 0 {
             *i = (*i - self.seconds_to_add).max(GAME_JOIN_TIME - MAX_JOIN_TIME);
             if GAME_JOIN_TIME > *i {
-                events.push(TimerEvent::Extended { by: self.seconds_to_add, seconds_left: GAME_JOIN_TIME - *i });
+                events.push(TimerEvent::Extended {
+                    by: self.seconds_to_add,
+                    seconds_left: GAME_JOIN_TIME - *i,
+                });
             }
             self.seconds_to_add = 0;
         }
@@ -160,10 +169,22 @@ mod tests {
         let mut t = JoinTimer::new(0);
         t.extend(30);
         let ev = t.tick(0, false);
-        assert_eq!(ev, vec![TimerEvent::Extended { by: 30, seconds_left: 210 }]);
+        assert_eq!(
+            ev,
+            vec![TimerEvent::Extended {
+                by: 30,
+                seconds_left: 210
+            }]
+        );
         t.extend(1000);
         let ev = t.tick(0, false);
-        assert_eq!(ev, vec![TimerEvent::Extended { by: 1000, seconds_left: 300 }]);
+        assert_eq!(
+            ev,
+            vec![TimerEvent::Extended {
+                by: 1000,
+                seconds_left: 300
+            }]
+        );
     }
 
     #[test]
@@ -171,7 +192,13 @@ mod tests {
         let mut t = JoinTimer::new(0);
         t.extend(-170);
         let ev = t.tick(0, false);
-        assert_eq!(ev, vec![TimerEvent::Extended { by: -170, seconds_left: 10 }]);
+        assert_eq!(
+            ev,
+            vec![TimerEvent::Extended {
+                by: -170,
+                seconds_left: 10
+            }]
+        );
     }
 
     #[test]

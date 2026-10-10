@@ -12,9 +12,9 @@ use crate::commands::{getban_report, permban, remban, smite_targets, BanReport};
 use crate::idles::{getidles_report, getidles_targets, IdleCount, IDLE_WINDOW_SECS};
 use crate::restore::{parse_restore_args, restore_report, restored_reply, AccountFacts, RestoreCheck};
 use crate::target::{resolve_target, CommandMessage, Mention, PlayerDirectory, PlayerRecord};
-use shared::time::Timestamp;
 use db::{DbResult, Store};
 use i18n::LanguagePack;
+use shared::time::Timestamp;
 
 pub struct Moderation {
     store: Store,
@@ -64,17 +64,27 @@ impl Moderation {
             _ => None,
         };
         let players = Directory(players.0.into_iter().chain(issuer).collect());
-        let first_seen = self.store.games().first_started(target.telegram_id).await?.map(Timestamp);
+        let first_seen = self
+            .store
+            .games()
+            .first_started(target.telegram_id)
+            .await?
+            .map(Timestamp);
         Ok(Some(getban_report(&target, ban, &players, first_seen, now)))
     }
 
     /// Bans as the sender, who must already have passed the gate.
     pub async fn permban(&mut self, message: &CommandMessage, now: Timestamp) -> DbResult<BanReport> {
         let players = self.directory_for(message).await?;
-        let issuer = BanIssuer::Admin { telegram_id: message.sender_id };
+        let issuer = BanIssuer::Admin {
+            telegram_id: message.sender_id,
+        };
         let report = permban(message, &issuer, &players, now);
         for player in &report.new_players {
-            self.store.players().upsert(player.telegram_id, &player.name, player.username.as_deref(), now.0).await?;
+            self.store
+                .players()
+                .upsert(player.telegram_id, &player.name, player.username.as_deref(), now.0)
+                .await?;
         }
         for ban in &report.issued {
             self.store.bans().insert(&new_ban(ban)).await?;
@@ -129,7 +139,10 @@ impl Moderation {
     pub async fn restore(&self, old: i64, new: i64) -> DbResult<String> {
         self.store.games().move_player_history(old, new).await?;
         let name = |p: Option<PlayerRecord>| p.map(|p| p.name).unwrap_or_default();
-        Ok(restored_reply(&name(self.fetch(old).await?), &name(self.fetch(new).await?)))
+        Ok(restored_reply(
+            &name(self.fetch(old).await?),
+            &name(self.fetch(new).await?),
+        ))
     }
 
     async fn account(&self, telegram_id: i64) -> DbResult<Option<AccountFacts>> {
@@ -206,7 +219,11 @@ impl PlayerDirectory for Directory {
 }
 
 fn player_from_db(p: db::PlayerRecord) -> PlayerRecord {
-    PlayerRecord { telegram_id: p.telegram_id, name: p.name, username: p.username }
+    PlayerRecord {
+        telegram_id: p.telegram_id,
+        name: p.name,
+        username: p.username,
+    }
 }
 
 fn ban_from_db(r: db::BanRecord) -> Ban {
@@ -231,7 +248,9 @@ fn new_ban(ban: &Ban) -> db::NewBan {
         telegram_id: ban.telegram_id,
         reason: ban.reason.clone(),
         issued_by: match &ban.issued_by {
-            BanIssuer::Admin { telegram_id } => db::BanIssuer::Admin { telegram_id: *telegram_id },
+            BanIssuer::Admin { telegram_id } => db::BanIssuer::Admin {
+                telegram_id: *telegram_id,
+            },
             BanIssuer::System { rule } => db::BanIssuer::System { rule: rule.clone() },
         },
         issued_at: ban.issued_at.0,

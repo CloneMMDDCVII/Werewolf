@@ -7,8 +7,8 @@
 use async_trait::async_trait;
 use game_engine::messages::Announcement;
 use game_engine::orchestrator::{
-    resolve_day, resolve_night, resolve_night_with_freeze, AlivePlayer, Answer, LynchResult, NarrationEvent,
-    OnAnswer, Phase, Presenter, Prompt, Question,
+    resolve_day, resolve_night, resolve_night_with_freeze, AlivePlayer, Answer, LynchResult, NarrationEvent, OnAnswer,
+    Phase, Presenter, Prompt, Question,
 };
 use game_engine::rng::SeededRngSource;
 use game_engine::roles::{NightAction, PlayerId, RoleState};
@@ -58,11 +58,26 @@ impl Presenter for BatchRecorder {
 
 fn players() -> Vec<AlivePlayer> {
     vec![
-        AlivePlayer { id: WOLF_A, role: Role::Wolf },
-        AlivePlayer { id: WOLF_B, role: Role::Wolf },
-        AlivePlayer { id: SEER, role: Role::Seer },
-        AlivePlayer { id: ANGEL, role: Role::GuardianAngel },
-        AlivePlayer { id: VILLAGER, role: Role::Villager },
+        AlivePlayer {
+            id: WOLF_A,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: WOLF_B,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: SEER,
+            role: Role::Seer,
+        },
+        AlivePlayer {
+            id: ANGEL,
+            role: Role::GuardianAngel,
+        },
+        AlivePlayer {
+            id: VILLAGER,
+            role: Role::Villager,
+        },
     ]
 }
 
@@ -93,7 +108,10 @@ async fn a_night_asks_every_independent_role_in_one_batch() {
 #[tokio::test]
 async fn the_witch_is_asked_in_a_second_batch_after_the_wolves() {
     let mut roster = players();
-    roster.push(AlivePlayer { id: PlayerId(6), role: Role::Witch });
+    roster.push(AlivePlayer {
+        id: PlayerId(6),
+        role: Role::Witch,
+    });
     let mut presenter = BatchRecorder::default();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 
@@ -108,7 +126,10 @@ async fn the_witch_is_asked_in_a_second_batch_after_the_wolves() {
 #[tokio::test]
 async fn a_day_asks_every_vote_and_day_action_in_one_batch() {
     let mut roster = players();
-    roster.push(AlivePlayer { id: PlayerId(6), role: Role::Mayor });
+    roster.push(AlivePlayer {
+        id: PlayerId(6),
+        role: Role::Mayor,
+    });
     let mut presenter = BatchRecorder::default();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
     let mut rng = SeededRngSource::new(1);
@@ -141,7 +162,10 @@ async fn a_day_asks_every_vote_and_day_action_in_one_batch() {
 #[tokio::test]
 async fn the_snow_wolfs_freeze_goes_out_with_the_night() {
     let mut roster = players();
-    roster.push(AlivePlayer { id: PlayerId(6), role: Role::SnowWolf });
+    roster.push(AlivePlayer {
+        id: PlayerId(6),
+        role: Role::SnowWolf,
+    });
     let mut presenter = BatchRecorder::default();
     let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
 

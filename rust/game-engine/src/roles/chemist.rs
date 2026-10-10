@@ -20,7 +20,10 @@ impl RoleBehavior for Chemist {
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {
-                vec![NightAction::Chemistry { chemist: ctx.self_id, target }]
+                vec![NightAction::Chemistry {
+                    chemist: ctx.self_id,
+                    target,
+                }]
             }
             _ => vec![],
         }

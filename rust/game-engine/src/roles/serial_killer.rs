@@ -44,9 +44,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             sk.night_action(&ctx, &mut state),
-            vec![NightAction::SerialKillVote {
-                target: PlayerId(2)
-            }]
+            vec![NightAction::SerialKillVote { target: PlayerId(2) }]
         );
     }
 

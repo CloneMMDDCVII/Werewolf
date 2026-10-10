@@ -53,7 +53,9 @@ impl FromStr for LanguageId {
         if s.len() != 16 {
             return Err(ParseLanguageIdError);
         }
-        u64::from_str_radix(s, 16).map(LanguageId).map_err(|_| ParseLanguageIdError)
+        u64::from_str_radix(s, 16)
+            .map(LanguageId)
+            .map_err(|_| ParseLanguageIdError)
     }
 }
 

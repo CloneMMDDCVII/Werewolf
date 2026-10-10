@@ -27,10 +27,20 @@ const ANYONE: CommandPolicy = CommandPolicy {
     blockable: false,
     allow_anonymous_admins: false,
 };
-const GROUP_PLAYER: CommandPolicy = CommandPolicy { blockable: true, in_group_only: true, ..ANYONE };
-const GROUP_ADMIN: CommandPolicy =
-    CommandPolicy { group_admin_only: true, allow_anonymous_admins: true, ..GROUP_PLAYER };
-const GLOBAL_ADMIN: CommandPolicy = CommandPolicy { global_admin_only: true, ..ANYONE };
+const GROUP_PLAYER: CommandPolicy = CommandPolicy {
+    blockable: true,
+    in_group_only: true,
+    ..ANYONE
+};
+const GROUP_ADMIN: CommandPolicy = CommandPolicy {
+    group_admin_only: true,
+    allow_anonymous_admins: true,
+    ..GROUP_PLAYER
+};
+const GLOBAL_ADMIN: CommandPolicy = CommandPolicy {
+    global_admin_only: true,
+    ..ANYONE
+};
 
 /// The policy of every command this port implements, copied from its C#
 /// attribute (GameCommands.cs, AdminCommands.cs, DevCommands.cs,
@@ -39,11 +49,25 @@ pub fn policy_for(trigger: &str) -> Option<CommandPolicy> {
     let policy = match trigger.to_ascii_lowercase().as_str() {
         "join" | "flee" | "startgame" | "startchaos" | "players" | "extend" => GROUP_PLAYER,
         "forcestart" | "smite" => GROUP_ADMIN,
-        "config" => CommandPolicy { group_admin_only: true, in_group_only: true, ..ANYONE },
-        "killgame" => CommandPolicy { in_group_only: true, ..GLOBAL_ADMIN },
+        "config" => CommandPolicy {
+            group_admin_only: true,
+            in_group_only: true,
+            ..ANYONE
+        },
+        "killgame" => CommandPolicy {
+            in_group_only: true,
+            ..GLOBAL_ADMIN
+        },
         "getban" | "permban" | "remban" | "restore" => GLOBAL_ADMIN,
-        "uploadlang" | "validatelangs" => CommandPolicy { lang_admin_only: true, ..ANYONE },
-        "getidles" => CommandPolicy { group_admin_only: true, allow_anonymous_admins: true, ..ANYONE },
+        "uploadlang" | "validatelangs" => CommandPolicy {
+            lang_admin_only: true,
+            ..ANYONE
+        },
+        "getidles" => CommandPolicy {
+            group_admin_only: true,
+            allow_anonymous_admins: true,
+            ..ANYONE
+        },
         "start" | "help" | "ping" | "setlang" | "getlang" => ANYONE,
         _ => return None,
     };
@@ -132,8 +156,13 @@ impl Refusal {
         }
     }
 
-    pub const ALL_LOCALE_KEYS: [&'static str; 5] =
-        ["ExitAnonymousMode", "NotPara", "NotGlobalAdmin", "GroupCommandOnly", "GroupAdminOnly"];
+    pub const ALL_LOCALE_KEYS: [&'static str; 5] = [
+        "ExitAnonymousMode",
+        "NotPara",
+        "NotGlobalAdmin",
+        "GroupCommandOnly",
+        "GroupAdminOnly",
+    ];
 }
 
 /// Decides whether a command runs, in the same order the C# checked
@@ -214,18 +243,36 @@ mod tests {
 
     #[test]
     fn a_banned_user_is_ignored_even_for_open_commands() {
-        let call = Invocation { sender_is_banned: true, ..player() };
+        let call = Invocation {
+            sender_is_banned: true,
+            ..player()
+        };
         assert_eq!(check(&policy_for("ping").unwrap(), &call), GateDecision::Ignore);
-        let admin = Invocation { sender_is_global_admin: true, ..call };
+        let admin = Invocation {
+            sender_is_global_admin: true,
+            ..call
+        };
         assert_eq!(check(&getban(), &admin), GateDecision::Ignore);
     }
 
     #[test]
     fn group_admin_commands_accept_every_kind_of_admin() {
-        let group_admin = Invocation { sender_is_group_admin: true, ..player() };
-        let global_admin = Invocation { sender_is_global_admin: true, ..player() };
-        let dev = Invocation { sender_is_dev: true, ..player() };
-        let anonymous = Invocation { sender: Sender::AnonymousGroupAdmin, ..player() };
+        let group_admin = Invocation {
+            sender_is_group_admin: true,
+            ..player()
+        };
+        let global_admin = Invocation {
+            sender_is_global_admin: true,
+            ..player()
+        };
+        let dev = Invocation {
+            sender_is_dev: true,
+            ..player()
+        };
+        let anonymous = Invocation {
+            sender: Sender::AnonymousGroupAdmin,
+            ..player()
+        };
         for call in [group_admin, global_admin, dev, anonymous] {
             assert_eq!(check(&smite(), &call), GateDecision::Run, "{call:?}");
         }
@@ -233,46 +280,81 @@ mod tests {
 
     #[test]
     fn group_admin_commands_refuse_ordinary_players() {
-        assert_eq!(check(&smite(), &player()), GateDecision::Refuse(Refusal::GroupAdminOnly));
+        assert_eq!(
+            check(&smite(), &player()),
+            GateDecision::Refuse(Refusal::GroupAdminOnly)
+        );
     }
 
     #[test]
     fn group_only_commands_are_refused_in_private() {
-        let call = Invocation { chat: Chat::Private, sender_is_group_admin: true, ..player() };
+        let call = Invocation {
+            chat: Chat::Private,
+            sender_is_group_admin: true,
+            ..player()
+        };
         assert_eq!(check(&smite(), &call), GateDecision::Refuse(Refusal::GroupCommandOnly));
     }
 
     #[test]
     fn global_admin_commands_refuse_group_admins() {
-        let call = Invocation { sender_is_group_admin: true, ..player() };
+        let call = Invocation {
+            sender_is_group_admin: true,
+            ..player()
+        };
         assert_eq!(check(&getban(), &call), GateDecision::Refuse(Refusal::NotGlobalAdmin));
-        let admin = Invocation { sender_is_global_admin: true, chat: Chat::Private, ..player() };
+        let admin = Invocation {
+            sender_is_global_admin: true,
+            chat: Chat::Private,
+            ..player()
+        };
         assert_eq!(check(&getban(), &admin), GateDecision::Run);
     }
 
     #[test]
     fn anonymous_admins_only_where_allowed() {
-        let call = Invocation { sender: Sender::AnonymousGroupAdmin, ..player() };
-        assert_eq!(check(&getban(), &call), GateDecision::Refuse(Refusal::ExitAnonymousMode));
+        let call = Invocation {
+            sender: Sender::AnonymousGroupAdmin,
+            ..player()
+        };
+        assert_eq!(
+            check(&getban(), &call),
+            GateDecision::Refuse(Refusal::ExitAnonymousMode)
+        );
     }
 
     #[test]
     fn channels_are_always_refused() {
-        let call = Invocation { sender: Sender::Channel, sender_is_global_admin: true, ..player() };
+        let call = Invocation {
+            sender: Sender::Channel,
+            sender_is_global_admin: true,
+            ..player()
+        };
         assert_eq!(check(&smite(), &call), GateDecision::Refuse(Refusal::ExitAnonymousMode));
-        assert_eq!(check(&policy_for("ping").unwrap(), &call), GateDecision::Refuse(Refusal::ExitAnonymousMode));
+        assert_eq!(
+            check(&policy_for("ping").unwrap(), &call),
+            GateDecision::Refuse(Refusal::ExitAnonymousMode)
+        );
     }
 
     #[test]
     fn blockable_commands_are_refused_in_support_chats() {
         let call = Invocation {
-            chat: Chat::Group { blocked: Some(BlockedChat::Support) },
+            chat: Chat::Group {
+                blocked: Some(BlockedChat::Support),
+            },
             sender_is_group_admin: true,
             ..player()
         };
-        assert_eq!(check(&smite(), &call), GateDecision::Refuse(Refusal::BlockedChat(BlockedChat::Support)));
+        assert_eq!(
+            check(&smite(), &call),
+            GateDecision::Refuse(Refusal::BlockedChat(BlockedChat::Support))
+        );
         // Not blockable: global admin commands still work there.
-        let admin = Invocation { sender_is_global_admin: true, ..call };
+        let admin = Invocation {
+            sender_is_global_admin: true,
+            ..call
+        };
         assert_eq!(check(&getban(), &admin), GateDecision::Run);
     }
 
@@ -280,7 +362,9 @@ mod tests {
     fn the_anonymous_check_comes_before_the_blocked_chat_check() {
         let call = Invocation {
             sender: Sender::Channel,
-            chat: Chat::Group { blocked: Some(BlockedChat::Translation) },
+            chat: Chat::Group {
+                blocked: Some(BlockedChat::Translation),
+            },
             ..player()
         };
         assert_eq!(check(&smite(), &call), GateDecision::Refuse(Refusal::ExitAnonymousMode));
@@ -288,17 +372,32 @@ mod tests {
 
     #[test]
     fn dev_only_refuses_with_not_para() {
-        let policy = CommandPolicy { dev_only: true, ..Default::default() };
-        let admin = Invocation { sender_is_global_admin: true, ..player() };
+        let policy = CommandPolicy {
+            dev_only: true,
+            ..Default::default()
+        };
+        let admin = Invocation {
+            sender_is_global_admin: true,
+            ..player()
+        };
         assert_eq!(check(&policy, &admin), GateDecision::Refuse(Refusal::NotPara));
     }
 
     #[test]
     fn lang_admin_commands_accept_global_admins() {
-        let policy = CommandPolicy { lang_admin_only: true, ..Default::default() };
+        let policy = CommandPolicy {
+            lang_admin_only: true,
+            ..Default::default()
+        };
         assert_eq!(check(&policy, &player()), GateDecision::Refuse(Refusal::NotGlobalAdmin));
-        let lang = Invocation { sender_is_lang_admin: true, ..player() };
-        let global = Invocation { sender_is_global_admin: true, ..player() };
+        let lang = Invocation {
+            sender_is_lang_admin: true,
+            ..player()
+        };
+        let global = Invocation {
+            sender_is_global_admin: true,
+            ..player()
+        };
         assert_eq!(check(&policy, &lang), GateDecision::Run);
         assert_eq!(check(&policy, &global), GateDecision::Run);
     }

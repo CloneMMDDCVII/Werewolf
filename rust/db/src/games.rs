@@ -153,15 +153,17 @@ impl Games<'_> {
         day: u32,
         at: i64,
     ) -> DbResult<()> {
-        sqlx::query("INSERT INTO game_kills (game_id, victim, killer, method, day, at) VALUES ($1, $2, $3, $4, $5, $6)")
-            .bind(game.0)
-            .bind(victim)
-            .bind(killer)
-            .bind(enum_to_db(&method))
-            .bind(day as i64)
-            .bind(at)
-            .execute(self.store.pool())
-            .await?;
+        sqlx::query(
+            "INSERT INTO game_kills (game_id, victim, killer, method, day, at) VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(game.0)
+        .bind(victim)
+        .bind(killer)
+        .bind(enum_to_db(&method))
+        .bind(day as i64)
+        .bind(at)
+        .execute(self.store.pool())
+        .await?;
         Ok(())
     }
 
@@ -207,9 +209,10 @@ impl Games<'_> {
 
     /// Games that were started but never finished, oldest first.
     pub async fn unfinished(&self) -> DbResult<Vec<UnfinishedGame>> {
-        let rows = sqlx::query("SELECT id, group_id, group_name, started_at FROM games WHERE ended_at IS NULL ORDER BY id")
-            .fetch_all(self.store.pool())
-            .await?;
+        let rows =
+            sqlx::query("SELECT id, group_id, group_name, started_at FROM games WHERE ended_at IS NULL ORDER BY id")
+                .fetch_all(self.store.pool())
+                .await?;
         rows.iter()
             .map(|r| {
                 Ok(UnfinishedGame {
@@ -238,10 +241,11 @@ impl Games<'_> {
     /// with a winner can be exported: the fixture format has no field for
     /// "killed" or "interrupted".
     pub async fn export_fixture(&self, game: GameId) -> DbResult<FixtureGame> {
-        let g = sqlx::query("SELECT id, group_id, group_name, mode, started_at, ended_at, result FROM games WHERE id = $1")
-            .bind(game.0)
-            .fetch_one(self.store.pool())
-            .await?;
+        let g =
+            sqlx::query("SELECT id, group_id, group_name, mode, started_at, ended_at, result FROM games WHERE id = $1")
+                .bind(game.0)
+                .fetch_one(self.store.pool())
+                .await?;
         let result: Option<String> = g.try_get("result")?;
         let winner = match result.as_deref().map(GameResult::from_db).transpose()? {
             Some(GameResult::Won(team)) => team,
@@ -277,10 +281,11 @@ impl Games<'_> {
             })
             .collect::<DbResult<Vec<_>>>()?;
 
-        let kills = sqlx::query("SELECT victim, killer, method, day, at FROM game_kills WHERE game_id = $1 ORDER BY id")
-            .bind(game.0)
-            .fetch_all(self.store.pool())
-            .await?;
+        let kills =
+            sqlx::query("SELECT victim, killer, method, day, at FROM game_kills WHERE game_id = $1 ORDER BY id")
+                .bind(game.0)
+                .fetch_all(self.store.pool())
+                .await?;
         let kills = kills
             .iter()
             .map(|r| {

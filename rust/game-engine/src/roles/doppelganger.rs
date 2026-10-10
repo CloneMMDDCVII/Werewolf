@@ -54,9 +54,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             dg.night_action(&ctx, &mut state),
-            vec![NightAction::ChooseRoleModel {
-                target: PlayerId(2)
-            }]
+            vec![NightAction::ChooseRoleModel { target: PlayerId(2) }]
         );
         assert_eq!(state.remembered_player, Some(PlayerId(2)));
         assert_eq!(dg.night_action(&ctx, &mut state), vec![]);

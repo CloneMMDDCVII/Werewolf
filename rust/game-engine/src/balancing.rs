@@ -55,8 +55,14 @@ const NON_VILLAGE_ROLES: [Role; 11] = [
 /// `GameBalancing.cs:44`: roles whose presence is obvious/self-revealing
 /// to the village, capped at one per three players to avoid an
 /// unbalanced "everyone already knows who to trust" game.
-const REVEALED_VILLAGE_ROLES: [Role; 6] =
-    [Role::Blacksmith, Role::Mayor, Role::Pacifist, Role::Gunner, Role::Sandman, Role::Troublemaker];
+const REVEALED_VILLAGE_ROLES: [Role; 6] = [
+    Role::Blacksmith,
+    Role::Mayor,
+    Role::Pacifist,
+    Role::Gunner,
+    Role::Sandman,
+    Role::Troublemaker,
+];
 
 fn is_non_village(role: Role) -> bool {
     NON_VILLAGE_ROLES.contains(&role)
@@ -187,7 +193,11 @@ pub fn role_strength(role: Role, all_roles: &[Role]) -> i32 {
         Role::Detective => 6,
         Role::Wolf => 10,
         Role::Cursed => {
-            1 - all_roles.iter().filter(|&&x| wolf_roles.contains(&x) || x == Role::SnowWolf).count() as i32 / 2
+            1 - all_roles
+                .iter()
+                .filter(|&&x| wolf_roles.contains(&x) || x == Role::SnowWolf)
+                .count() as i32
+                / 2
         }
         Role::Gunner => 6,
         Role::Tanner => all_roles.len() as i32 / 2,
@@ -197,7 +207,12 @@ pub fn role_strength(role: Role, all_roles: &[Role]) -> i32 {
             1 + i32::from(all_roles.contains(&Role::Seer)) * 4 + i32::from(all_roles.contains(&Role::Fool))
         }
         Role::ApprenticeSeer => 6,
-        Role::Cultist => 10 + all_roles.iter().filter(|&&x| !non_convertible_roles.contains(&x)).count() as i32,
+        Role::Cultist => {
+            10 + all_roles
+                .iter()
+                .filter(|&&x| !non_convertible_roles.contains(&x))
+                .count() as i32
+        }
         Role::CultistHunter => {
             if count(Role::Cultist) == 0 {
                 1
@@ -319,11 +334,15 @@ pub fn balance_with_pool(
             || roles_to_assign.contains(&Role::SnowWolf))
             && !roles_to_assign.iter().any(|r| WOLF_ROLES.contains(r))
         {
-            if let Some(idx) =
-                roles_to_assign.iter().position(|&r| r == Role::Sorcerer || r == Role::Traitor || r == Role::SnowWolf)
+            if let Some(idx) = roles_to_assign
+                .iter()
+                .position(|&r| r == Role::Sorcerer || r == Role::Traitor || r == Role::SnowWolf)
             {
-                let possible_wolves: Vec<Role> =
-                    WOLF_ROLES.iter().copied().filter(|r| !disabled_roles.contains(r)).collect();
+                let possible_wolves: Vec<Role> = WOLF_ROLES
+                    .iter()
+                    .copied()
+                    .filter(|r| !disabled_roles.contains(r))
+                    .collect();
                 // Guards against an empty `possible_wolves` (every base
                 // wolf role disabled) - the source has no such guard and
                 // would throw indexing an empty list; skipping the
@@ -382,16 +401,22 @@ pub fn balance_with_pool(
             let variance_allowed = (player_count / 4) as i32 + 1;
             balanced = balanced && (village_strength - enemy_strength).abs() <= variance_allowed;
 
-            let revealed_count = roles_to_assign.iter().filter(|r| REVEALED_VILLAGE_ROLES.contains(r)).count();
+            let revealed_count = roles_to_assign
+                .iter()
+                .filter(|r| REVEALED_VILLAGE_ROLES.contains(r))
+                .count();
             if revealed_count * 3 > roles_to_assign.len() {
                 balanced = false;
             }
 
-            let only_wolf_baddies =
-                !roles_to_assign.iter().any(|r| matches!(r, Role::Arsonist | Role::SerialKiller | Role::Cultist));
+            let only_wolf_baddies = !roles_to_assign
+                .iter()
+                .any(|r| matches!(r, Role::Arsonist | Role::SerialKiller | Role::Cultist));
             let kill_stopping_count = roles_to_assign
                 .iter()
-                .filter(|&&r| r == Role::Troublemaker || r == Role::Sandman || (only_wolf_baddies && r == Role::Blacksmith))
+                .filter(|&&r| {
+                    r == Role::Troublemaker || r == Role::Sandman || (only_wolf_baddies && r == Role::Blacksmith)
+                })
                 .count();
             if kill_stopping_count * 4 > roles_to_assign.len() {
                 balanced = false;
@@ -446,7 +471,10 @@ mod tests {
             let has_wolf = roles.iter().any(|r| WOLF_ROLES.contains(r));
             let needs_wolf =
                 roles.contains(&Role::Sorcerer) || roles.contains(&Role::Traitor) || roles.contains(&Role::SnowWolf);
-            assert!(!needs_wolf || has_wolf, "seed {seed}: {roles:?} has a wolf-dependent role but no wolf");
+            assert!(
+                !needs_wolf || has_wolf,
+                "seed {seed}: {roles:?} has a wolf-dependent role but no wolf"
+            );
         }
     }
 
@@ -490,7 +518,10 @@ mod tests {
             let mut rng = SeededRngSource::new(seed);
             let roles = balance(10, false, &disabled, true, &mut rng).unwrap();
             for d in disabled {
-                assert!(!roles.contains(&d), "seed {seed}: disabled role {d:?} appeared in {roles:?}");
+                assert!(
+                    !roles.contains(&d),
+                    "seed {seed}: disabled role {d:?} appeared in {roles:?}"
+                );
             }
         }
     }

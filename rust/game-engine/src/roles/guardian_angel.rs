@@ -51,9 +51,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             ga.night_action(&ctx, &mut state),
-            vec![NightAction::Protect {
-                target: PlayerId(1)
-            }]
+            vec![NightAction::Protect { target: PlayerId(1) }]
         );
     }
 

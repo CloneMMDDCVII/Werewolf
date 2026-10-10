@@ -24,7 +24,10 @@ impl RoleBehavior for Spumpkin {
     fn day_action(&self, ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {
-                vec![DayAction::Detonate { spumpkin: ctx.self_id, target }]
+                vec![DayAction::Detonate {
+                    spumpkin: ctx.self_id,
+                    target,
+                }]
             }
             _ => vec![],
         }

@@ -150,12 +150,20 @@ pub enum Cause {
     /// The Snow Wolf is the last wolf (Werewolf.cs:4493-4495).
     SnowWolfAlone,
     /// The Seer died; `model` is the Seer who died, if known.
-    ApprenticeSeer { model: Option<PlayerId> },
+    ApprenticeSeer {
+        model: Option<PlayerId>,
+    },
     ConvertToCult,
-    WildChild { model: PlayerId },
-    Doppelganger { model: PlayerId },
+    WildChild {
+        model: PlayerId,
+    },
+    Doppelganger {
+        model: PlayerId,
+    },
     /// The Thief took `from`'s role.
-    ThiefSteal { from: PlayerId },
+    ThiefSteal {
+        from: PlayerId,
+    },
     /// The Thief's victim, told by its own note (`ThiefStoleYourRole...`).
     ThiefStolen,
     /// A Gunner, Hunter or Chemist who killed the Wise Elder; the group
@@ -185,17 +193,27 @@ pub fn transform_tells(
         _ => false,
     };
     if left && from == Role::Mason {
-        out.extend(tell_all(&others(&|r| r == Role::Mason), Message::new("MasonConverted", vec![me.clone()])));
+        out.extend(tell_all(
+            &others(&|r| r == Role::Mason),
+            Message::new("MasonConverted", vec![me.clone()]),
+        ));
     }
     if left && from == Role::Cultist {
-        out.extend(tell_all(&others(&|r| r == Role::Cultist), Message::new("CultistBitten", vec![me.clone()])));
+        out.extend(tell_all(
+            &others(&|r| r == Role::Cultist),
+            Message::new("CultistBitten", vec![me.clone()]),
+        ));
     }
     let eaters = others(&|r| eats(r));
     let snow = others(&|r| r == Role::SnowWolf).first().copied();
     let beholder = holder(alive, Role::Beholder);
     match cause {
         Cause::BiteCursed | Cause::AlphaBitten => {
-            let key = if cause == Cause::BiteCursed { "CursedBitten" } else { "BittenTurned" };
+            let key = if cause == Cause::BiteCursed {
+                "CursedBitten"
+            } else {
+                "BittenTurned"
+            };
             let mut message = Message::new(key, vec![]);
             let pack: Vec<PlayerId> = eaters.iter().copied().chain(snow).collect();
             if !pack.is_empty() {
@@ -220,16 +238,23 @@ pub fn transform_tells(
             out.push(tell(player, Message::new("CultConvertYou", vec![])));
             out.push(tell(player, Message::new("CultTeam", vec![names(cult.clone())])));
             let everyone = ids(alive, |p| p.role == Role::Cultist);
-            let join = Message::new("CultJoin", vec![me]).followed_by(Message::new("CultistsList", vec![names(everyone)]));
+            let join =
+                Message::new("CultJoin", vec![me]).followed_by(Message::new("CultistsList", vec![names(everyone)]));
             out.extend(tell_all(&cult, join));
         }
         Cause::WildChild { model } => {
-            out.extend(tell_all(&eaters.iter().copied().chain(snow).collect::<Vec<_>>(), Message::new("WildChildToWolves", vec![me])));
+            out.extend(tell_all(
+                &eaters.iter().copied().chain(snow).collect::<Vec<_>>(),
+                Message::new("WildChildToWolves", vec![me]),
+            ));
             let model = MessageArg::Player(model);
             out.push(tell(
                 player,
                 match snow {
-                    Some(s) => Message::new("WildChildSnowTransform", vec![model, names(eaters), MessageArg::Player(s)]),
+                    Some(s) => Message::new(
+                        "WildChildSnowTransform",
+                        vec![model, names(eaters), MessageArg::Player(s)],
+                    ),
                     None => Message::new("WildChildTransform", vec![model, names(eaters)]),
                 },
             ));
@@ -245,7 +270,10 @@ pub fn transform_tells(
                 Role::Mason => {
                     let masons = others(&|r| r == Role::Mason);
                     out.extend(tell_all(&masons, Message::new("DGToMason", vec![me])));
-                    out.push(tell(player, Message::new("DGTransformToMason", vec![model, names(masons)])));
+                    out.push(tell(
+                        player,
+                        Message::new("DGTransformToMason", vec![model, names(masons)]),
+                    ));
                 }
                 Role::Seer => {
                     if let Some(b) = beholder {
@@ -271,12 +299,18 @@ pub fn transform_tells(
                 }
                 Role::SnowWolf => {
                     out.extend(tell_all(&eaters, Message::new("DGToSnowWolf", vec![me])));
-                    out.push(tell(player, Message::new("DGTransformToSnowWolf", vec![model, names(eaters)])));
+                    out.push(tell(
+                        player,
+                        Message::new("DGTransformToSnowWolf", vec![model, names(eaters)]),
+                    ));
                 }
                 Role::Cultist => {
                     let cult = others(&|r| r == Role::Cultist);
                     out.extend(tell_all(&cult, Message::new("DGToCult", vec![me])));
-                    out.push(tell(player, Message::new("DGTransformToCult", vec![model, names(cult)])));
+                    out.push(tell(
+                        player,
+                        Message::new("DGTransformToCult", vec![model, names(cult)]),
+                    ));
                 }
                 _ => {}
             }
@@ -312,7 +346,14 @@ pub fn samples() -> Vec<Message> {
     let q = PlayerId(2);
     let s = PlayerId(3);
     let roster = |roles: &[Role]| -> Vec<AlivePlayer> {
-        roles.iter().enumerate().map(|(i, &role)| AlivePlayer { id: PlayerId(i as u64 + 1), role }).collect()
+        roles
+            .iter()
+            .enumerate()
+            .map(|(i, &role)| AlivePlayer {
+                id: PlayerId(i as u64 + 1),
+                role,
+            })
+            .collect()
     };
     let mut out: Vec<Message> = vec![];
     let mut add = |events: Vec<NarrationEvent>| {
@@ -326,10 +367,16 @@ pub fn samples() -> Vec<Message> {
             }
         }
     };
-    let packs = [roster(&[Role::Wolf, Role::Wolf, Role::Beholder, Role::Mason, Role::Cultist]), roster(&[Role::Wolf, Role::Wolf, Role::SnowWolf, Role::Beholder, Role::Seer])];
+    let packs = [
+        roster(&[Role::Wolf, Role::Wolf, Role::Beholder, Role::Mason, Role::Cultist]),
+        roster(&[Role::Wolf, Role::Wolf, Role::SnowWolf, Role::Beholder, Role::Seer]),
+    ];
     for alive in &packs {
         for role in [Role::Wolf, Role::Beholder, Role::Mason, Role::Cultist, Role::Thief] {
-            add(vec![tell(p, role_info(role, alive, false)), tell(p, role_info(role, alive, true))]);
+            add(vec![
+                tell(p, role_info(role, alive, false)),
+                tell(p, role_info(role, alive, true)),
+            ]);
         }
         let causes = [
             Cause::BiteCursed,
@@ -344,9 +391,32 @@ pub fn samples() -> Vec<Message> {
             add(transform_tells(p, Role::Mason, Role::Wolf, cause, alive, false));
             add(transform_tells(p, Role::Cultist, Role::Wolf, cause, alive, false));
         }
-        for to in [Role::Mason, Role::Seer, Role::Wolf, Role::AlphaWolf, Role::WolfCub, Role::Lycan, Role::SnowWolf, Role::Cultist] {
-            add(transform_tells(s, Role::Doppelganger, to, Cause::Doppelganger { model: q }, alive, false));
-            add(transform_tells(s, Role::Thief, to, Cause::ThiefSteal { from: q }, alive, false));
+        for to in [
+            Role::Mason,
+            Role::Seer,
+            Role::Wolf,
+            Role::AlphaWolf,
+            Role::WolfCub,
+            Role::Lycan,
+            Role::SnowWolf,
+            Role::Cultist,
+        ] {
+            add(transform_tells(
+                s,
+                Role::Doppelganger,
+                to,
+                Cause::Doppelganger { model: q },
+                alive,
+                false,
+            ));
+            add(transform_tells(
+                s,
+                Role::Thief,
+                to,
+                Cause::ThiefSteal { from: q },
+                alive,
+                false,
+            ));
         }
     }
     for role in shared::ALL_ROLES {

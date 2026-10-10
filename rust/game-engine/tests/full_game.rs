@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use game_engine::messages::Announcement;
 use game_engine::orchestrator::{AlivePlayer, NarrationEvent, Presenter, Prompt};
-use game_engine::roles::PlayerId;
 use game_engine::rng::SeededRngSource;
+use game_engine::roles::PlayerId;
 use game_engine::{run_game, WinOutcome};
 use shared::{KillMethod, Role, Team};
 
@@ -214,10 +214,7 @@ async fn a_lynched_hunter_takes_someone_down_with_them() {
     deaths.sort_by_key(|(id, _)| id.0);
     assert_eq!(
         deaths,
-        vec![
-            (hunter, KillMethod::Lynch),
-            (doomed_villager, KillMethod::HunterShot),
-        ]
+        vec![(hunter, KillMethod::Lynch), (doomed_villager, KillMethod::HunterShot),]
     );
 }
 
@@ -271,10 +268,22 @@ async fn a_wolf_eating_one_lover_kills_the_other_too() {
     let lover_y = PlayerId(4);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: cupid, role: Role::Cupid },
-        AlivePlayer { id: lover_x, role: Role::Villager },
-        AlivePlayer { id: lover_y, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: cupid,
+            role: Role::Cupid,
+        },
+        AlivePlayer {
+            id: lover_x,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: lover_y,
+            role: Role::Villager,
+        },
     ];
 
     let mut presenter = CupidScriptPresenter {
@@ -309,10 +318,22 @@ async fn the_last_two_survivors_win_as_lovers() {
     let lover_y = PlayerId(4);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: cupid, role: Role::Cupid },
-        AlivePlayer { id: lover_x, role: Role::Villager },
-        AlivePlayer { id: lover_y, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: cupid,
+            role: Role::Cupid,
+        },
+        AlivePlayer {
+            id: lover_x,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: lover_y,
+            role: Role::Villager,
+        },
     ];
 
     let mut presenter = CupidScriptPresenter {
@@ -345,10 +366,22 @@ async fn shooting_the_wise_elder_still_kills_them_but_demotes_the_gunner() {
     let bystander = PlayerId(3);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: gunner, role: Role::Gunner },
-        AlivePlayer { id: wise_elder, role: Role::WiseElder },
-        AlivePlayer { id: bystander, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: gunner,
+            role: Role::Gunner,
+        },
+        AlivePlayer {
+            id: wise_elder,
+            role: Role::WiseElder,
+        },
+        AlivePlayer {
+            id: bystander,
+            role: Role::Villager,
+        },
     ];
 
     struct ShootWiseElderPresenter {
@@ -418,10 +451,22 @@ async fn silver_spread_blocks_the_wolf_kill_the_following_night_only() {
     let victim2 = PlayerId(4);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: blacksmith, role: Role::Blacksmith },
-        AlivePlayer { id: victim1, role: Role::Villager },
-        AlivePlayer { id: victim2, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: blacksmith,
+            role: Role::Blacksmith,
+        },
+        AlivePlayer {
+            id: victim1,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: victim2,
+            role: Role::Villager,
+        },
     ];
 
     struct SilverPresenter {
@@ -484,11 +529,26 @@ async fn sandman_sleep_skips_the_next_night() {
     let bystander = PlayerId(4);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: sandman, role: Role::Sandman },
-        AlivePlayer { id: victim, role: Role::Villager },
-        AlivePlayer { id: bystander, role: Role::Villager },
-        AlivePlayer { id: PlayerId(5), role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: sandman,
+            role: Role::Sandman,
+        },
+        AlivePlayer {
+            id: victim,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: bystander,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: PlayerId(5),
+            role: Role::Villager,
+        },
     ];
 
     struct SandmanPresenter {
@@ -523,12 +583,25 @@ async fn sandman_sleep_skips_the_next_night() {
         }
     }
 
-    let mut presenter = SandmanPresenter { wolf, sandman, victim, wolf_asked: 0, narrated: vec![] };
+    let mut presenter = SandmanPresenter {
+        wolf,
+        sandman,
+        victim,
+        wolf_asked: 0,
+        narrated: vec![],
+    };
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
-    assert_eq!(outcome.deaths, vec![(victim, KillMethod::Eat)], "only night one's kill happens");
-    assert_eq!(presenter.wolf_asked, 1, "the wolf has no menu on the night the Sandman skipped");
+    assert_eq!(
+        outcome.deaths,
+        vec![(victim, KillMethod::Eat)],
+        "only night one's kill happens"
+    );
+    assert_eq!(
+        presenter.wolf_asked, 1,
+        "the wolf has no menu on the night the Sandman skipped"
+    );
     for announcement in [Announcement::SandmanSleepAll { sandman }, Announcement::SandmanNight] {
         assert!(presenter.narrated.contains(&NarrationEvent::Announce(announcement)));
     }
@@ -542,10 +615,22 @@ async fn a_thief_steals_the_targets_role_and_the_target_becomes_a_villager() {
     let bystander = PlayerId(4);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: thief, role: Role::Thief },
-        AlivePlayer { id: seer, role: Role::Seer },
-        AlivePlayer { id: bystander, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: thief,
+            role: Role::Thief,
+        },
+        AlivePlayer {
+            id: seer,
+            role: Role::Seer,
+        },
+        AlivePlayer {
+            id: bystander,
+            role: Role::Villager,
+        },
     ];
 
     struct StealPresenter {
@@ -612,10 +697,22 @@ async fn a_harlot_visiting_the_wolves_target_dies_alongside_them() {
     let bystander = PlayerId(4);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: harlot, role: Role::Harlot },
-        AlivePlayer { id: victim, role: Role::Villager },
-        AlivePlayer { id: bystander, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: harlot,
+            role: Role::Harlot,
+        },
+        AlivePlayer {
+            id: victim,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: bystander,
+            role: Role::Villager,
+        },
     ];
 
     struct HarlotVisitsVictimPresenter {
@@ -665,11 +762,26 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
     let another_bystander = PlayerId(5);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: wolf_cub, role: Role::WolfCub },
-        AlivePlayer { id: bonus_victim, role: Role::Villager },
-        AlivePlayer { id: bystander, role: Role::Villager },
-        AlivePlayer { id: another_bystander, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: wolf_cub,
+            role: Role::WolfCub,
+        },
+        AlivePlayer {
+            id: bonus_victim,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: bystander,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: another_bystander,
+            role: Role::Villager,
+        },
     ];
 
     struct WolfCubBonusPresenter {
@@ -712,7 +824,12 @@ async fn a_dead_wolf_cub_grants_the_wolves_a_bonus_kill() {
     // reading NightCycle directly - so a Wolf Cub who dies during the day
     // can't have already chained the bonus menu into that same day's
     // now-past night).
-    let mut presenter = WolfCubBonusPresenter { wolf_cub, wolf, bonus_victim, day: 1 };
+    let mut presenter = WolfCubBonusPresenter {
+        wolf_cub,
+        wolf,
+        bonus_victim,
+        day: 1,
+    };
     let mut rng = SeededRngSource::new(0);
     let outcome = run_game(&players, &mut presenter, &mut rng, 2).await;
 
@@ -811,9 +928,18 @@ async fn fleeing_mid_game_can_immediately_hand_the_wolves_a_win() {
     let villager2 = PlayerId(3);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: villager1, role: Role::Villager },
-        AlivePlayer { id: villager2, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: villager1,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: villager2,
+            role: Role::Villager,
+        },
     ];
 
     // Fleeing villager1 leaves 1 wolf vs 1 villager - wolves >= others,
@@ -857,8 +983,14 @@ async fn an_admin_killing_the_game_ends_it_with_no_winner() {
     let villager = PlayerId(2);
 
     let players = vec![
-        AlivePlayer { id: wolf, role: Role::Wolf },
-        AlivePlayer { id: villager, role: Role::Villager },
+        AlivePlayer {
+            id: wolf,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: villager,
+            role: Role::Villager,
+        },
     ];
 
     let mut presenter = OneTimeKillPresenter { killed: true };

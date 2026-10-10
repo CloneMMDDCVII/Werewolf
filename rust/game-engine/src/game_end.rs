@@ -44,7 +44,12 @@ pub struct GameEnd {
 
 impl GameEnd {
     fn win(winner: Team) -> Self {
-        GameEnd { winner, lines: vec![], deaths: vec![], converted: vec![] }
+        GameEnd {
+            winner,
+            lines: vec![],
+            deaths: vec![],
+            converted: vec![],
+        }
     }
 }
 
@@ -58,7 +63,11 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
     match alive.len() {
         0 => return Some(neutral_ending(ctx)),
         1 => {
-            return Some(if NEUTRAL.contains(&alive[0].role) { neutral_ending(ctx) } else { GameEnd::win(alive[0].role.team()) });
+            return Some(if NEUTRAL.contains(&alive[0].role) {
+                neutral_ending(ctx)
+            } else {
+                GameEnd::win(alive[0].role.team())
+            });
         }
         2 => {
             if alive.iter().all(|p| (ctx.in_love)(p.id)) {
@@ -75,7 +84,10 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
                         // Werewolf.cs:4880-4896: they take each other down.
                         return Some(GameEnd {
                             winner: Team::NoOne,
-                            lines: vec![Announcement::SKHunterEnd { serial_killer: sk.id, hunter }],
+                            lines: vec![Announcement::SKHunterEnd {
+                                serial_killer: sk.id,
+                                hunter,
+                            }],
                             deaths: vec![(sk.id, KillMethod::HunterShot), (hunter, KillMethod::SerialKilled)],
                             converted: vec![],
                         });
@@ -104,7 +116,10 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
                 let other = alive.iter().find(|p| p.id != sk).expect("two alive").id;
                 return Some(GameEnd {
                     winner: Team::SerialKiller,
-                    lines: vec![Announcement::SerialKillerWinsOverpower { serial_killer: sk, other }],
+                    lines: vec![Announcement::SerialKillerWinsOverpower {
+                        serial_killer: sk,
+                        other,
+                    }],
                     deaths: vec![(other, KillMethod::SerialKilled)],
                     converted: vec![],
                 });
@@ -130,24 +145,36 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
                     r if is_wolf_muscle(r) => GameEnd::win(Team::Wolf),
                     Role::CultistHunter => GameEnd {
                         winner: Team::Village,
-                        lines: vec![Announcement::CHKillsCultistEnd { cultist, hunter: other.id }],
+                        lines: vec![Announcement::CHKillsCultistEnd {
+                            cultist,
+                            hunter: other.id,
+                        }],
                         deaths: vec![(cultist, KillMethod::Hunt)],
                         converted: vec![],
                     },
                     Role::Doppelganger | Role::Thief => GameEnd::win(Team::Cult),
-                    _ => GameEnd { converted: vec![other.id], ..GameEnd::win(Team::Cult) },
+                    _ => GameEnd {
+                        converted: vec![other.id],
+                        ..GameEnd::win(Team::Cult)
+                    },
                 });
             }
         }
         3 => {
-            if alive.iter().all(|p| matches!(p.role, Role::Sorcerer | Role::Thief | Role::Doppelganger)) {
+            if alive
+                .iter()
+                .all(|p| matches!(p.role, Role::Sorcerer | Role::Thief | Role::Doppelganger))
+            {
                 return Some(neutral_ending(ctx));
             }
         }
         _ => {}
     }
 
-    if alive.iter().any(|p| matches!(p.role.team(), Team::SerialKiller | Team::Arsonist)) {
+    if alive
+        .iter()
+        .any(|p| matches!(p.role.team(), Team::SerialKiller | Team::Arsonist))
+    {
         return None;
     }
     if alive.iter().all(|p| p.role.team() == Team::Cult) {
@@ -184,8 +211,14 @@ fn neutral_ending(ctx: &EndContext) -> GameEnd {
     let mut ending = GameEnd::win(Team::NoOne);
     match alive.len() {
         3 => {
-            if let (Some(sorc), Some(dg), Some(thief)) = (find(Role::Sorcerer), find(Role::Doppelganger), find(Role::Thief)) {
-                ending.lines = vec![end(sorc, Role::Sorcerer), end(dg, Role::Doppelganger), end(thief, Role::Thief)];
+            if let (Some(sorc), Some(dg), Some(thief)) =
+                (find(Role::Sorcerer), find(Role::Doppelganger), find(Role::Thief))
+            {
+                ending.lines = vec![
+                    end(sorc, Role::Sorcerer),
+                    end(dg, Role::Doppelganger),
+                    end(thief, Role::Thief),
+                ];
             }
         }
         2 => {
@@ -206,7 +239,10 @@ fn neutral_ending(ctx: &EndContext) -> GameEnd {
                 }
                 (None, _) => {
                     if let Some(sorc) = find(Role::Sorcerer) {
-                        if let Some(other) = alive.iter().find(|p| matches!(p.role, Role::Thief | Role::Doppelganger)) {
+                        if let Some(other) = alive
+                            .iter()
+                            .find(|p| matches!(p.role, Role::Thief | Role::Doppelganger))
+                        {
                             ending.lines = vec![end(sorc, Role::Sorcerer), end(other.id, other.role)];
                         }
                     } else if let (Some(thief), Some(dg)) = (find(Role::Thief), find(Role::Doppelganger)) {
@@ -243,7 +279,14 @@ mod tests {
     use crate::rng::ScriptedRngSource;
 
     fn roster(roles: &[Role]) -> Vec<AlivePlayer> {
-        roles.iter().enumerate().map(|(i, &role)| AlivePlayer { id: PlayerId(i as u64 + 1), role }).collect()
+        roles
+            .iter()
+            .enumerate()
+            .map(|(i, &role)| AlivePlayer {
+                id: PlayerId(i as u64 + 1),
+                role,
+            })
+            .collect()
     }
 
     fn check_with(roles: &[Role], bullets: u8, rng: &mut ScriptedRngSource) -> Option<GameEnd> {
@@ -251,7 +294,16 @@ mod tests {
         let in_love = |_| false;
         let bullets = move |_| bullets;
         let role_model = |_| None;
-        check_game_end(&EndContext { alive: &alive, in_love: &in_love, bullets: &bullets, role_model: &role_model, bitten: &[] }, rng)
+        check_game_end(
+            &EndContext {
+                alive: &alive,
+                in_love: &in_love,
+                bullets: &bullets,
+                role_model: &role_model,
+                bitten: &[],
+            },
+            rng,
+        )
     }
 
     fn check(roles: &[Role]) -> Option<GameEnd> {
@@ -263,11 +315,27 @@ mod tests {
 
     #[test]
     fn a_hunter_and_a_wolf_shoot_it_out() {
-        let won = check_with(&[Role::Hunter, Role::Wolf], 0, &mut ScriptedRngSource::new().with_chance(true)).unwrap();
-        assert_eq!((won.winner, won.deaths), (Team::Village, vec![(B, KillMethod::HunterShot)]));
-        let lost = check_with(&[Role::Hunter, Role::Wolf], 0, &mut ScriptedRngSource::new().with_chance(false)).unwrap();
+        let won = check_with(
+            &[Role::Hunter, Role::Wolf],
+            0,
+            &mut ScriptedRngSource::new().with_chance(true),
+        )
+        .unwrap();
+        assert_eq!(
+            (won.winner, won.deaths),
+            (Team::Village, vec![(B, KillMethod::HunterShot)])
+        );
+        let lost = check_with(
+            &[Role::Hunter, Role::Wolf],
+            0,
+            &mut ScriptedRngSource::new().with_chance(false),
+        )
+        .unwrap();
         assert_eq!((lost.winner, lost.deaths), (Team::Wolf, vec![(A, KillMethod::Eat)]));
-        assert_eq!(lost.lines, vec![Announcement::WolfKillsHunterEnd { hunter: A, wolf: B }]);
+        assert_eq!(
+            lost.lines,
+            vec![Announcement::WolfKillsHunterEnd { hunter: A, wolf: B }]
+        );
     }
 
     #[test]
@@ -281,13 +349,19 @@ mod tests {
     #[test]
     fn the_serial_killer_overpowers_the_last_one() {
         let end = check(&[Role::Villager, Role::SerialKiller]).unwrap();
-        assert_eq!((end.winner, end.deaths), (Team::SerialKiller, vec![(A, KillMethod::SerialKilled)]));
+        assert_eq!(
+            (end.winner, end.deaths),
+            (Team::SerialKiller, vec![(A, KillMethod::SerialKilled)])
+        );
     }
 
     #[test]
     fn the_arsonist_wins_unless_a_gunner_can_still_shoot() {
         assert_eq!(check(&[Role::Gunner, Role::Arsonist]).unwrap().winner, Team::Arsonist);
-        assert_eq!(check_with(&[Role::Gunner, Role::Arsonist], 1, &mut ScriptedRngSource::new()), None);
+        assert_eq!(
+            check_with(&[Role::Gunner, Role::Arsonist], 1, &mut ScriptedRngSource::new()),
+            None
+        );
     }
 
     #[test]
@@ -307,7 +381,12 @@ mod tests {
         assert_eq!(check_with(&roles, 1, &mut ScriptedRngSource::new()), None);
         assert_eq!(check(&roles).unwrap().winner, Team::Wolf);
         let outnumbered = [Role::Wolf, Role::Wolf, Role::Wolf, Role::Gunner, Role::Villager];
-        assert_eq!(check_with(&outnumbered, 1, &mut ScriptedRngSource::new()).unwrap().winner, Team::Wolf);
+        assert_eq!(
+            check_with(&outnumbered, 1, &mut ScriptedRngSource::new())
+                .unwrap()
+                .winner,
+            Team::Wolf
+        );
     }
 
     #[test]
@@ -316,17 +395,38 @@ mod tests {
         assert_eq!(tanner.deaths, vec![(A, KillMethod::Suicide)]);
         assert_eq!(
             tanner.lines,
-            vec![Announcement::NeutralEnd { player: A, role: Role::Tanner }, Announcement::NeutralEnd { player: B, role: Role::Sorcerer }]
+            vec![
+                Announcement::NeutralEnd {
+                    player: A,
+                    role: Role::Tanner
+                },
+                Announcement::NeutralEnd {
+                    player: B,
+                    role: Role::Sorcerer
+                }
+            ]
         );
         assert_eq!(check(&[Role::Tanner]).unwrap().lines, vec![]);
-        assert_eq!(check(&[Role::Thief]).unwrap().lines, vec![Announcement::NeutralEnd { player: A, role: Role::Thief }]);
+        assert_eq!(
+            check(&[Role::Thief]).unwrap().lines,
+            vec![Announcement::NeutralEnd {
+                player: A,
+                role: Role::Thief
+            }]
+        );
     }
 
     #[test]
     fn the_village_waits_for_a_bitten_player_to_turn() {
         let alive = roster(&[Role::Villager, Role::Seer]);
         let (in_love, bullets, role_model) = (|_| false, |_| 0, |_| None);
-        let ctx = EndContext { alive: &alive, in_love: &in_love, bullets: &bullets, role_model: &role_model, bitten: &[A] };
+        let ctx = EndContext {
+            alive: &alive,
+            in_love: &in_love,
+            bullets: &bullets,
+            role_model: &role_model,
+            bitten: &[A],
+        };
         assert_eq!(check_game_end(&ctx, &mut ScriptedRngSource::new()), None);
     }
 }

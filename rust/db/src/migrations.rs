@@ -157,11 +157,7 @@ pub(crate) async fn run(store: &Store, sqlite_file: Option<&Path>) -> DbResult<(
     run_list(store, sqlite_file, MIGRATIONS).await
 }
 
-pub(crate) async fn run_list(
-    store: &Store,
-    sqlite_file: Option<&Path>,
-    migrations: &[Migration],
-) -> DbResult<()> {
+pub(crate) async fn run_list(store: &Store, sqlite_file: Option<&Path>, migrations: &[Migration]) -> DbResult<()> {
     let latest = migrations.last().map(|m| m.version).unwrap_or(0);
     let mut conn = store.pool().acquire().await?;
 
@@ -181,7 +177,10 @@ pub(crate) async fn run_list(
             .await?;
 
         if current > latest {
-            return Err(DbError::NewerSchema { database: current, bot: latest });
+            return Err(DbError::NewerSchema {
+                database: current,
+                bot: latest,
+            });
         }
         if current == latest {
             return Ok(());
@@ -222,9 +221,11 @@ pub(crate) async fn run_list(
 }
 
 pub(crate) async fn current_version(store: &Store) -> DbResult<i64> {
-    Ok(sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_version")
-        .fetch_one(store.pool())
-        .await?)
+    Ok(
+        sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_version")
+            .fetch_one(store.pool())
+            .await?,
+    )
 }
 
 /// `VACUUM INTO` writes a consistent copy even with WAL readers attached,
@@ -277,15 +278,30 @@ mod tests {
         postgres: "CREATE TABLE a (x BIGINT)",
     }];
     const NEW: &[Migration] = &[
-        Migration { version: 1, sqlite: "CREATE TABLE a (x BIGINT)", postgres: "CREATE TABLE a (x BIGINT)" },
-        Migration { version: 2, sqlite: "CREATE TABLE b (y BIGINT)", postgres: "CREATE TABLE b (y BIGINT)" },
+        Migration {
+            version: 1,
+            sqlite: "CREATE TABLE a (x BIGINT)",
+            postgres: "CREATE TABLE a (x BIGINT)",
+        },
+        Migration {
+            version: 2,
+            sqlite: "CREATE TABLE b (y BIGINT)",
+            postgres: "CREATE TABLE b (y BIGINT)",
+        },
     ];
 
     async fn open_raw(file: &Path) -> Store {
         sqlx::any::install_default_drivers();
         let url = format!("sqlite://{}?mode=rwc", file.display());
-        let pool = sqlx::any::AnyPoolOptions::new().max_connections(1).connect(&url).await.unwrap();
-        Store { pool, backend: Backend::Sqlite }
+        let pool = sqlx::any::AnyPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap();
+        Store {
+            pool,
+            backend: Backend::Sqlite,
+        }
     }
 
     #[tokio::test]
@@ -302,7 +318,10 @@ mod tests {
         let file = temp_db();
         let store = open_raw(&file).await;
         run_list(&store, Some(&file), OLD).await.unwrap();
-        sqlx::query("INSERT INTO a (x) VALUES (42)").execute(store.pool()).await.unwrap();
+        sqlx::query("INSERT INTO a (x) VALUES (42)")
+            .execute(store.pool())
+            .await
+            .unwrap();
         store.close().await;
 
         let store = open_raw(&file).await;
@@ -313,7 +332,10 @@ mod tests {
         let backup = PathBuf::from(format!("{}.bak-1", file.display()));
         assert!(backup.exists(), "expected a backup at {}", backup.display());
         let old = open_raw(&backup).await;
-        let x: i64 = sqlx::query_scalar("SELECT x FROM a").fetch_one(old.pool()).await.unwrap();
+        let x: i64 = sqlx::query_scalar("SELECT x FROM a")
+            .fetch_one(old.pool())
+            .await
+            .unwrap();
         assert_eq!(x, 42);
         assert_eq!(old.schema_version().await.unwrap(), 1);
     }

@@ -33,14 +33,24 @@ pub struct DeathContext {
 pub fn death_message(d: &DeathContext) -> Option<Message> {
     use MessageArg::{Empty, Player};
     let v = Player(d.victim);
-    let reveal = if d.reveal { MessageArg::Reveal { player: d.victim, role: d.role } } else { Empty };
+    let reveal = if d.reveal {
+        MessageArg::Reveal {
+            player: d.victim,
+            role: d.role,
+        }
+    } else {
+        Empty
+    };
     let message = match (d.method, d.by) {
         (KillMethod::Lynch, _) => Message::new("LynchKill", vec![v, reveal]),
         // Werewolf.cs:848-856.
         (KillMethod::Flee, _) => {
             let flee = Message::new("Flee", vec![v]);
             if d.reveal {
-                flee.followed_by(Message::new("PlayerRoleWas", vec![Player(d.victim), MessageArg::Role(d.role)]))
+                flee.followed_by(Message::new(
+                    "PlayerRoleWas",
+                    vec![Player(d.victim), MessageArg::Role(d.role)],
+                ))
             } else {
                 flee
             }
@@ -59,7 +69,11 @@ pub fn death_message(d: &DeathContext) -> Option<Message> {
         (KillMethod::Shoot, Some((gunner, _))) => Message::new("DefaultShot", vec![Player(gunner), v, reveal]),
         // Werewolf.cs:5470.
         (KillMethod::HunterShot, Some((hunter, _))) => {
-            let key = if d.killer_was_lynched { "HunterKilledFinalLynched" } else { "HunterKilledFinalShot" };
+            let key = if d.killer_was_lynched {
+                "HunterKilledFinalLynched"
+            } else {
+                "HunterKilledFinalShot"
+            };
             Message::new(key, vec![Player(hunter), v, reveal])
         }
         // Werewolf.cs:5711.
@@ -71,20 +85,34 @@ pub fn death_message(d: &DeathContext) -> Option<Message> {
         // (Werewolf.cs:4336, 4393).
         (KillMethod::HunterShot, None) if d.role == Role::SnowWolf => Message::new("SnowFrozeHunter", vec![v]),
         (KillMethod::HunterShot, None) => {
-            let key = if d.pack_size > 1 { "HunterShotWolfMulti" } else { "HunterShotWolf" };
-            Message::new(key, vec![v])
-                .followed_by(Message::new("PlayerRoleWas", vec![Player(d.victim), MessageArg::Role(d.role)]))
+            let key = if d.pack_size > 1 {
+                "HunterShotWolfMulti"
+            } else {
+                "HunterShotWolf"
+            };
+            Message::new(key, vec![v]).followed_by(Message::new(
+                "PlayerRoleWas",
+                vec![Player(d.victim), MessageArg::Role(d.role)],
+            ))
         }
         // Werewolf.cs:4348: the cult's recruit shot by the Hunter.
         (KillMethod::HunterCult, _) => Message::new("HunterKilledVisiter", vec![v, MessageArg::RoleIsDead(d.role)]),
         // Werewolf.cs:4364-4371: the Harlot and the host she found dead.
         (KillMethod::VisitVictim, Some((host, _))) => {
-            let key = if d.killed_by == Some(Role::SerialKiller) { "HarlotFuckedKilledPublic" } else { "HarlotFuckedVictimPublic" };
+            let key = if d.killed_by == Some(Role::SerialKiller) {
+                "HarlotFuckedKilledPublic"
+            } else {
+                "HarlotFuckedVictimPublic"
+            };
             Message::new(key, vec![v, Player(host)])
         }
         // Werewolf.cs:4399-4403.
         (KillMethod::Spotted, _) => {
-            let key = if d.killed_by == Some(Role::SerialKiller) { "KillerSpottedDiggerPublic" } else { "WolvesSpottedDiggerPublic" };
+            let key = if d.killed_by == Some(Role::SerialKiller) {
+                "KillerSpottedDiggerPublic"
+            } else {
+                "WolvesSpottedDiggerPublic"
+            };
             Message::new(key, vec![v])
         }
         // Werewolf.cs:4305-4320, walking into a burning house.
@@ -98,14 +126,17 @@ pub fn death_message(d: &DeathContext) -> Option<Message> {
         (KillMethod::VisitWolf, _) if d.role == Role::Cultist => Message::new("CultConvertWolfPublic", vec![v]),
         // Werewolf.cs:4276-4281: the Chemist loses their role for it.
         (KillMethod::Chemistry, Some((chemist, _))) if d.role == Role::WiseElder && chemist != d.victim => {
-            Message::new("ChemistSuccessPublic", vec![v, reveal]).followed_by(Message::new("ChemistKillWiseElder", vec![]))
+            Message::new("ChemistSuccessPublic", vec![v, reveal])
+                .followed_by(Message::new("ChemistKillWiseElder", vec![]))
         }
         _ => match death_locale_key(d.role, d.method) {
             Some(key) => Message::new(key, vec![v, reveal]),
             // Deaths whose own legacy lines aren't ported yet (burns,
             // poison, some visit deaths) still get announced.
-            None => Message::new("GenericDeathNoReveal", vec![v])
-                .followed_by(Message::new("PlayerRoleWas", vec![Player(d.victim), MessageArg::Role(d.role)])),
+            None => Message::new("GenericDeathNoReveal", vec![v]).followed_by(Message::new(
+                "PlayerRoleWas",
+                vec![Player(d.victim), MessageArg::Role(d.role)],
+            )),
         },
     };
     Some(message)
@@ -119,7 +150,16 @@ mod tests {
     const K: PlayerId = PlayerId(2);
 
     fn death(role: Role, method: KillMethod, by: Option<(PlayerId, Role)>, reveal: bool) -> DeathContext {
-        DeathContext { victim: V, role, method, by, killer_was_lynched: false, reveal, pack_size: 1, killed_by: None }
+        DeathContext {
+            victim: V,
+            role,
+            method,
+            by,
+            killer_was_lynched: false,
+            reveal,
+            pack_size: 1,
+            killed_by: None,
+        }
     }
 
     fn key(d: DeathContext) -> &'static str {
@@ -129,7 +169,16 @@ mod tests {
     #[test]
     fn a_lynch_reveals_the_role_only_when_shown() {
         let shown = death_message(&death(Role::Seer, KillMethod::Lynch, None, true)).unwrap();
-        assert_eq!(shown.args, vec![MessageArg::Player(V), MessageArg::Reveal { player: V, role: Role::Seer }]);
+        assert_eq!(
+            shown.args,
+            vec![
+                MessageArg::Player(V),
+                MessageArg::Reveal {
+                    player: V,
+                    role: Role::Seer
+                }
+            ]
+        );
         let hidden = death_message(&death(Role::Seer, KillMethod::Lynch, None, false)).unwrap();
         assert_eq!(hidden.args, vec![MessageArg::Player(V), MessageArg::Empty]);
     }
@@ -137,15 +186,30 @@ mod tests {
     #[test]
     fn night_deaths_are_generic_when_roles_are_hidden() {
         assert_eq!(key(death(Role::Seer, KillMethod::Eat, None, true)), "SeerEaten");
-        assert_eq!(key(death(Role::Seer, KillMethod::Eat, None, false)), "GenericDeathNoReveal");
+        assert_eq!(
+            key(death(Role::Seer, KillMethod::Eat, None, false)),
+            "GenericDeathNoReveal"
+        );
     }
 
     #[test]
     fn shots_name_the_shooter() {
-        let shot = death_message(&death(Role::Villager, KillMethod::Shoot, Some((K, Role::Gunner)), false)).unwrap();
+        let shot = death_message(&death(
+            Role::Villager,
+            KillMethod::Shoot,
+            Some((K, Role::Gunner)),
+            false,
+        ))
+        .unwrap();
         assert_eq!((shot.key, shot.args[0].clone()), ("DefaultShot", MessageArg::Player(K)));
-        assert_eq!(key(death(Role::Harlot, KillMethod::Shoot, Some((K, Role::Gunner)), true)), "HarlotShot");
-        assert_eq!(key(death(Role::Harlot, KillMethod::Shoot, Some((K, Role::Gunner)), false)), "DefaultShot");
+        assert_eq!(
+            key(death(Role::Harlot, KillMethod::Shoot, Some((K, Role::Gunner)), true)),
+            "HarlotShot"
+        );
+        assert_eq!(
+            key(death(Role::Harlot, KillMethod::Shoot, Some((K, Role::Gunner)), false)),
+            "DefaultShot"
+        );
     }
 
     #[test]
@@ -161,14 +225,29 @@ mod tests {
         let m = death_message(&death(Role::Wolf, KillMethod::HunterShot, None, true)).unwrap();
         assert_eq!(m.key, "HunterShotWolf");
         assert_eq!(m.then.unwrap().key, "PlayerRoleWas");
-        assert_eq!(key(death(Role::SnowWolf, KillMethod::HunterShot, None, true)), "SnowFrozeHunter");
-        assert_eq!(key(death(Role::Wolf, KillMethod::HunterShot, None, false)), "GenericDeathNoReveal");
+        assert_eq!(
+            key(death(Role::SnowWolf, KillMethod::HunterShot, None, true)),
+            "SnowFrozeHunter"
+        );
+        assert_eq!(
+            key(death(Role::Wolf, KillMethod::HunterShot, None, false)),
+            "GenericDeathNoReveal"
+        );
     }
 
     #[test]
     fn a_lover_names_who_they_followed() {
-        let m = death_message(&death(Role::Villager, KillMethod::LoverDied, Some((K, Role::Seer)), false)).unwrap();
-        assert_eq!((m.key, m.args[0].clone(), m.args[1].clone()), ("LoverDied", MessageArg::Player(K), MessageArg::Player(V)));
+        let m = death_message(&death(
+            Role::Villager,
+            KillMethod::LoverDied,
+            Some((K, Role::Seer)),
+            false,
+        ))
+        .unwrap();
+        assert_eq!(
+            (m.key, m.args[0].clone(), m.args[1].clone()),
+            ("LoverDied", MessageArg::Player(K), MessageArg::Player(V))
+        );
     }
 
     #[test]
@@ -182,14 +261,25 @@ mod tests {
         let mut d = death(Role::Harlot, KillMethod::VisitVictim, Some((K, Role::Villager)), true);
         d.killed_by = Some(Role::Wolf);
         let m = death_message(&d).unwrap();
-        assert_eq!((m.key, m.args), ("HarlotFuckedVictimPublic", vec![MessageArg::Player(V), MessageArg::Player(K)]));
+        assert_eq!(
+            (m.key, m.args),
+            (
+                "HarlotFuckedVictimPublic",
+                vec![MessageArg::Player(V), MessageArg::Player(K)]
+            )
+        );
         d.killed_by = Some(Role::SerialKiller);
         assert_eq!(key(d), "HarlotFuckedKilledPublic");
     }
 
     #[test]
     fn a_spotted_grave_digger_says_who_spotted_them() {
-        let mut d = death(Role::GraveDigger, KillMethod::Spotted, Some((K, Role::SerialKiller)), true);
+        let mut d = death(
+            Role::GraveDigger,
+            KillMethod::Spotted,
+            Some((K, Role::SerialKiller)),
+            true,
+        );
         d.killed_by = Some(Role::SerialKiller);
         assert_eq!(key(d), "KillerSpottedDiggerPublic");
         d.killed_by = Some(Role::Wolf);
@@ -198,23 +288,61 @@ mod tests {
 
     #[test]
     fn visiting_deaths_have_their_own_lines() {
-        assert_eq!(key(death(Role::Wolf, KillMethod::VisitBurning, None, true)), "WolfVisitBurn");
-        assert_eq!(key(death(Role::Harlot, KillMethod::VisitBurning, None, true)), "DefaultVisitBurn");
-        assert_eq!(key(death(Role::GuardianAngel, KillMethod::GuardWolf, None, true)), "GAGuardedWolf");
-        assert_eq!(key(death(Role::GuardianAngel, KillMethod::VisitKiller, None, true)), "GAGuardedKiller");
-        assert_eq!(key(death(Role::Cultist, KillMethod::VisitWolf, None, true)), "CultConvertWolfPublic");
-        assert_eq!(key(death(Role::Chemist, KillMethod::VisitKiller, None, true)), "ChemistSKPublic");
+        assert_eq!(
+            key(death(Role::Wolf, KillMethod::VisitBurning, None, true)),
+            "WolfVisitBurn"
+        );
+        assert_eq!(
+            key(death(Role::Harlot, KillMethod::VisitBurning, None, true)),
+            "DefaultVisitBurn"
+        );
+        assert_eq!(
+            key(death(Role::GuardianAngel, KillMethod::GuardWolf, None, true)),
+            "GAGuardedWolf"
+        );
+        assert_eq!(
+            key(death(Role::GuardianAngel, KillMethod::VisitKiller, None, true)),
+            "GAGuardedKiller"
+        );
+        assert_eq!(
+            key(death(Role::Cultist, KillMethod::VisitWolf, None, true)),
+            "CultConvertWolfPublic"
+        );
+        assert_eq!(
+            key(death(Role::Chemist, KillMethod::VisitKiller, None, true)),
+            "ChemistSKPublic"
+        );
     }
 
     #[test]
     fn the_chemist_killing_the_wise_elder_is_announced() {
-        let m = death_message(&death(Role::WiseElder, KillMethod::Chemistry, Some((K, Role::Chemist)), true)).unwrap();
-        assert_eq!((m.key, m.then.unwrap().key), ("ChemistSuccessPublic", "ChemistKillWiseElder"));
+        let m = death_message(&death(
+            Role::WiseElder,
+            KillMethod::Chemistry,
+            Some((K, Role::Chemist)),
+            true,
+        ))
+        .unwrap();
+        assert_eq!(
+            (m.key, m.then.unwrap().key),
+            ("ChemistSuccessPublic", "ChemistKillWiseElder")
+        );
     }
 
     #[test]
     fn the_spumpkin_dies_inside_its_own_detonation_line() {
-        assert_eq!(death_message(&death(Role::Spumpkin, KillMethod::Shoot, None, true)), None);
-        assert_eq!(key(death(Role::Villager, KillMethod::Shoot, Some((K, Role::Spumpkin)), true)), "Detonation");
+        assert_eq!(
+            death_message(&death(Role::Spumpkin, KillMethod::Shoot, None, true)),
+            None
+        );
+        assert_eq!(
+            key(death(
+                Role::Villager,
+                KillMethod::Shoot,
+                Some((K, Role::Spumpkin)),
+                true
+            )),
+            "Detonation"
+        );
     }
 }

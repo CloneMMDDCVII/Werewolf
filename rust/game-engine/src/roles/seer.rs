@@ -46,9 +46,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             seer.night_action(&ctx, &mut state),
-            vec![NightAction::CheckTeam {
-                target: PlayerId(2)
-            }]
+            vec![NightAction::CheckTeam { target: PlayerId(2) }]
         );
     }
 }

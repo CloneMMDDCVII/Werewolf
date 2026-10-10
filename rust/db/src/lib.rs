@@ -29,8 +29,7 @@ mod players;
 
 pub use bans::{BanIssuer, BanRecord, BanSource, Bans, NewBan};
 pub use games::{
-    FixtureGame, FixtureKill, FixturePlayer, GameId, GameResult, Games, NewGame, NewGamePlayer,
-    UnfinishedGame,
+    FixtureGame, FixtureKill, FixturePlayer, GameId, GameResult, Games, NewGame, NewGamePlayer, UnfinishedGame,
 };
 pub use groups::{GroupRecord, Groups};
 pub use migrations::LATEST_SCHEMA_VERSION;
@@ -53,7 +52,10 @@ pub enum DbError {
     UnsupportedUrl(String),
     /// The database was migrated by a newer bot than this one. Starting
     /// anyway would run old code against a schema it doesn't know.
-    NewerSchema { database: i64, bot: i64 },
+    NewerSchema {
+        database: i64,
+        bot: i64,
+    },
     /// A stored value didn't parse back (e.g. a role name this build has
     /// no variant for, or settings JSON that is not JSON).
     Corrupt(String),
@@ -198,16 +200,14 @@ fn pool_options(backend: Backend, in_memory: bool) -> AnyPoolOptions {
             .max_lifetime(None),
         // WAL lets readers run alongside the single writer; busy_timeout
         // makes a second writer wait instead of failing with SQLITE_BUSY.
-        Backend::Sqlite => AnyPoolOptions::new()
-            .max_connections(4)
-            .after_connect(|conn, _| {
-                Box::pin(async move {
-                    conn.execute("PRAGMA journal_mode = WAL").await?;
-                    conn.execute("PRAGMA busy_timeout = 5000").await?;
-                    conn.execute("PRAGMA foreign_keys = ON").await?;
-                    Ok(())
-                })
-            }),
+        Backend::Sqlite => AnyPoolOptions::new().max_connections(4).after_connect(|conn, _| {
+            Box::pin(async move {
+                conn.execute("PRAGMA journal_mode = WAL").await?;
+                conn.execute("PRAGMA busy_timeout = 5000").await?;
+                conn.execute("PRAGMA foreign_keys = ON").await?;
+                Ok(())
+            })
+        }),
         Backend::Postgres => AnyPoolOptions::new().max_connections(10),
     }
 }
@@ -242,11 +242,17 @@ mod tests {
     fn sqlite_urls_get_create_mode() {
         assert_eq!(
             normalize_sqlite_url("sqlite://werewolf.db"),
-            ("sqlite://werewolf.db?mode=rwc".to_string(), Some(PathBuf::from("werewolf.db")))
+            (
+                "sqlite://werewolf.db?mode=rwc".to_string(),
+                Some(PathBuf::from("werewolf.db"))
+            )
         );
         assert_eq!(
             normalize_sqlite_url("sqlite:///srv/wolf/werewolf.db"),
-            ("sqlite:///srv/wolf/werewolf.db?mode=rwc".to_string(), Some(PathBuf::from("/srv/wolf/werewolf.db")))
+            (
+                "sqlite:///srv/wolf/werewolf.db?mode=rwc".to_string(),
+                Some(PathBuf::from("/srv/wolf/werewolf.db"))
+            )
         );
         assert_eq!(normalize_sqlite_url("sqlite::memory:").1, None);
     }

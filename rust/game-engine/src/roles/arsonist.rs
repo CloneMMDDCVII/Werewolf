@@ -66,9 +66,7 @@ mod tests {
         let mut state = RoleState::default();
         assert_eq!(
             arsonist.night_action(&ctx(Some(PlayerId(2)), false), &mut state),
-            vec![NightAction::Douse {
-                target: PlayerId(2)
-            }]
+            vec![NightAction::Douse { target: PlayerId(2) }]
         );
         assert_eq!(state.remembered_player, Some(PlayerId(2)));
     }

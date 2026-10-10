@@ -7,8 +7,8 @@ use bot::fake::FakeTelegram;
 use bot::spawn::LocalSpawner;
 use bot::telegram::{Button, Command, Incoming, Retrying, User};
 use bot::text::Texts;
-use db::{GameId, GameResult};
 use db::Store;
+use db::{GameId, GameResult};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -42,7 +42,11 @@ struct Bot {
 }
 
 fn user(id: i64) -> User {
-    User { id, name: format!("Player{id}"), username: Some(format!("player{id}")) }
+    User {
+        id,
+        name: format!("Player{id}"),
+        username: Some(format!("player{id}")),
+    }
 }
 
 impl Bot {
@@ -79,7 +83,13 @@ impl Bot {
         )
         .await
         .unwrap();
-        Bot { languages, tg, core, store, texts: Texts::embedded() }
+        Bot {
+            languages,
+            tg,
+            core,
+            store,
+            texts: Texts::embedded(),
+        }
     }
 
     fn t(&self, key: &str, args: &[&str]) -> String {
@@ -89,7 +99,11 @@ impl Bot {
     /// Whether `text` is some variant of `key` (keys with several
     /// variants are picked at random).
     fn is(&self, text: &str, key: &str, args: &[&str]) -> bool {
-        let variants = self.texts.pack("English").variants(key).unwrap_or_else(|| panic!("no key {key}"));
+        let variants = self
+            .texts
+            .pack("English")
+            .variants(key)
+            .unwrap_or_else(|| panic!("no key {key}"));
         variants.iter().any(|v| text.contains(&bot::text::fill(v, args)))
     }
 
@@ -98,16 +112,35 @@ impl Bot {
     }
 
     async fn cmd(&self, chat: i64, from: i64, text: &str) {
-        let (name, args) = text.trim_start_matches('/').split_once(' ').unwrap_or((text.trim_start_matches('/'), ""));
-        let chat = if chat < 0 { group_chat(chat, "Wolf Pack") } else { private_chat(chat) };
-        self.core.handle(Incoming::Command(Command::new(chat, user(from), name, args))).await;
+        let (name, args) = text
+            .trim_start_matches('/')
+            .split_once(' ')
+            .unwrap_or((text.trim_start_matches('/'), ""));
+        let chat = if chat < 0 {
+            group_chat(chat, "Wolf Pack")
+        } else {
+            private_chat(chat)
+        };
+        self.core
+            .handle(Incoming::Command(Command::new(chat, user(from), name, args)))
+            .await;
     }
 
     async fn press(&self, from: i64, chat: i64, label: &str) {
-        let (msg, button) = self.tg.find_button(chat, label).unwrap_or_else(|| panic!("no {label:?} button in {chat}"));
-        let Button::Callback { data, .. } = button else { panic!("{label:?} is a link") };
+        let (msg, button) = self
+            .tg
+            .find_button(chat, label)
+            .unwrap_or_else(|| panic!("no {label:?} button in {chat}"));
+        let Button::Callback { data, .. } = button else {
+            panic!("{label:?} is a link")
+        };
         self.core
-            .handle(Incoming::Callback { id: format!("cb{}", msg.id), from: user(from), message: Some(msg), data })
+            .handle(Incoming::Callback {
+                id: format!("cb{}", msg.id),
+                from: user(from),
+                message: Some(msg),
+                data,
+            })
             .await;
     }
 
@@ -144,12 +177,19 @@ impl Bot {
             for id in players.clone() {
                 for m in self.tg.open_keyboards(id) {
                     let first = m.keyboard.iter().flatten().flatten().find_map(|b| match b {
-                        Button::Callback { text, data } if *text != skip && data.starts_with("q:") => Some(data.clone()),
+                        Button::Callback { text, data } if *text != skip && data.starts_with("q:") => {
+                            Some(data.clone())
+                        }
                         _ => None,
                     });
                     if let Some(data) = first {
                         self.core
-                            .handle(Incoming::Callback { id: format!("cb{}", m.msg.id), from: user(id), message: Some(m.msg), data })
+                            .handle(Incoming::Callback {
+                                id: format!("cb{}", m.msg.id),
+                                from: user(id),
+                                message: Some(m.msg),
+                                data,
+                            })
                             .await;
                     }
                 }
@@ -207,7 +247,10 @@ async fn a_full_game_plays_to_the_end_and_is_recorded() {
         let group = bot.tg.transcript(GROUP);
         assert!(bot.is(&group, "StartingGameWait", &[]));
         assert!(bot.is(&group, "PlayersAlive", &[]), "the end-of-game summary: {group}");
-        assert!(bot.is(&group, "EndTime", &[]), "the summary ends with the playing time: {group}");
+        assert!(
+            bot.is(&group, "EndTime", &[]),
+            "the summary ends with the playing time: {group}"
+        );
         assert!(bot.store.games().unfinished().await.unwrap().is_empty());
         match bot.store.games().result(GameId(1)).await.unwrap() {
             Some(GameResult::Won(_)) | Some(GameResult::Unresolved(_)) => {}
@@ -279,7 +322,11 @@ async fn joins_are_announced_in_batches() {
         // (Storage runs on its own thread and the paused clock moves while
         // it works, so racing the first second would be timing-dependent.)
         let joined = |bot: &Bot| -> Vec<String> {
-            bot.tg.texts(GROUP).into_iter().filter(|t| bot.is(t, "HaveJoined", &[""])).collect()
+            bot.tg
+                .texts(GROUP)
+                .into_iter()
+                .filter(|t| bot.is(t, "HaveJoined", &[""]))
+                .collect()
         };
         while joined(&bot).is_empty() {
             tick(1).await;
@@ -287,12 +334,24 @@ async fn joins_are_announced_in_batches() {
         let window_opened = tokio::time::Instant::now();
         bot.cmd(GROUP, 2, "/join").await;
         bot.cmd(GROUP, 3, "/join").await;
-        assert!(window_opened.elapsed() < Duration::from_secs(29), "the joins took {:?}", window_opened.elapsed());
+        assert!(
+            window_opened.elapsed() < Duration::from_secs(29),
+            "the joins took {:?}",
+            window_opened.elapsed()
+        );
         tick(31).await;
         let lines = joined(&bot);
         assert_eq!(lines.len(), 2, "{}", bot.tg.transcript(GROUP));
-        assert!(lines[0].contains("Player1") && !lines[0].contains("Player2"), "{}", lines[0]);
-        assert!(lines[1].contains("Player2") && lines[1].contains("Player3"), "{}", lines[1]);
+        assert!(
+            lines[0].contains("Player1") && !lines[0].contains("Player2"),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("Player2") && lines[1].contains("Player3"),
+            "{}",
+            lines[1]
+        );
     })
 }
 
@@ -303,7 +362,10 @@ async fn players_who_never_started_the_bot_are_sent_to_it() {
         bot.register([ADMIN]).await;
         bot.cmd(GROUP, ADMIN, "/startgame").await;
         bot.cmd(GROUP, 5, "/join").await;
-        let link = format!("@{}", { use bot::telegram::Telegram; bot.tg.bot_username().to_string() });
+        let link = format!("@{}", {
+            use bot::telegram::Telegram;
+            bot.tg.bot_username().to_string()
+        });
         assert!(bot.said(GROUP, "PMTheBot", &["Player5", &link]));
         // The button starts the bot with a join payload, which joins them.
         let (_, button) = bot.tg.find_button(GROUP, &bot.t("StartMe", &[])).unwrap();
@@ -323,7 +385,10 @@ async fn extend_flee_and_players_in_the_lobby() {
         bot.cmd(GROUP, 2, "/join").await;
         bot.cmd(GROUP, 3, "/join").await;
         bot.cmd(GROUP, 2, "/extend 60").await;
-        assert!(bot.tg.last(GROUP).unwrap().text.contains("group admin"), "players can't extend unless the group allows it");
+        assert!(
+            bot.tg.last(GROUP).unwrap().text.contains("group admin"),
+            "players can't extend unless the group allows it"
+        );
         bot.cmd(GROUP, ADMIN, "/extend 60").await;
         tick(2).await;
         let group = bot.tg.transcript(GROUP);
@@ -337,7 +402,10 @@ async fn extend_flee_and_players_in_the_lobby() {
         assert!(bot.said(GROUP, "NotPlaying", &[]));
         bot.cmd(GROUP, 2, "/players").await;
         let list = bot.tg.last(GROUP).unwrap().text;
-        assert!(list.contains("Player1") && list.contains("Player2") && !list.contains("Player3"), "{list}");
+        assert!(
+            list.contains("Player1") && list.contains("Player2") && !list.contains("Player3"),
+            "{list}"
+        );
     })
 }
 
@@ -409,7 +477,10 @@ async fn killgame_ends_a_running_game() {
         }
         assert_eq!(bot.core.active_groups(), 0, "{}", bot.tg.transcript(GROUP));
         assert!(bot.tg.transcript(GROUP).contains("ended by an admin"));
-        assert_eq!(bot.store.games().result(GameId(1)).await.unwrap(), Some(GameResult::Killed));
+        assert_eq!(
+            bot.store.games().result(GameId(1)).await.unwrap(),
+            Some(GameResult::Killed)
+        );
     })
 }
 
@@ -434,10 +505,18 @@ async fn buttons_from_a_finished_game_say_so() {
             panic!()
         };
         bot.core
-            .handle(Incoming::Callback { id: "late".into(), from: user(stale.msg.chat), message: Some(stale.msg), data })
+            .handle(Incoming::Callback {
+                id: "late".into(),
+                from: user(stale.msg.chat),
+                message: Some(stale.msg),
+                data,
+            })
             .await;
         let answers = bot.tg.callback_answers();
-        assert_eq!(answers.last().unwrap(), &("late".to_string(), Some("That game is over.".to_string())));
+        assert_eq!(
+            answers.last().unwrap(),
+            &("late".to_string(), Some("That game is over.".to_string()))
+        );
     })
 }
 
@@ -460,7 +539,10 @@ async fn smite_removes_a_player_from_the_lobby() {
         bot.cmd(GROUP, ADMIN, "/startgame").await;
         bot.cmd(GROUP, 2, "/join").await;
         let mut smite = Command::new(group_chat(GROUP, "Wolf Pack"), user(ADMIN), "smite", "");
-        smite.reply_to = Some(moderation::ReplyTo { from: 2, forwarded_from: None });
+        smite.reply_to = Some(moderation::ReplyTo {
+            from: 2,
+            forwarded_from: None,
+        });
         bot.core.handle(Incoming::Command(smite)).await;
         assert!(bot.said(GROUP, "Flee", &["Player2"]), "{}", bot.tg.transcript(GROUP));
         bot.cmd(GROUP, ADMIN, "/players").await;
@@ -480,7 +562,10 @@ async fn flood_control_is_waited_out() {
         bot.cmd(ADMIN, ADMIN, "/help").await;
         assert!(bot.tg.last(ADMIN).unwrap().text.contains("Support Group"));
         bot.cmd(ADMIN, ADMIN, "/ping").await;
-        assert!(bot.tg.last(ADMIN).unwrap().text.contains("s"), "ping edits its reply with the time");
+        assert!(
+            bot.tg.last(ADMIN).unwrap().text.contains("s"),
+            "ping edits its reply with the time"
+        );
     })
 }
 
@@ -496,7 +581,10 @@ async fn games_cut_off_by_a_crash_are_announced_on_restart() {
         let bot = Bot::with_store(10, store.clone()).await;
         bot.core.announce_interrupted_games().await;
         assert!(bot.said(GROUP, "NodeShutsDown", &[]));
-        assert_eq!(store.games().result(GameId(1)).await.unwrap(), Some(GameResult::Interrupted));
+        assert_eq!(
+            store.games().result(GameId(1)).await.unwrap(),
+            Some(GameResult::Interrupted)
+        );
     })
 }
 
@@ -510,8 +598,13 @@ async fn shutdown_lets_games_finish_or_stops_them() {
         assert!(bot.tg.last(OTHER_GROUP).unwrap().text.contains("restarting"));
         bot.core.kill_everything().await;
         assert!(bot.tg.transcript(GROUP).contains("shutting down"));
-        tokio::time::timeout(Duration::from_secs(120), bot.core.wait_until_idle()).await.expect("games stopped");
-        assert_eq!(bot.store.games().result(GameId(1)).await.unwrap(), Some(GameResult::Killed));
+        tokio::time::timeout(Duration::from_secs(120), bot.core.wait_until_idle())
+            .await
+            .expect("games stopped");
+        assert_eq!(
+            bot.store.games().result(GameId(1)).await.unwrap(),
+            Some(GameResult::Killed)
+        );
     })
 }
 
@@ -552,21 +645,37 @@ async fn lynch_votes_are_announced_as_they_are_cast() {
         let ask_lynch = bot.texts.pack("English").variants("AskLynch").unwrap().to_vec();
         // Wait for the first lynch question to reach player 2.
         let question = loop {
-            if let Some(m) = bot.tg.open_keyboards(2).into_iter().find(|m| ask_lynch.contains(&m.text)) {
+            if let Some(m) = bot
+                .tg
+                .open_keyboards(2)
+                .into_iter()
+                .find(|m| ask_lynch.contains(&m.text))
+            {
                 break m;
             }
             assert!(bot.core.active_groups() > 0, "game ended before a lynch vote");
             tick(1).await;
         };
-        let Some(Button::Callback { text: target, data }) = question.keyboard.as_ref().and_then(|k| k[0].first().cloned()) else {
+        let Some(Button::Callback { text: target, data }) =
+            question.keyboard.as_ref().and_then(|k| k[0].first().cloned())
+        else {
             panic!()
         };
         bot.core
-            .handle(Incoming::Callback { id: "vote".into(), from: user(2), message: Some(question.msg), data })
+            .handle(Incoming::Callback {
+                id: "vote".into(),
+                from: user(2),
+                message: Some(question.msg),
+                data,
+            })
             .await;
         tokio::time::sleep(Duration::from_millis(100)).await; // the game task picks the press up
-        // Said in the group at once, while everyone else is still voting.
-        assert!(bot.said(GROUP, "PlayerVotedLynch", &["Player2", &target]), "{}", bot.tg.transcript(GROUP));
+                                                              // Said in the group at once, while everyone else is still voting.
+        assert!(
+            bot.said(GROUP, "PlayerVotedLynch", &["Player2", &target]),
+            "{}",
+            bot.tg.transcript(GROUP)
+        );
         assert!(bot.tg.last(2).is_some());
         assert!(!bot.tg.open_keyboards(3).is_empty(), "the others are still voting");
     })
@@ -575,7 +684,11 @@ async fn lynch_votes_are_announced_as_they_are_cast() {
 /// The newest open question in `chat` whose text is a variant of `key`.
 fn question(bot: &Bot, chat: i64, key: &str) -> Option<bot::fake::FakeMessage> {
     let variants = bot.texts.pack("English").variants(key).unwrap().to_vec();
-    bot.tg.open_keyboards(chat).into_iter().rev().find(|m| variants.contains(&m.text))
+    bot.tg
+        .open_keyboards(chat)
+        .into_iter()
+        .rev()
+        .find(|m| variants.contains(&m.text))
 }
 
 async fn click(bot: &Bot, from: i64, m: &bot::fake::FakeMessage, label: &str) {
@@ -589,7 +702,14 @@ async fn click(bot: &Bot, from: i64, m: &bot::fake::FakeMessage, label: &str) {
             _ => None,
         })
         .unwrap_or_else(|| panic!("no {label:?} button"));
-    bot.core.handle(Incoming::Callback { id: format!("cb{}", m.msg.id), from: user(from), message: Some(m.msg), data }).await;
+    bot.core
+        .handle(Incoming::Callback {
+            id: format!("cb{}", m.msg.id),
+            from: user(from),
+            message: Some(m.msg),
+            data,
+        })
+        .await;
     tokio::time::sleep(Duration::from_millis(100)).await; // the game task picks the press up
 }
 
@@ -605,7 +725,10 @@ async fn the_pacifists_peace_closes_the_lynch_vote() {
                 if bot.core.active_groups() == 0 || players.clone().any(|id| question(&bot, id, "AskLynch").is_some()) {
                     break (0, None);
                 }
-                if let Some((id, m)) = players.clone().find_map(|id| question(&bot, id, "AskPacifist").map(|m| (id, m))) {
+                if let Some((id, m)) = players
+                    .clone()
+                    .find_map(|id| question(&bot, id, "AskPacifist").map(|m| (id, m)))
+                {
                     break (id, Some(m));
                 }
                 tick(1).await;
@@ -613,7 +736,10 @@ async fn the_pacifists_peace_closes_the_lynch_vote() {
             let Some(peace) = peace else { continue };
             // Let the discussion run out and the vote open.
             let ballot = loop {
-                let open = players.clone().filter(|&id| id != pacifist).find_map(|id| question(&bot, id, "AskLynch").map(|m| (id, m)));
+                let open = players
+                    .clone()
+                    .filter(|&id| id != pacifist)
+                    .find_map(|id| question(&bot, id, "AskLynch").map(|m| (id, m)));
                 if open.is_some() {
                     break open;
                 }
@@ -628,12 +754,24 @@ async fn the_pacifists_peace_closes_the_lynch_vote() {
             click(&bot, pacifist, &peace, &bot.t("Peace", &[])).await;
 
             let pacifist_name = format!("Player{pacifist}");
-            assert!(bot.said(GROUP, "PacifistNoLynch", &[&pacifist_name]), "{}", bot.tg.transcript(GROUP));
-            assert!(bot.said(GROUP, "PacifistNoLynchNow", &[]), "{}", bot.tg.transcript(GROUP));
-            let still_voting: Vec<i64> =
-                players.clone().filter(|&id| question(&bot, id, "AskLynch").is_some()).collect();
+            assert!(
+                bot.said(GROUP, "PacifistNoLynch", &[&pacifist_name]),
+                "{}",
+                bot.tg.transcript(GROUP)
+            );
+            assert!(
+                bot.said(GROUP, "PacifistNoLynchNow", &[]),
+                "{}",
+                bot.tg.transcript(GROUP)
+            );
+            let still_voting: Vec<i64> = players
+                .clone()
+                .filter(|&id| question(&bot, id, "AskLynch").is_some())
+                .collect();
             assert!(still_voting.is_empty(), "lynch menus left open for {still_voting:?}");
-            let closed = players.clone().filter(|&id| bot.tg.texts(id).iter().any(|t| bot.is(t, "LynchPeaceTimeout", &[])));
+            let closed = players
+                .clone()
+                .filter(|&id| bot.tg.texts(id).iter().any(|t| bot.is(t, "LynchPeaceTimeout", &[])));
             assert!(closed.count() > 0, "open lynch menus should say the peace closed them");
             return;
         }
@@ -652,7 +790,12 @@ async fn everyone_is_told_their_role_when_the_game_starts() {
             .filter_map(|r| pack.variants(&format!("RoleInfo{r:?}")))
             .flat_map(|v| v.iter().map(|t| bot::text::fill(t, &[])))
             .collect();
-        let knows = |id: i64| bot.tg.texts(id).iter().any(|t| infos.iter().any(|i| t.starts_with(i.as_str())));
+        let knows = |id: i64| {
+            bot.tg
+                .texts(id)
+                .iter()
+                .any(|t| infos.iter().any(|i| t.starts_with(i.as_str())))
+        };
         // Storage runs on its own thread, so give the game task a few
         // (paused-clock) seconds to deal.
         for _ in 0..30 {
@@ -696,9 +839,15 @@ async fn the_group_sees_the_player_list_each_phase_and_the_game_length() {
 
         bot.play_out(1..=7, 3 * 3600).await;
         let group = bot.tg.transcript(GROUP);
-        assert!(group.matches(&bold_prefix(&bot.t("PlayersAlive", &[]))).count() >= 2, "{group}");
+        assert!(
+            group.matches(&bold_prefix(&bot.t("PlayersAlive", &[]))).count() >= 2,
+            "{group}"
+        );
         let end = bot.t("EndTime", &["X"]).replace('X', "");
-        let line = group.lines().find(|l| l.starts_with(&end)).unwrap_or_else(|| panic!("no game length: {group}"));
+        let line = group
+            .lines()
+            .find(|l| l.starts_with(&end))
+            .unwrap_or_else(|| panic!("no game length: {group}"));
         assert!(line[end.len()..].trim().len() == 8, "{line}");
     })
 }
@@ -713,7 +862,11 @@ async fn show_ids_lists_joiners_with_their_ids() {
         let bot = Bot::new(10).await;
         let mut settings = control::group_config::GroupSettings::default();
         settings.set(control::group_config::Toggle::ShowIDs, true);
-        bot.store.groups().put_settings(GROUP, "Wolf Pack", &settings, 0).await.unwrap();
+        bot.store
+            .groups()
+            .put_settings(GROUP, "Wolf Pack", &settings, 0)
+            .await
+            .unwrap();
         bot.register(1..=2).await;
         bot.cmd(GROUP, ADMIN, "/startgame").await;
         bot.cmd(GROUP, 2, "/join").await;
@@ -768,14 +921,23 @@ async fn language_admins_upload_and_install_a_file() {
         bot.core.handle(reply(None)).await;
         assert_eq!(bot.tg.last(LANG_ADMIN).unwrap().text, i18n::admin::MUST_REPLY);
 
-        let file_id = bot.tg.add_file(std::fs::read(format!("{LANGUAGES}/Deutsch.xml")).unwrap());
-        let doc = bot::telegram::Document { file_id, file_name: Some("Deutsch.xml".into()) };
+        let file_id = bot
+            .tg
+            .add_file(std::fs::read(format!("{LANGUAGES}/Deutsch.xml")).unwrap());
+        let doc = bot::telegram::Document {
+            file_id,
+            file_name: Some("Deutsch.xml".into()),
+        };
         bot.core.handle(reply(Some(doc))).await;
         let pm = bot.tg.transcript(LANG_ADMIN);
         assert!(pm.contains("NEW FILE"), "{pm}");
         assert!(pm.contains("No old file, this is a new language"), "{pm}");
         bot.press(LANG_ADMIN, LANG_ADMIN, "New").await;
-        assert!(bot.languages.join("Deutsch.xml").exists(), "{}", bot.tg.transcript(LANG_ADMIN));
+        assert!(
+            bot.languages.join("Deutsch.xml").exists(),
+            "{}",
+            bot.tg.transcript(LANG_ADMIN)
+        );
         assert!(bot.tg.transcript(LANG_ADMIN).contains("Languages reloaded."));
 
         // The new language is offered right away.
@@ -790,7 +952,11 @@ async fn getlang_all_sends_one_zip() {
         let bot = Bot::new(1).await;
         bot.cmd(7, 7, "/getlang").await;
         bot.press(7, 7, "All").await;
-        assert!(bot.tg.last(7).unwrap().text.starts_with("[file languages.zip,"), "{}", bot.tg.transcript(7));
+        assert!(
+            bot.tg.last(7).unwrap().text.starts_with("[file languages.zip,"),
+            "{}",
+            bot.tg.transcript(7)
+        );
     })
 }
 
@@ -807,7 +973,13 @@ async fn wolves_are_told_who_to_eat_with() {
             for _ in 0..30 {
                 eaters = players
                     .clone()
-                    .filter_map(|id| bot.tg.open_keyboards(id).into_iter().find(|m| m.text.starts_with(&ask_eat)).map(|m| (id, m.text)))
+                    .filter_map(|id| {
+                        bot.tg
+                            .open_keyboards(id)
+                            .into_iter()
+                            .find(|m| m.text.starts_with(&ask_eat))
+                            .map(|m| (id, m.text))
+                    })
                     .collect();
                 if !eaters.is_empty() {
                     break;

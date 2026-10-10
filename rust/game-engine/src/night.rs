@@ -13,10 +13,10 @@
 
 use crate::messages::{DiggerVisitor, NightNote, Note};
 use crate::orchestrator::{grave_digger_fall_chance_percent, AlivePlayer, NarrationEvent};
-use crate::rng::RngSource;
-use crate::roles::{NightAction, PlayerId, RoleState};
 use crate::reveals::{resolve_night_readings, AugurMemory};
+use crate::rng::RngSource;
 use crate::role_info::{transform_tells, Cause};
+use crate::roles::{NightAction, PlayerId, RoleState};
 use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
 
@@ -193,8 +193,19 @@ pub fn resolve_night_sequence(
     night.thief();
     night.witch();
     night.chemist_killed_wise_elder();
-    let deaths = night.deaths.iter().map(|d| NightDeath { victim: d.victim, method: d.method, by: d.by }).collect();
-    NightOutcome { deaths, ..night.outcome }
+    let deaths = night
+        .deaths
+        .iter()
+        .map(|d| NightDeath {
+            victim: d.victim,
+            method: d.method,
+            by: d.by,
+        })
+        .collect();
+    NightOutcome {
+        deaths,
+        ..night.outcome
+    }
 }
 
 struct Night<'a, 'b> {
@@ -230,7 +241,11 @@ impl Night<'_, '_> {
 
     /// Living players, in player-list order.
     fn living(&self, keep: impl Fn(Role) -> bool) -> Vec<PlayerId> {
-        self.alive.iter().filter(|p| keep(p.role) && !self.is_dead(p.id)).map(|p| p.id).collect()
+        self.alive
+            .iter()
+            .filter(|p| keep(p.role) && !self.is_dead(p.id))
+            .map(|p| p.id)
+            .collect()
     }
 
     fn first_living(&self, role: Role) -> Option<PlayerId> {
@@ -238,7 +253,11 @@ impl Night<'_, '_> {
     }
 
     fn acts(&self, actor: PlayerId) -> impl Iterator<Item = NightAction> + '_ {
-        self.input.actions.iter().filter(move |(a, _)| *a == actor).map(|&(_, action)| action)
+        self.input
+            .actions
+            .iter()
+            .filter(move |(a, _)| *a == actor)
+            .map(|&(_, action)| action)
     }
 
     /// The legacy `Choice != 0 && Choice != -1`: the player went out.
@@ -273,9 +292,22 @@ impl Night<'_, '_> {
         }
     }
 
-    fn kill(&mut self, victim: PlayerId, method: KillMethod, by: Option<PlayerId>, killed_by: Option<Role>, by_visiting: bool) {
+    fn kill(
+        &mut self,
+        victim: PlayerId,
+        method: KillMethod,
+        by: Option<PlayerId>,
+        killed_by: Option<Role>,
+        by_visiting: bool,
+    ) {
         if !self.is_dead(victim) {
-            self.deaths.push(Death { victim, method, by, killed_by, by_visiting });
+            self.deaths.push(Death {
+                victim,
+                method,
+                by,
+                killed_by,
+                by_visiting,
+            });
         }
     }
 
@@ -290,7 +322,9 @@ impl Night<'_, '_> {
             p.role = to;
             self.outcome.events.push(NarrationEvent::Transform { player, from, to });
             let living: Vec<AlivePlayer> = self.alive.iter().filter(|p| !self.is_dead(p.id)).copied().collect();
-            self.outcome.events.extend(transform_tells(player, from, to, cause, &living, self.input.thief_full));
+            self.outcome
+                .events
+                .extend(transform_tells(player, from, to, cause, &living, self.input.thief_full));
         }
     }
 
@@ -322,7 +356,13 @@ impl Night<'_, '_> {
                 || !self.not_frozen(target)
                 || self.roll(WOLF_DIES_AT_SERIAL_KILLER_PERCENT)
             {
-                self.kill(visitor, KillMethod::VisitKiller, Some(target), Some(Role::SerialKiller), true);
+                self.kill(
+                    visitor,
+                    KillMethod::VisitKiller,
+                    Some(target),
+                    Some(Role::SerialKiller),
+                    true,
+                );
                 return Visit::VisitorDied;
             }
             return Visit::Success;
@@ -366,7 +406,13 @@ impl Night<'_, '_> {
             }
             let village = visitor_role.team() == Team::Village;
             if self.roll(grave_digger_fall_chance_percent(dug, village)) {
-                self.kill(visitor, KillMethod::FallGrave, Some(target), Some(Role::GraveDigger), true);
+                self.kill(
+                    visitor,
+                    KillMethod::FallGrave,
+                    Some(target),
+                    Some(Role::GraveDigger),
+                    true,
+                );
                 let by = match visitor_role {
                     r if is_eating_wolf(r) => Some(DiggerVisitor::Wolf),
                     Role::CultistHunter => Some(DiggerVisitor::CultistHunter),
@@ -400,7 +446,9 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:3186-3227.
     fn arsonist(&mut self) {
-        let Some(arsonist) = self.first_living(Role::Arsonist) else { return };
+        let Some(arsonist) = self.first_living(Role::Arsonist) else {
+            return;
+        };
         let actions: Vec<NightAction> = self.acts(arsonist).collect();
         for action in actions {
             match action {
@@ -408,7 +456,11 @@ impl Night<'_, '_> {
                     self.sparked = true;
                     let doused = self.memory.doused.clone();
                     let charge = self.ga.map(|(_, t)| t);
-                    for victim in self.living(|r| r != Role::Arsonist).into_iter().filter(|p| doused.contains(p)) {
+                    for victim in self
+                        .living(|r| r != Role::Arsonist)
+                        .into_iter()
+                        .filter(|p| doused.contains(p))
+                    {
                         if charge == Some(victim) {
                             self.saved.push(victim);
                         } else {
@@ -446,7 +498,11 @@ impl Night<'_, '_> {
     }
 
     fn vote_wolves(&self, wolves: &[PlayerId]) -> Vec<PlayerId> {
-        wolves.iter().copied().filter(|w| !self.is_dead(*w) && !self.drunk_tonight.contains(w)).collect()
+        wolves
+            .iter()
+            .copied()
+            .filter(|w| !self.is_dead(*w) && !self.drunk_tonight.contains(w))
+            .collect()
     }
 
     /// Werewolf.cs:3231-3494.
@@ -560,7 +616,12 @@ impl Night<'_, '_> {
 
     fn eat(&mut self, target: PlayerId, pack: &[PlayerId]) {
         // The Witch's potion (a role legacy never had) stops the wolves too.
-        if self.input.actions.iter().any(|(_, a)| *a == NightAction::Heal { target }) {
+        if self
+            .input
+            .actions
+            .iter()
+            .any(|(_, a)| *a == NightAction::Heal { target })
+        {
             return;
         }
         self.kill(target, KillMethod::Eat, pack.first().copied(), Some(Role::Wolf), false);
@@ -589,7 +650,9 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:3497-3549.
     fn serial_killer(&mut self) {
-        let Some(sk) = self.first_living(Role::SerialKiller) else { return };
+        let Some(sk) = self.first_living(Role::SerialKiller) else {
+            return;
+        };
         if !self.not_frozen(sk) {
             return;
         }
@@ -609,11 +672,21 @@ impl Night<'_, '_> {
                     self.tell(sk, NightNote::KillerRandomKill(target, victim));
                 }
                 if self.ga.map(|(_, t)| t) == Some(victim) && self.role(victim) != Some(Role::Harlot) {
-                    let note = if redirected { NightNote::GuardBlockedRandomKiller(victim) } else { NightNote::GuardBlockedKiller(victim) };
+                    let note = if redirected {
+                        NightNote::GuardBlockedRandomKiller(victim)
+                    } else {
+                        NightNote::GuardBlockedKiller(victim)
+                    };
                     self.tell(sk, note);
                     self.saved.push(victim);
                 } else {
-                    self.kill(victim, KillMethod::SerialKilled, Some(sk), Some(Role::SerialKiller), false);
+                    self.kill(
+                        victim,
+                        KillMethod::SerialKilled,
+                        Some(sk),
+                        Some(Role::SerialKiller),
+                        false,
+                    );
                     self.tell(victim, NightNote::SerialKillerKilledYou);
                 }
             }
@@ -626,12 +699,16 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:3556-3587.
     fn cultist_hunter(&mut self) {
-        let Some(hunter) = self.first_living(Role::CultistHunter) else { return };
+        let Some(hunter) = self.first_living(Role::CultistHunter) else {
+            return;
+        };
         let target = self.acts(hunter).find_map(|a| match a {
             NightAction::Investigate { target } => Some(target),
             _ => None,
         });
-        let Some(target) = target.filter(|_| self.not_frozen(hunter)) else { return };
+        let Some(target) = target.filter(|_| self.not_frozen(hunter)) else {
+            return;
+        };
         match self.visit(hunter, target) {
             Visit::Success if self.role(target) == Some(Role::Cultist) => {
                 self.note(hunter, Note::HunterFindCultist { target });
@@ -647,7 +724,10 @@ impl Night<'_, '_> {
     /// The cultists who act tonight: alive and not frozen.
     fn vote_cult(&self) -> Vec<PlayerId> {
         let frozen = self.input.frozen;
-        self.living(|r| r == Role::Cultist).into_iter().filter(|&c| Some(c) != frozen).collect()
+        self.living(|r| r == Role::Cultist)
+            .into_iter()
+            .filter(|&c| Some(c) != frozen)
+            .collect()
     }
 
     /// Werewolf.cs:3591-3757.
@@ -678,9 +758,18 @@ impl Night<'_, '_> {
         let Some(target) = target else { return };
         let joined = |c: &PlayerId| self.memory.cult_joined.get(c).copied().unwrap_or(0);
         // The newest convert visits (`OrderByDescending(DayCult).First()`).
-        let newbie = cult.iter().copied().rev().max_by_key(joined).expect("the cult is not empty");
+        let newbie = cult
+            .iter()
+            .copied()
+            .rev()
+            .max_by_key(joined)
+            .expect("the cult is not empty");
         let wolves_went_out = !self.input.wolf_cub_votes.is_empty()
-            || self.input.actions.iter().any(|(_, a)| matches!(a, NightAction::EatVote { .. }));
+            || self
+                .input
+                .actions
+                .iter()
+                .any(|(_, a)| matches!(a, NightAction::EatVote { .. }));
         match self.visit(newbie, target) {
             Visit::Success => match self.role(target).expect("a visited player is in the game") {
                 Role::Hunter => {
@@ -704,7 +793,11 @@ impl Night<'_, '_> {
                     self.tell(target, NightNote::CultHunterKilledCultVisit(newbie, left));
                 }
                 r if is_wolf(r) => {
-                    let home = if r == Role::SnowWolf { !self.went_out(target) } else { !wolves_went_out };
+                    let home = if r == Role::SnowWolf {
+                        !self.went_out(target)
+                    } else {
+                        !wolves_went_out
+                    };
                     if home {
                         self.kill(newbie, KillMethod::VisitWolf, Some(target), Some(Role::Wolf), true);
                         let cult = self.vote_cult();
@@ -733,7 +826,9 @@ impl Night<'_, '_> {
             Visit::VisitorDied => {
                 let cult = self.vote_cult();
                 match self.role(target) {
-                    Some(Role::SerialKiller) => self.tell_all(&cult, NightNote::CultConvertSerialKiller(newbie, target)),
+                    Some(Role::SerialKiller) => {
+                        self.tell_all(&cult, NightNote::CultConvertSerialKiller(newbie, target))
+                    }
                     Some(Role::GraveDigger) => self.tell_all(&cult, NightNote::CultConvertGraveDigger(newbie, target)),
                     _ => {}
                 }
@@ -759,12 +854,16 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:3792-3838.
     fn chemist(&mut self) {
-        let Some(chemist) = self.first_living(Role::Chemist) else { return };
+        let Some(chemist) = self.first_living(Role::Chemist) else {
+            return;
+        };
         let target = self.acts(chemist).find_map(|a| match a {
             NightAction::Chemistry { target, .. } => Some(target),
             _ => None,
         });
-        let Some(target) = target.filter(|_| self.not_frozen(chemist)) else { return };
+        let Some(target) = target.filter(|_| self.not_frozen(chemist)) else {
+            return;
+        };
         match self.visit(chemist, target) {
             Visit::Success => {
                 // Brewing starts over (Werewolf.cs:3802, 5260-5270).
@@ -774,7 +873,13 @@ impl Night<'_, '_> {
                     self.tell(target, NightNote::ChemistVisitYouSuccess);
                     self.tell(chemist, NightNote::ChemistSuccess(target));
                 } else {
-                    self.kill(chemist, KillMethod::Chemistry, Some(chemist), Some(Role::Chemist), false);
+                    self.kill(
+                        chemist,
+                        KillMethod::Chemistry,
+                        Some(chemist),
+                        Some(Role::Chemist),
+                        false,
+                    );
                     self.tell(target, NightNote::ChemistVisitYouFail(chemist));
                     self.tell(chemist, NightNote::ChemistFail(target));
                 }
@@ -795,17 +900,25 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:3843-3918.
     fn harlot(&mut self) {
-        let Some(harlot) = self.first_living(Role::Harlot) else { return };
+        let Some(harlot) = self.first_living(Role::Harlot) else {
+            return;
+        };
         let target = self.acts(harlot).find_map(|a| match a {
             NightAction::Visit { target, .. } => Some(target),
             _ => None,
         });
-        let Some(target) = target.filter(|_| self.not_frozen(harlot)) else { return };
+        let Some(target) = target.filter(|_| self.not_frozen(harlot)) else {
+            return;
+        };
         match self.visit(harlot, target) {
             Visit::Success => {
                 let discovered =
                     self.role(target) == Some(Role::Cultist) && self.roll(HARLOT_DISCOVER_CULT_CHANCE_PERCENT);
-                let note = if discovered { NightNote::HarlotDiscoverCult(target) } else { NightNote::HarlotVisitNonWolf(target) };
+                let note = if discovered {
+                    NightNote::HarlotDiscoverCult(target)
+                } else {
+                    NightNote::HarlotVisitNonWolf(target)
+                };
                 self.tell(harlot, note);
                 if !self.is_dead(target) {
                     self.tell(target, NightNote::HarlotVisitYou);
@@ -826,7 +939,11 @@ impl Night<'_, '_> {
                 // outright gets her killed too (Werewolf.cs:3893-3897).
                 let host = self.deaths.iter().find(|d| d.victim == target).copied();
                 match host {
-                    Some(d) if !d.by_visiting && d.killed_by.is_some_and(|r| is_eating_wolf(r) || r == Role::SerialKiller) => {
+                    Some(d)
+                        if !d.by_visiting
+                            && d.killed_by
+                                .is_some_and(|r| is_eating_wolf(r) || r == Role::SerialKiller) =>
+                    {
                         self.kill(harlot, KillMethod::VisitVictim, Some(target), d.killed_by, true);
                     }
                     _ => self.tell(harlot, NightNote::HarlotVisitNotHome(target)),
@@ -880,7 +997,9 @@ impl Night<'_, '_> {
 
     /// Werewolf.cs:4132-4190.
     fn thief(&mut self) {
-        let Some(thief) = self.first_living(Role::Thief) else { return };
+        let Some(thief) = self.first_living(Role::Thief) else {
+            return;
+        };
         let picked = self.acts(thief).find_map(|a| match a {
             NightAction::StealRole { target, .. } => Some(target),
             _ => None,
@@ -904,7 +1023,9 @@ impl Night<'_, '_> {
             }
             return;
         }
-        let Some(target) = picked.filter(|_| self.not_frozen(thief)) else { return };
+        let Some(target) = picked.filter(|_| self.not_frozen(thief)) else {
+            return;
+        };
         match self.visit(thief, target) {
             Visit::Success => {
                 let lands = self.roll(THIEF_STEAL_CHANCE_PERCENT);
@@ -947,11 +1068,19 @@ impl Night<'_, '_> {
             return;
         }
         let Some(stolen) = self.role(target) else { return };
-        let victim_becomes = if self.input.thief_full { Role::Thief } else { Role::Villager };
+        let victim_becomes = if self.input.thief_full {
+            Role::Thief
+        } else {
+            Role::Villager
+        };
         self.transform(target, victim_becomes, Cause::ThiefStolen);
         self.note(thief, Note::ThiefStoleRole { target });
         self.transform(thief, stolen, Cause::ThiefSteal { from: target });
-        let robbed = if self.input.thief_full { Note::ThiefStoleYourRoleThief } else { Note::ThiefStoleYourRoleVillager };
+        let robbed = if self.input.thief_full {
+            Note::ThiefStoleYourRoleThief
+        } else {
+            Note::ThiefStoleYourRoleVillager
+        };
         self.note(target, robbed);
         let taken = self.states.remove(&target).unwrap_or_default();
         self.states.insert(thief, taken);
@@ -1032,7 +1161,14 @@ mod tests {
 
     fn scene(roles: &[Role]) -> Scene {
         Scene {
-            alive: roles.iter().enumerate().map(|(i, &role)| AlivePlayer { id: PlayerId(i as u64 + 1), role }).collect(),
+            alive: roles
+                .iter()
+                .enumerate()
+                .map(|(i, &role)| AlivePlayer {
+                    id: PlayerId(i as u64 + 1),
+                    role,
+                })
+                .collect(),
             actions: vec![],
             cub: vec![],
             night: 1,
@@ -1110,7 +1246,9 @@ mod tests {
 
     #[test]
     fn a_tied_wolf_vote_goes_to_whoever_is_listed_first() {
-        let mut s = scene(&[Role::Wolf, Role::Wolf, Role::Villager, Role::Villager]).eat(P1, P4).eat(P2, P3);
+        let mut s = scene(&[Role::Wolf, Role::Wolf, Role::Villager, Role::Villager])
+            .eat(P1, P4)
+            .eat(P2, P3);
         let out = s.run(&mut rolls(&[Pick(0)]));
         assert_eq!(deaths(&out), vec![(P3, KillMethod::Eat)]);
         assert_eq!(notes(&out, P3), vec![night(NightNote::WolvesEatYou)]);
@@ -1134,7 +1272,10 @@ mod tests {
         s.cub = vec![(P1, P3)];
         let out = s.run(&mut rolls(&[Pick(0)]));
         assert_eq!(deaths(&out), vec![(P2, KillMethod::Eat)]);
-        assert_eq!(notes(&out, P1), vec![night(NightNote::WolvesEatDrunkBlockSecondKill(P2, P3))]);
+        assert_eq!(
+            notes(&out, P1),
+            vec![night(NightNote::WolvesEatDrunkBlockSecondKill(P2, P3))]
+        );
         assert_eq!(s.memory.drunk, vec![P1]);
     }
 
@@ -1159,7 +1300,9 @@ mod tests {
 
     #[test]
     fn the_alpha_wolf_bites_instead_of_killing() {
-        let mut s = scene(&[Role::AlphaWolf, Role::Wolf, Role::Villager, Role::Villager]).eat(P1, P3).eat(P2, P3);
+        let mut s = scene(&[Role::AlphaWolf, Role::Wolf, Role::Villager, Role::Villager])
+            .eat(P1, P3)
+            .eat(P2, P3);
         let out = s.run(&mut rolls(&[Pick(1), Chance(true)]));
         assert_eq!(deaths(&out), vec![]);
         assert_eq!(out.bitten, vec![P3]);
@@ -1172,7 +1315,9 @@ mod tests {
         let out = s.run(&mut rolls(&[Pick(0), Chance(true), Pick(0)]));
         assert_eq!(deaths(&out), vec![(P1, KillMethod::HunterShot)]);
 
-        let mut s = scene(&[Role::Wolf, Role::Wolf, Role::Hunter, Role::Villager]).eat(P1, P3).eat(P2, P3);
+        let mut s = scene(&[Role::Wolf, Role::Wolf, Role::Hunter, Role::Villager])
+            .eat(P1, P3)
+            .eat(P2, P3);
         let out = s.run(&mut rolls(&[Pick(0), Chance(true), Pick(1)]));
         assert_eq!(deaths(&out), vec![(P3, KillMethod::Eat), (P2, KillMethod::HunterShot)]);
     }
@@ -1183,14 +1328,21 @@ mod tests {
             .eat(P1, P2)
             .act(P2, NightAction::SerialKillVote { target: P3 });
         let out = s.run(&mut rolls(&[Pick(0), Chance(true)]));
-        assert_eq!(deaths(&out), vec![(P1, KillMethod::VisitKiller), (P3, KillMethod::SerialKilled)]);
+        assert_eq!(
+            deaths(&out),
+            vec![(P1, KillMethod::VisitKiller), (P3, KillMethod::SerialKilled)]
+        );
     }
 
     #[test]
     fn a_harlot_who_went_out_is_not_home_for_the_wolves() {
-        let mut s = scene(&[Role::Wolf, Role::Harlot, Role::Villager])
-            .eat(P1, P2)
-            .act(P2, NightAction::Visit { visitor: P2, target: P3 });
+        let mut s = scene(&[Role::Wolf, Role::Harlot, Role::Villager]).eat(P1, P2).act(
+            P2,
+            NightAction::Visit {
+                visitor: P2,
+                target: P3,
+            },
+        );
         let out = s.run(&mut rolls(&[Pick(0)]));
         assert_eq!(deaths(&out), vec![]);
         assert_eq!(notes(&out, P1), vec![night(NightNote::HarlotNotHome(P2))]);
@@ -1199,12 +1351,20 @@ mod tests {
 
     #[test]
     fn wolves_can_fall_into_a_grave_or_spot_the_digger() {
-        let mut s = scene(&[Role::Wolf, Role::Wolf, Role::GraveDigger, Role::Villager]).eat(P1, P3).eat(P2, P3);
+        let mut s = scene(&[Role::Wolf, Role::Wolf, Role::GraveDigger, Role::Villager])
+            .eat(P1, P3)
+            .eat(P2, P3);
         s.dug = 2;
         let out = s.run(&mut rolls(&[Pick(0), Chance(true), Chance(false)]));
         assert_eq!(deaths(&out), vec![(P1, KillMethod::FallGrave)]);
         assert_eq!(notes(&out, P2), vec![night(NightNote::WolfFellWolves(P3, P1))]);
-        assert_eq!(notes(&out, P3), vec![Note::FellDigger { visitor: P1, by: DiggerVisitor::Wolf }]);
+        assert_eq!(
+            notes(&out, P3),
+            vec![Note::FellDigger {
+                visitor: P1,
+                by: DiggerVisitor::Wolf
+            }]
+        );
 
         let mut s = scene(&[Role::Wolf, Role::GraveDigger, Role::Villager]).eat(P1, P3);
         s.dug = 1;
@@ -1218,13 +1378,22 @@ mod tests {
 
     #[test]
     fn a_spark_burns_the_doused_and_the_guardian_angel_saves_one() {
-        let mut s = scene(&[Role::Arsonist, Role::GuardianAngel, Role::Villager, Role::Villager, Role::Wolf])
-            .act(P1, NightAction::Detonate)
-            .act(P2, NightAction::Protect { target: P3 })
-            .eat(P5, P4);
+        let mut s = scene(&[
+            Role::Arsonist,
+            Role::GuardianAngel,
+            Role::Villager,
+            Role::Villager,
+            Role::Wolf,
+        ])
+        .act(P1, NightAction::Detonate)
+        .act(P2, NightAction::Protect { target: P3 })
+        .eat(P5, P4);
         s.memory.doused = vec![P3, P4];
         let out = s.run(&mut rolls(&[Pick(0)]));
-        assert_eq!(deaths(&out), vec![(P4, KillMethod::Burn), (P5, KillMethod::VisitBurning)]);
+        assert_eq!(
+            deaths(&out),
+            vec![(P4, KillMethod::Burn), (P5, KillMethod::VisitBurning)]
+        );
         assert_eq!(notes(&out, P4), vec![night(NightNote::Burn)]);
         assert_eq!(notes(&out, P2), vec![night(NightNote::GuardSavedFromFire(P3))]);
         assert!(s.memory.doused.is_empty());
@@ -1232,8 +1401,8 @@ mod tests {
 
     #[test]
     fn the_guardian_angel_cleans_kerosene_off_a_quiet_charge() {
-        let mut s = scene(&[Role::Arsonist, Role::GuardianAngel, Role::Villager])
-            .act(P2, NightAction::Protect { target: P3 });
+        let mut s =
+            scene(&[Role::Arsonist, Role::GuardianAngel, Role::Villager]).act(P2, NightAction::Protect { target: P3 });
         s.memory.doused = vec![P3];
         let out = s.run(&mut rolls(&[]));
         assert_eq!(notes(&out, P2), vec![night(NightNote::CleanDoused(P3))]);
@@ -1283,18 +1452,26 @@ mod tests {
         let out = s.run(&mut rolls(&[]));
         assert_eq!(deaths(&out), vec![(P2, KillMethod::Hunt)]);
         assert_eq!(notes(&out, P1), vec![night(NightNote::CultConvertCultHunter(P2, P3))]);
-        assert_eq!(notes(&out, P3), vec![night(NightNote::CultHunterKilledCultVisit(P2, 1))]);
+        assert_eq!(
+            notes(&out, P3),
+            vec![night(NightNote::CultHunterKilledCultVisit(P2, 1))]
+        );
     }
 
     #[test]
     fn a_role_that_resists_is_told_about_the_attempt() {
-        let mut s = scene(&[Role::Cultist, Role::Seer, Role::Villager]).act(P1, NightAction::ConvertVote { target: P2 });
+        let mut s =
+            scene(&[Role::Cultist, Role::Seer, Role::Villager]).act(P1, NightAction::ConvertVote { target: P2 });
         let out = s.run(&mut rolls(&[Chance(false)]));
         assert_eq!(notes(&out, P1), vec![night(NightNote::CultUnableToConvert(P1, P2))]);
         assert_eq!(notes(&out, P2), vec![night(NightNote::CultAttempt)]);
         let out = s.run(&mut rolls(&[Chance(true)]));
         assert_eq!(s.role(P2), Role::Cultist);
-        assert!(out.events.contains(&NarrationEvent::Transform { player: P2, from: Role::Seer, to: Role::Cultist }));
+        assert!(out.events.contains(&NarrationEvent::Transform {
+            player: P2,
+            from: Role::Seer,
+            to: Role::Cultist
+        }));
         assert_eq!(s.memory.cult_joined.get(&P2), Some(&1));
     }
 
@@ -1312,7 +1489,8 @@ mod tests {
         let out = s.run(&mut rolls(&[Pick(0)]));
         assert_eq!(notes(&out, P1), vec![night(NightNote::CultVisitEmpty(P1, P2))]);
 
-        let mut s = scene(&[Role::Cultist, Role::Wolf, Role::Villager]).act(P1, NightAction::ConvertVote { target: P2 });
+        let mut s =
+            scene(&[Role::Cultist, Role::Wolf, Role::Villager]).act(P1, NightAction::ConvertVote { target: P2 });
         let out = s.run(&mut rolls(&[]));
         assert_eq!(deaths(&out), vec![(P1, KillMethod::VisitWolf)]);
         assert_eq!(notes(&out, P2), vec![night(NightNote::CultAttempt)]);
@@ -1322,9 +1500,18 @@ mod tests {
 
     #[test]
     fn the_chemist_kills_or_dies_and_brews_again() {
-        let chemistry = NightAction::Chemistry { chemist: P1, target: P2 };
+        let chemistry = NightAction::Chemistry {
+            chemist: P1,
+            target: P2,
+        };
         let mut s = scene(&[Role::Chemist, Role::Villager, Role::Wolf]).act(P1, chemistry);
-        s.states.insert(P1, RoleState { primary_used: true, ..RoleState::default() });
+        s.states.insert(
+            P1,
+            RoleState {
+                primary_used: true,
+                ..RoleState::default()
+            },
+        );
         let out = s.run(&mut rolls(&[Chance(true)]));
         assert_eq!(deaths(&out), vec![(P2, KillMethod::Chemistry)]);
         assert_eq!(notes(&out, P1), vec![night(NightNote::ChemistSuccess(P2))]);
@@ -1339,8 +1526,20 @@ mod tests {
     #[test]
     fn the_chemist_finds_an_empty_house() {
         let mut s = scene(&[Role::Chemist, Role::Harlot, Role::Villager])
-            .act(P1, NightAction::Chemistry { chemist: P1, target: P2 })
-            .act(P2, NightAction::Visit { visitor: P2, target: P3 });
+            .act(
+                P1,
+                NightAction::Chemistry {
+                    chemist: P1,
+                    target: P2,
+                },
+            )
+            .act(
+                P2,
+                NightAction::Visit {
+                    visitor: P2,
+                    target: P3,
+                },
+            );
         let out = s.run(&mut rolls(&[]));
         assert_eq!(notes(&out, P1), vec![night(NightNote::ChemistTargetEmpty(P2))]);
     }
@@ -1349,9 +1548,13 @@ mod tests {
 
     #[test]
     fn a_harlot_visiting_the_wolves_victim_dies_with_them() {
-        let mut s = scene(&[Role::Wolf, Role::Harlot, Role::Villager])
-            .eat(P1, P3)
-            .act(P2, NightAction::Visit { visitor: P2, target: P3 });
+        let mut s = scene(&[Role::Wolf, Role::Harlot, Role::Villager]).eat(P1, P3).act(
+            P2,
+            NightAction::Visit {
+                visitor: P2,
+                target: P3,
+            },
+        );
         let out = s.run(&mut rolls(&[Pick(0)]));
         assert_eq!(deaths(&out), vec![(P3, KillMethod::Eat), (P2, KillMethod::VisitVictim)]);
         assert_eq!(out.deaths[1].by, Some(P3));
@@ -1359,7 +1562,13 @@ mod tests {
 
     #[test]
     fn a_harlot_visiting_a_wolf_dies() {
-        let mut s = scene(&[Role::Wolf, Role::Harlot, Role::Villager]).act(P2, NightAction::Visit { visitor: P2, target: P1 });
+        let mut s = scene(&[Role::Wolf, Role::Harlot, Role::Villager]).act(
+            P2,
+            NightAction::Visit {
+                visitor: P2,
+                target: P1,
+            },
+        );
         let out = s.run(&mut rolls(&[]));
         assert_eq!(deaths(&out), vec![(P2, KillMethod::VisitWolf)]);
         assert_eq!(notes(&out, P2), vec![night(NightNote::HarlotFuckWolf(P1))]);
@@ -1367,7 +1576,13 @@ mod tests {
 
     #[test]
     fn a_harlot_may_discover_a_cultist() {
-        let mut s = scene(&[Role::Cultist, Role::Harlot, Role::Villager]).act(P2, NightAction::Visit { visitor: P2, target: P1 });
+        let mut s = scene(&[Role::Cultist, Role::Harlot, Role::Villager]).act(
+            P2,
+            NightAction::Visit {
+                visitor: P2,
+                target: P1,
+            },
+        );
         let out = s.run(&mut rolls(&[Chance(true)]));
         assert_eq!(notes(&out, P2), vec![night(NightNote::HarlotDiscoverCult(P1))]);
         assert_eq!(notes(&out, P1), vec![night(NightNote::HarlotVisitYou)]);
@@ -1377,11 +1592,13 @@ mod tests {
 
     #[test]
     fn a_guardian_angel_guarding_an_unattacked_wolf_may_die() {
-        let mut s = scene(&[Role::Wolf, Role::GuardianAngel, Role::Villager]).act(P2, NightAction::Protect { target: P1 });
+        let mut s =
+            scene(&[Role::Wolf, Role::GuardianAngel, Role::Villager]).act(P2, NightAction::Protect { target: P1 });
         let out = s.run(&mut rolls(&[Chance(true)]));
         assert_eq!(deaths(&out), vec![(P2, KillMethod::GuardWolf)]);
         assert_eq!(notes(&out, P2), vec![night(NightNote::GuardWolf)]);
-        let mut s = scene(&[Role::Wolf, Role::GuardianAngel, Role::Villager]).act(P2, NightAction::Protect { target: P1 });
+        let mut s =
+            scene(&[Role::Wolf, Role::GuardianAngel, Role::Villager]).act(P2, NightAction::Protect { target: P1 });
         let out = s.run(&mut rolls(&[Chance(false)]));
         assert_eq!(notes(&out, P2), vec![night(NightNote::GuardNoAttack(P1))]);
     }
@@ -1390,7 +1607,13 @@ mod tests {
     fn a_guardian_angel_finds_a_harlot_out() {
         let mut s = scene(&[Role::GuardianAngel, Role::Harlot, Role::Villager])
             .act(P1, NightAction::Protect { target: P2 })
-            .act(P2, NightAction::Visit { visitor: P2, target: P3 });
+            .act(
+                P2,
+                NightAction::Visit {
+                    visitor: P2,
+                    target: P3,
+                },
+            );
         let out = s.run(&mut rolls(&[]));
         assert_eq!(notes(&out, P1), vec![night(NightNote::GuardEmptyHouse(P2))]);
     }
@@ -1438,7 +1661,10 @@ mod tests {
 
         let mut s = scene(&[Role::CultistHunter, Role::SerialKiller]).act(P1, NightAction::Investigate { target: P2 });
         let out = s.run(&mut rolls(&[]));
-        assert_eq!((deaths(&out), notes(&out, P1)), (vec![(P1, KillMethod::VisitKiller)], vec![]));
+        assert_eq!(
+            (deaths(&out), notes(&out, P1)),
+            (vec![(P1, KillMethod::VisitKiller)], vec![])
+        );
     }
 
     #[test]
@@ -1448,14 +1674,26 @@ mod tests {
         let out = s.run(&mut rolls(&[Chance(true)]));
         assert_eq!(deaths(&out), vec![(P1, KillMethod::FallGrave)]);
         assert_eq!(notes(&out, P1), vec![Note::ThiefFell { target: P2 }]);
-        assert_eq!(notes(&out, P2), vec![Note::FellDigger { visitor: P1, by: DiggerVisitor::Thief }]);
+        assert_eq!(
+            notes(&out, P2),
+            vec![Note::FellDigger {
+                visitor: P1,
+                by: DiggerVisitor::Thief
+            }]
+        );
     }
 
     #[test]
     fn the_plain_thief_picks_someone_at_random_when_they_chose_nobody() {
         let mut s = scene(&[Role::Thief, Role::Seer, Role::Villager]);
         let out = s.run(&mut rolls(&[Pick(0)]));
-        assert_eq!(notes(&out, P1)[..2], [Note::ThiefStealChosen { target: P2 }, Note::ThiefStoleRole { target: P2 }]);
+        assert_eq!(
+            notes(&out, P1)[..2],
+            [
+                Note::ThiefStealChosen { target: P2 },
+                Note::ThiefStoleRole { target: P2 }
+            ]
+        );
         assert_eq!(s.role(P2), Role::Villager);
     }
 

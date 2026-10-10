@@ -48,7 +48,10 @@ fn every_shipped_file_and_base_has_its_own_id() {
         ids.dedup();
         ids.len() == names.len()
     };
-    assert!(distinct(files.iter().map(|f| f.file_name.as_str()).collect()), "two file names share an id");
+    assert!(
+        distinct(files.iter().map(|f| f.file_name.as_str()).collect()),
+        "two file names share an id"
+    );
     assert!(distinct(admin::bases(&files)), "two bases share an id");
     let singapore = admin::file_by_id(&files, LanguageId::of("Singapore (Public Housing Version)"));
     assert!(singapore.is_some());
@@ -110,7 +113,9 @@ fn installing_over_another_languages_base_and_variant_is_refused() {
 
     let installed = admin::install(&upload, &dir).unwrap();
     assert_eq!(installed.path, None);
-    assert!(installed.log.ends_with("Found duplicate language (matching base and variant) with filename Deutsch\nAborting!"));
+    assert!(installed
+        .log
+        .ends_with("Found duplicate language (matching base and variant) with filename Deutsch\nAborting!"));
     assert!(!dir.join("Other.xml").exists());
     fs::remove_dir_all(dir).unwrap();
 }
