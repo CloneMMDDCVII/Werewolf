@@ -1,9 +1,12 @@
 //! `features/group_config.feature`, one test per scenario (named after
 //! it), driving `control::group_config` the way a presenter would:
-//! commands and button presses in, screens out.
+//! commands and button presses in, screens out. Menu logic runs against
+//! settings held in the test; the persistence scenarios go through a real
+//! (in-memory SQLite) `db::Store`.
 
 use control::group_config::*;
 use control::lobby::{Candidate, ExtendError, Lobby};
+use db::Store;
 use game_engine::rng::SeededRngSource;
 use shared::{GameMode, Role};
 
@@ -21,20 +24,22 @@ fn group_chat(title: &str) -> CommandChat {
     CommandChat { chat_id: GROUP, title: title.to_string(), is_group: true }
 }
 
-/// A store with the group already set up by an admin's `/config`.
-fn configured() -> InMemoryGroupSettingsStore {
-    let mut store = InMemoryGroupSettingsStore::default();
-    config_command(&mut store, &group_chat("Village Square"), admin());
-    store
+/// One group's settings as the menu sees them: `None` until `/config`
+/// has recorded the group.
+struct Group(Option<GroupSettings>);
+
+/// A group already set up by an admin's `/config`.
+fn configured() -> Group {
+    Group(Some(GroupSettings::default()))
 }
 
-fn press(store: &mut InMemoryGroupSettingsStore, callback: Callback) -> CallbackOutcome {
+fn press(store: &mut Group, callback: Callback) -> CallbackOutcome {
     press_as(store, callback, admin())
 }
 
-fn press_as(store: &mut InMemoryGroupSettingsStore, callback: Callback, actor: Actor) -> CallbackOutcome {
+fn press_as(store: &mut Group, callback: Callback, actor: Actor) -> CallbackOutcome {
     let mut rng = SeededRngSource::new(7);
-    handle_callback(store, ConfigAction { group_id: GROUP, callback }, actor, &mut rng)
+    handle_callback(store.0.as_mut(), ConfigAction { group_id: GROUP, callback }, actor, &mut rng)
 }
 
 fn screen(outcome: &CallbackOutcome) -> &Screen {
@@ -52,8 +57,8 @@ fn notice(outcome: &CallbackOutcome) -> &Notice {
     }
 }
 
-fn settings(store: &InMemoryGroupSettingsStore) -> GroupSettings {
-    store.get(GROUP).expect("group should have settings")
+fn settings(store: &Group) -> GroupSettings {
+    store.0.clone().expect("group should have settings")
 }
 
 fn labels(screen: &Screen) -> Vec<Vec<String>> {
@@ -87,16 +92,17 @@ fn last_button(screen: &Screen) -> &Button {
 }
 
 fn is_submenu(screen: &Screen, submenu: Submenu) -> bool {
-    let expected = submenu_screen(GROUP, &GroupSettings::new("x"), submenu);
+    let expected = submenu_screen(GROUP, &GroupSettings::default(), submenu);
     labels(screen) == labels(&expected) && screen.message == expected.message
 }
 
 // ---------- Defaults and the settings model ----------
 
-#[test]
-fn a_group_that_has_never_been_configured_gets_the_legacy_defaults() {
-    let store = configured();
-    let s = settings(&store);
+#[tokio::test]
+async fn a_group_that_has_never_been_configured_gets_the_legacy_defaults() {
+    let db = Store::in_memory().await.unwrap();
+    run_config_command(&db, &group_chat("Village Square"), admin(), 1).await.unwrap();
+    let s = load_settings(&db, GROUP).await.unwrap().expect("/config records the group");
     assert_eq!(s.mode, ModeSetting::Player);
     assert_eq!(s.max_players, 35);
     assert_eq!((s.day_seconds, s.night_seconds, s.lynch_seconds), (60, 90, 90));
@@ -108,39 +114,40 @@ fn a_group_that_has_never_been_configured_gets_the_legacy_defaults() {
     }
     assert!(configurable_roles().all(|r| !s.is_role_disabled(r)));
     assert!(!s.roles_validated());
-    assert_eq!(s.name, "Village Square");
+    assert_eq!(db.groups().get(GROUP).await.unwrap().unwrap().name, "Village Square");
 }
 
-#[test]
-fn running_config_again_refreshes_the_groups_name_but_keeps_its_settings() {
-    let mut store = configured();
-    press(&mut store, Callback::SetMaxPlayers(20));
-    config_command(&mut store, &group_chat("Village Square II"), admin());
-    let s = settings(&store);
-    assert_eq!(s.name, "Village Square II");
-    assert_eq!(s.max_players, 20);
+#[tokio::test]
+async fn running_config_again_refreshes_the_groups_name_but_keeps_its_settings() {
+    let db = Store::in_memory().await.unwrap();
+    let mut rng = SeededRngSource::new(1);
+    run_config_command(&db, &group_chat("Village Square"), admin(), 1).await.unwrap();
+    let action = ConfigAction { group_id: GROUP, callback: Callback::SetMaxPlayers(20) };
+    run_callback(&db, action, admin(), &mut rng, 2).await.unwrap();
+    run_config_command(&db, &group_chat("Village Square II"), admin(), 3).await.unwrap();
+    assert_eq!(db.groups().get(GROUP).await.unwrap().unwrap().name, "Village Square II");
+    assert_eq!(load_settings(&db, GROUP).await.unwrap().unwrap().max_players, 20);
 }
 
 // ---------- Who can use it ----------
 
 #[test]
 fn config_only_works_inside_a_group() {
-    let mut store = InMemoryGroupSettingsStore::default();
     let chat = CommandChat { chat_id: 42, title: String::new(), is_group: false };
-    match config_command(&mut store, &chat, admin()) {
+    match config_command(&chat, admin()) {
         CommandOutcome::Refuse(m) => assert_eq!(m.key, "GroupCommandOnly"),
         other => panic!("{other:?}"),
     }
 }
 
-#[test]
-fn non_admins_cannot_open_the_config_menu() {
-    let mut store = InMemoryGroupSettingsStore::default();
-    match config_command(&mut store, &group_chat("Village Square"), member()) {
+#[tokio::test]
+async fn non_admins_cannot_open_the_config_menu() {
+    let db = Store::in_memory().await.unwrap();
+    match run_config_command(&db, &group_chat("Village Square"), member(), 1).await.unwrap() {
         CommandOutcome::Refuse(m) => assert_eq!(m.key, "GroupAdminOnly"),
         other => panic!("{other:?}"),
     }
-    assert!(store.get(GROUP).is_none());
+    assert!(load_settings(&db, GROUP).await.unwrap().is_none());
 }
 
 #[test]
@@ -166,9 +173,7 @@ fn global_admins_can_configure_any_group() {
 
 #[test]
 fn the_main_menu_is_sent_privately_to_the_admin() {
-    let mut store = InMemoryGroupSettingsStore::default();
-    let CommandOutcome::SendPrivately { menu, .. } = config_command(&mut store, &group_chat("Village Square"), admin())
-    else {
+    let CommandOutcome::SendPrivately { menu, .. } = config_command(&group_chat("Village Square"), admin()) else {
         panic!("expected the menu");
     };
     assert_eq!(menu.message.key, "WhatToDo");
@@ -180,10 +185,7 @@ fn the_main_menu_is_sent_privately_to_the_admin() {
 
 #[test]
 fn if_the_bot_cannot_message_the_admin_privately_the_group_is_asked_to_start_a_pm() {
-    let mut store = InMemoryGroupSettingsStore::default();
-    let CommandOutcome::SendPrivately { fallback, .. } =
-        config_command(&mut store, &group_chat("Village Square"), admin())
-    else {
+    let CommandOutcome::SendPrivately { fallback, .. } = config_command(&group_chat("Village Square"), admin()) else {
         panic!("expected the menu");
     };
     assert_eq!(fallback.message.key, "StartMe");
@@ -333,7 +335,7 @@ fn the_day_timer_keeps_the_legacy_60_second_offset_between_stored_and_shown_valu
 
 #[test]
 fn the_game_mode_setting_decides_which_modes_a_game_can_start_in() {
-    let mut s = GroupSettings::new("g");
+    let mut s = GroupSettings::default();
     s.mode = ModeSetting::Normal;
     assert_eq!(Lobby::from_group_settings(&s, GameMode::Chaos).game_mode(), GameMode::Normal);
     s.mode = ModeSetting::Player;
@@ -421,7 +423,7 @@ fn validation_fails_when_some_player_count_cannot_be_balanced() {
 
 #[test]
 fn disabled_roles_only_affect_games_once_validated() {
-    let mut s = GroupSettings::new("g");
+    let mut s = GroupSettings::default();
     s.toggle_role(Role::Seer);
     assert!(Lobby::from_group_settings(&s, GameMode::Normal).disabled_roles().is_empty());
     assert!(s.validate_roles(&mut SeededRngSource::new(1)));
@@ -444,7 +446,7 @@ fn raising_max_players_clears_validation_lowering_it_does_not() {
 
 #[test]
 fn settings_the_ported_lobby_already_understands_come_from_the_group() {
-    let mut s = GroupSettings::new("g");
+    let mut s = GroupSettings::default();
     s.set_max_players(20);
     s.max_extend_seconds = 120;
     s.set(Toggle::BurningOverkill, true);
@@ -462,7 +464,7 @@ fn settings_the_ported_lobby_already_understands_come_from_the_group() {
 
 #[test]
 fn disallowing_extend_blocks_extend_for_non_admins() {
-    let s = GroupSettings::new("g");
+    let s = GroupSettings::default();
     assert!(!s.is_on(Toggle::AllowExtend), "legacy default is off");
     let mut lobby = Lobby::from_group_settings(&s, GameMode::Normal);
     lobby.join(Candidate { telegram_id: 1, name: "Alice".into() }).unwrap();
@@ -472,7 +474,7 @@ fn disallowing_extend_blocks_extend_for_non_admins() {
 
 #[test]
 fn disallowing_flee_blocks_flee_once_the_game_is_running() {
-    let mut s = GroupSettings::new("g");
+    let mut s = GroupSettings::default();
     assert!(s.flee_allowed_while_running());
     s.set(Toggle::AllowFlee, false);
     assert!(!s.flee_allowed_while_running());
@@ -483,7 +485,7 @@ fn disallowing_flee_blocks_flee_once_the_game_is_running() {
 
 #[test]
 fn every_button_on_every_screen_round_trips_through_callback_data() {
-    let mut s = GroupSettings::new("g");
+    let mut s = GroupSettings::default();
     s.toggle_role(Role::Seer);
     let mut screens = vec![main_menu(GROUP), role_menu(GROUP, &s)];
     for submenu in Submenu::ALL {
@@ -510,8 +512,42 @@ fn every_locale_key_the_menu_uses_exists_in_english_xml() {
     assert!(missing.is_empty(), "missing from English.xml: {missing:?}");
 }
 
+#[tokio::test]
+async fn presses_for_a_group_that_never_ran_config_are_ignored() {
+    let db = Store::in_memory().await.unwrap();
+    let mut rng = SeededRngSource::new(1);
+    let action = ConfigAction { group_id: GROUP, callback: Callback::OpenSubmenu(Submenu::Timers) };
+    assert_eq!(run_callback(&db, action, admin(), &mut rng, 1).await.unwrap(), CallbackOutcome::Ignore);
+    let done = ConfigAction { group_id: GROUP, callback: Callback::Done };
+    assert!(matches!(run_callback(&db, done, admin(), &mut rng, 1).await.unwrap(), CallbackOutcome::Show { .. }));
+}
+
+#[tokio::test]
+async fn changed_settings_survive_a_reload_and_role_validation_is_kept() {
+    let db = Store::in_memory().await.unwrap();
+    let mut rng = SeededRngSource::new(1);
+    run_config_command(&db, &group_chat("Village Square"), admin(), 1).await.unwrap();
+    for callback in [
+        Callback::SetToggle(Toggle::AllowExtend, true),
+        Callback::SetNightTimer(60),
+        Callback::ToggleRole(Role::Seer),
+        Callback::ValidateRoles,
+    ] {
+        run_callback(&db, ConfigAction { group_id: GROUP, callback }, admin(), &mut rng, 2).await.unwrap();
+    }
+    let s = load_settings(&db, GROUP).await.unwrap().unwrap();
+    assert!(s.is_on(Toggle::AllowExtend));
+    assert_eq!(s.night_seconds, 60);
+    assert!(s.is_role_disabled(Role::Seer));
+    assert!(s.roles_validated());
+}
+
 #[test]
-fn presses_for_a_group_that_never_ran_config_are_ignored() {
-    let mut store = InMemoryGroupSettingsStore::default();
-    assert_eq!(press(&mut store, Callback::OpenSubmenu(Submenu::Timers)), CallbackOutcome::Ignore);
+fn a_stored_document_missing_newer_settings_reads_back_with_their_defaults() {
+    let stored = serde_json::json!({ "max_players": 20, "enabled": ["AllowExtend"] });
+    let s: GroupSettings = serde_json::from_value(stored).unwrap();
+    assert_eq!(s.max_players, 20);
+    assert!(s.is_on(Toggle::AllowExtend));
+    assert_eq!(s.night_seconds, 90);
+    assert_eq!(s.mode, ModeSetting::Player);
 }

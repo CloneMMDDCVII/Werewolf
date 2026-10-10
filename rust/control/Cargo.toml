@@ -8,5 +8,10 @@ shared = { path = "../shared" }
 game-engine = { path = "../game-engine" }
 i18n = { path = "../i18n" }
 moderation = { path = "../moderation" }
+db = { path = "../db" }
+serde.workspace = true
 tokio.workspace = true
 sysinfo.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

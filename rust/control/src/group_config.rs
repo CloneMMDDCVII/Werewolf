@@ -12,7 +12,9 @@
 //!   roles a plain set of [`Role`]s. Decoding legacy rows belongs with the
 //!   database migration.
 //! - The menu: [`config_command`] answers `/config`, [`handle_callback`]
-//!   answers a button press. Both return [`Screen`]s (a locale key, its
+//!   answers a button press. Both are pure; [`run_config_command`] and
+//!   [`run_callback`] wrap them with loading and saving through
+//!   `db::Store`, where settings live as one JSON document per group. Both return [`Screen`]s (a locale key, its
 //!   arguments, and typed buttons) rather than Telegram markup, so the
 //!   engine-never-knows-about-Telegram rule holds here too. A presenter
 //!   renders a `Screen`; [`ConfigAction::encode`]/[`ConfigAction::decode`]
@@ -26,10 +28,12 @@
 //! reach them, and the node never reads them for balancing.
 
 use crate::lobby::{DEFAULT_MAX_EXTEND_SECONDS, DEFAULT_MAX_PLAYERS};
+use db::{DbResult, Store};
 use game_engine::balancing::balance;
 use game_engine::rng::RngSource;
+use serde::{Deserialize, Serialize};
 use shared::{GameMode, Role, ALL_ROLES};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 
 /// `Werewolf Control/Helpers/Settings.cs:112-114`.
 pub const DEFAULT_DAY_SECONDS: u32 = 60;
@@ -43,7 +47,7 @@ const VALIDATION_MIN_PLAYERS: usize = 5;
 /// `Group.Mode`: which game modes a group allows. `Player` lets whoever
 /// starts the game pick (`/startgame` vs `/startchaos`); the other two
 /// override that choice (`Werewolf.cs:204`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ModeSetting {
     Normal,
     Chaos,
@@ -83,7 +87,7 @@ impl ModeSetting {
 
 /// `Group.ShowRolesEnd`: which roles the end-of-game summary reveals
 /// (`Werewolf.cs:4906`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EndRoles {
     None,
     Living,
@@ -131,7 +135,7 @@ impl Wording {
 
 /// The editable yes/no settings (`GroupConfig.cs`), in the legacy enum
 /// order, which is also the order they appear in their submenu.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Toggle {
     EnableSecretLynch,
     RandomMode,
@@ -227,11 +231,13 @@ impl Toggle {
     }
 }
 
-/// One group's settings. Built with [`GroupSettings::new`], which applies
-/// the legacy defaults (`Helpers.cs::MakeDefaultGroup`, 210-235).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One group's settings. `Default` applies the legacy defaults
+/// (`Helpers.cs::MakeDefaultGroup`, 210-235); a stored document missing
+/// a field reads back with that field's default. The group's name lives
+/// on its `db` row, not here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GroupSettings {
-    pub name: String,
     pub mode: ModeSetting,
     pub max_players: u32,
     /// Stored as the legacy `DayTime` column: the menu shows this plus 60
@@ -249,10 +255,9 @@ pub struct GroupSettings {
     roles_validated: bool,
 }
 
-impl GroupSettings {
-    pub fn new(name: impl Into<String>) -> Self {
+impl Default for GroupSettings {
+    fn default() -> Self {
         GroupSettings {
-            name: name.into(),
             mode: ModeSetting::Player,
             max_players: DEFAULT_MAX_PLAYERS as u32,
             day_seconds: DEFAULT_DAY_SECONDS,
@@ -265,7 +270,9 @@ impl GroupSettings {
             roles_validated: false,
         }
     }
+}
 
+impl GroupSettings {
     pub fn is_on(&self, toggle: Toggle) -> bool {
         self.enabled.contains(&toggle)
     }
@@ -361,28 +368,6 @@ pub fn configurable_roles() -> impl Iterator<Item = Role> {
 
 fn is_configurable_role(role: Role) -> bool {
     role.emoji().is_some() && !matches!(role, Role::Villager | Role::Wolf | Role::Spumpkin)
-}
-
-/// Where settings live. The in-memory store is enough until the `db`
-/// crate has a real backend.
-pub trait GroupSettingsStore {
-    fn get(&self, group_id: i64) -> Option<GroupSettings>;
-    fn put(&mut self, group_id: i64, settings: GroupSettings);
-}
-
-#[derive(Debug, Default)]
-pub struct InMemoryGroupSettingsStore {
-    groups: HashMap<i64, GroupSettings>,
-}
-
-impl GroupSettingsStore for InMemoryGroupSettingsStore {
-    fn get(&self, group_id: i64) -> Option<GroupSettings> {
-        self.groups.get(&group_id).cloned()
-    }
-
-    fn put(&mut self, group_id: i64, settings: GroupSettings) {
-        self.groups.insert(group_id, settings);
-    }
 }
 
 // ---------- Menu model ----------
@@ -610,19 +595,55 @@ pub struct CommandChat {
 }
 
 /// `/config` (`AdminCommands.cs:66-100`, gated by `UpdateHandler.cs:428-440`).
-pub fn config_command(store: &mut dyn GroupSettingsStore, chat: &CommandChat, actor: Actor) -> CommandOutcome {
+/// On `SendPrivately` the caller records the group and its current name
+/// (the legacy command adds the group row and refreshes `Name`); see
+/// [`run_config_command`].
+pub fn config_command(chat: &CommandChat, actor: Actor) -> CommandOutcome {
     if !chat.is_group {
         return CommandOutcome::Refuse(Message::new("GroupCommandOnly"));
     }
     if !actor.can_configure {
         return CommandOutcome::Refuse(Message::new("GroupAdminOnly"));
     }
-
-    let mut settings = store.get(chat.chat_id).unwrap_or_else(|| GroupSettings::new(chat.title.clone()));
-    settings.name = chat.title.clone();
-    store.put(chat.chat_id, settings);
-
     CommandOutcome::SendPrivately { menu: main_menu(chat.chat_id), fallback: start_me_prompt() }
+}
+
+/// [`config_command`], recording the group in `store` when it succeeds.
+pub async fn run_config_command(store: &Store, chat: &CommandChat, actor: Actor, now: i64) -> DbResult<CommandOutcome> {
+    let outcome = config_command(chat, actor);
+    if matches!(outcome, CommandOutcome::SendPrivately { .. }) {
+        store.groups().upsert_name(chat.chat_id, &chat.title, now).await?;
+    }
+    Ok(outcome)
+}
+
+/// A group's settings, or `None` if the bot has never recorded the group.
+pub async fn load_settings(store: &Store, group_id: i64) -> DbResult<Option<GroupSettings>> {
+    if store.groups().get(group_id).await?.is_none() {
+        return Ok(None);
+    }
+    store.groups().settings::<GroupSettings>(group_id).await.map(Some)
+}
+
+/// [`handle_callback`] against the settings in `store`, saving them if
+/// the press changed anything.
+pub async fn run_callback(
+    store: &Store,
+    action: ConfigAction,
+    actor: Actor,
+    rng: &mut (dyn RngSource + Send),
+    now: i64,
+) -> DbResult<CallbackOutcome> {
+    let Some(record) = store.groups().get(action.group_id).await? else {
+        return Ok(handle_callback(None, action, actor, rng));
+    };
+    let mut settings = load_settings(store, action.group_id).await?.unwrap_or_default();
+    let before = settings.clone();
+    let outcome = handle_callback(Some(&mut settings), action, actor, rng);
+    if settings != before {
+        store.groups().put_settings(action.group_id, &record.name, &settings, now).await?;
+    }
+    Ok(outcome)
 }
 
 /// `Helpers.cs::RequestPM`.
@@ -634,8 +655,10 @@ pub fn start_me_prompt() -> Screen {
 }
 
 /// A button press (`UpdateHandler.cs:1026-1985`, config commands only).
+/// `settings` is `None` for a group the bot has no record of, which the
+/// legacy handler ignores.
 pub fn handle_callback(
-    store: &mut dyn GroupSettingsStore,
+    settings: Option<&mut GroupSettings>,
     action: ConfigAction,
     actor: Actor,
     rng: &mut dyn RngSource,
@@ -648,75 +671,72 @@ pub fn handle_callback(
         return show(Screen { message: Message::new("ThankYou"), rows: vec![] }, None);
     }
 
-    let Some(mut settings) = store.get(group_id) else {
+    let Some(settings) = settings else {
         return CallbackOutcome::Ignore;
     };
     if !actor.can_configure {
         return CallbackOutcome::Notify(Notice { message: Message::new("GroupAdminOnly"), alert: true });
     }
 
-    let outcome = match action.callback {
+    match action.callback {
         Callback::Done => unreachable!("handled above"),
         Callback::Nothing => CallbackOutcome::Ignore,
         Callback::BackToMain => show(main_menu(group_id), None),
-        Callback::OpenSubmenu(submenu) => show(submenu_screen(group_id, &settings, submenu), None),
-        Callback::Cancel(option) => show(submenu_screen(group_id, &settings, option.submenu()), None),
-        Callback::OpenOption(option) => show(option_screen(group_id, &settings, option), None),
+        Callback::OpenSubmenu(submenu) => show(submenu_screen(group_id, settings, submenu), None),
+        Callback::Cancel(option) => show(submenu_screen(group_id, settings, option.submenu()), None),
+        Callback::OpenOption(option) => show(option_screen(group_id, settings, option), None),
 
         Callback::SetMode(mode) => {
             settings.mode = mode;
-            confirm(group_id, &settings, ConfigOption::Mode, "GameModeA", Text::Raw(mode.legacy_name().into()))
+            confirm(group_id, settings, ConfigOption::Mode, "GameModeA", Text::Raw(mode.legacy_name().into()))
         }
         Callback::SetMaxPlayers(n) => {
             settings.set_max_players(n);
-            confirm(group_id, &settings, ConfigOption::MaxPlayer, "MaxPlayersA", raw_number(n))
+            confirm(group_id, settings, ConfigOption::MaxPlayer, "MaxPlayersA", raw_number(n))
         }
         Callback::SetEndRoles(end) => {
             settings.end_roles = end;
-            confirm(group_id, &settings, ConfigOption::EndRoles, "ShowRolesEndA", Text::Raw(end.legacy_name().into()))
+            confirm(group_id, settings, ConfigOption::EndRoles, "ShowRolesEndA", Text::Raw(end.legacy_name().into()))
         }
         Callback::SetMaxExtend(n) => {
             settings.max_extend_seconds = n;
-            confirm(group_id, &settings, ConfigOption::MaxExtend, "MaxExtendA", raw_number(n))
+            confirm(group_id, settings, ConfigOption::MaxExtend, "MaxExtendA", raw_number(n))
         }
         Callback::SetDayTimer(n) => {
             settings.day_seconds = n;
-            confirm(group_id, &settings, ConfigOption::DayTimer, "SetDayTimeA", raw_number(n + DAY_DISPLAY_OFFSET))
+            confirm(group_id, settings, ConfigOption::DayTimer, "SetDayTimeA", raw_number(n + DAY_DISPLAY_OFFSET))
         }
         Callback::SetNightTimer(n) => {
             settings.night_seconds = n;
-            confirm(group_id, &settings, ConfigOption::NightTimer, "SetNightTimeA", raw_number(n))
+            confirm(group_id, settings, ConfigOption::NightTimer, "SetNightTimeA", raw_number(n))
         }
         Callback::SetLynchTimer(n) => {
             settings.lynch_seconds = n;
-            confirm(group_id, &settings, ConfigOption::LynchTimer, "SetLynchTimeA", raw_number(n))
+            confirm(group_id, settings, ConfigOption::LynchTimer, "SetLynchTimeA", raw_number(n))
         }
         Callback::SetToggle(toggle, on) => {
             settings.set(toggle, on);
             let answer = answer_label(toggle, on);
-            confirm(group_id, &settings, ConfigOption::Toggle(toggle), &toggle.answer_key(), answer)
+            confirm(group_id, settings, ConfigOption::Toggle(toggle), &toggle.answer_key(), answer)
         }
 
         Callback::ToggleRole(role) => {
             settings.toggle_role(role);
-            show(role_menu(group_id, &settings), None)
+            show(role_menu(group_id, settings), None)
         }
         Callback::EnableAllRoles => {
             settings.enable_all_roles();
-            show(role_menu(group_id, &settings), None)
+            show(role_menu(group_id, settings), None)
         }
         Callback::DisableAllRoles => {
             settings.disable_all_roles();
-            show(role_menu(group_id, &settings), None)
+            show(role_menu(group_id, settings), None)
         }
         Callback::ValidateRoles => {
             let key = if settings.validate_roles(rng) { "RoleConfigValid" } else { "RoleConfigInvalid" };
-            show(role_menu(group_id, &settings), Some(Notice { message: Message::new(key), alert: true }))
+            show(role_menu(group_id, settings), Some(Notice { message: Message::new(key), alert: true }))
         }
-    };
-
-    store.put(group_id, settings);
-    outcome
+    }
 }
 
 fn show(screen: Screen, notice: Option<Notice>) -> CallbackOutcome {
