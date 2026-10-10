@@ -77,6 +77,9 @@ pub enum CommandOutcome {
     SendPrivately { menu: Screen, chat_notice: Option<Message>, fallback: Screen },
     /// Reply in the chat the command came from with this locale string.
     Refuse(Message),
+    /// Reply in that chat with this HTML text. For the few legacy commands
+    /// whose replies were hardcoded English rather than locale strings.
+    Reply(String),
 }
 
 /// The answer to a button press.

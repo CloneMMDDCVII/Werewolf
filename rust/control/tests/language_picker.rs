@@ -143,7 +143,7 @@ async fn picking_a_variant_sets_the_language() {
 #[tokio::test]
 async fn the_groups_language_is_a_config_option() {
     let store = Store::in_memory().await.unwrap();
-    let chat = CommandChat { chat_id: GROUP, title: "Village".into(), is_group: true };
+    let chat = CommandChat { chat_id: GROUP, title: "Village".into(), username: None, is_group: true };
     run_config_command(&store, &chat, admin(), 1).await.unwrap();
     let outcome = pick(&store, LanguageTarget::Group(GROUP), LanguageStep::OpenBases, admin()).await;
     assert_eq!(shown(&outcome).message, Message::with("WhatLang", vec![Text::Raw("English".into())]));
@@ -152,7 +152,7 @@ async fn the_groups_language_is_a_config_option() {
 #[tokio::test]
 async fn setting_the_groups_language_returns_to_the_config_menu() {
     let store = Store::in_memory().await.unwrap();
-    let chat = CommandChat { chat_id: GROUP, title: "Village".into(), is_group: true };
+    let chat = CommandChat { chat_id: GROUP, title: "Village".into(), username: None, is_group: true };
     run_config_command(&store, &chat, admin(), 1).await.unwrap();
     let outcome = pick(&store, LanguageTarget::Group(GROUP), LanguageStep::PickFile("English Star Wars".into()), admin()).await;
     assert_eq!(load_settings(&store, GROUP).await.unwrap().unwrap().language, "English Star Wars");
@@ -165,7 +165,7 @@ async fn setting_the_groups_language_returns_to_the_config_menu() {
 #[tokio::test]
 async fn non_admins_cannot_change_the_groups_language() {
     let store = Store::in_memory().await.unwrap();
-    let chat = CommandChat { chat_id: GROUP, title: "Village".into(), is_group: true };
+    let chat = CommandChat { chat_id: GROUP, title: "Village".into(), username: None, is_group: true };
     run_config_command(&store, &chat, admin(), 1).await.unwrap();
     let outcome = pick(&store, LanguageTarget::Group(GROUP), LanguageStep::PickFile("English Star Wars".into()), member()).await;
     assert_eq!(outcome, CallbackOutcome::Notify(Notice { message: Message::new("GroupAdminOnly"), alert: true }));

@@ -254,6 +254,9 @@ pub struct GroupSettings {
     pub lynch_seconds: u32,
     pub max_extend_seconds: u32,
     pub end_roles: EndRoles,
+    /// An invite link set with `/setlink`, for groups without a public
+    /// @username (`Group.GroupLink`).
+    pub link: Option<String>,
     enabled: BTreeSet<Toggle>,
     disabled_roles: HashSet<Role>,
     /// `IRole.VALID`: set once the current disabled-role set has passed
@@ -273,6 +276,7 @@ impl Default for GroupSettings {
             lynch_seconds: DEFAULT_LYNCH_SECONDS,
             max_extend_seconds: DEFAULT_MAX_EXTEND_SECONDS as u32,
             end_roles: EndRoles::All,
+            link: None,
             enabled: Toggle::ALL.into_iter().filter(|t| t.default_value()).collect(),
             disabled_roles: HashSet::new(),
             roles_validated: false,
@@ -509,6 +513,8 @@ pub struct ConfigAction {
 pub struct CommandChat {
     pub chat_id: i64,
     pub title: String,
+    /// The group's public @username, if it has one.
+    pub username: Option<String>,
     pub is_group: bool,
 }
 
@@ -794,6 +800,93 @@ pub fn option_screen(group_id: i64, settings: &GroupSettings, option: ConfigOpti
     };
     choices.push(button(group_id, Text::key("Cancel"), Callback::Cancel(option)));
     Screen { message, rows: rows_of(choices, 1) }
+}
+
+// ---------- Group link ----------
+
+/// `/setlink <invite link>` (`AdminCommands.cs:287-322`). A group with a
+/// public @username already has a link, so the command only explains
+/// that. Replies are the legacy hardcoded English, not locale strings.
+pub async fn run_setlink_command(
+    store: &Store,
+    chat: &CommandChat,
+    actor: Actor,
+    link: Option<&str>,
+    now: i64,
+) -> DbResult<CommandOutcome> {
+    if let Some(refusal) = link_command_refusal(chat, actor) {
+        return Ok(refusal);
+    }
+    if let Some(username) = chat.username.as_deref().filter(|u| !u.is_empty()) {
+        return Ok(CommandOutcome::Reply(format!(
+            "Your group link has already been set to https://telegram.me/{username}"
+        )));
+    }
+    let Some(link) = link.map(str::trim).filter(|l| !l.is_empty()) else {
+        return Ok(CommandOutcome::Reply("You must use /setlink with the link to the group (invite link)".into()));
+    };
+    if !is_invite_link(link) {
+        return Ok(CommandOutcome::Reply("This is an invalid telegram join link.".into()));
+    }
+    set_link(store, chat, Some(link.to_string()), now).await?;
+    Ok(CommandOutcome::Reply(format!("Link set: {}", linked_group_name(&chat.title, Some(link)))))
+}
+
+/// `/remlink` (`AdminCommands.cs:273-285`).
+pub async fn run_remlink_command(store: &Store, chat: &CommandChat, actor: Actor, now: i64) -> DbResult<CommandOutcome> {
+    if let Some(refusal) = link_command_refusal(chat, actor) {
+        return Ok(refusal);
+    }
+    set_link(store, chat, None, now).await?;
+    Ok(CommandOutcome::Reply("Your group link has been removed.".into()))
+}
+
+/// Both commands are group-only and admin-only, anonymous admins included
+/// (the caller folds those into `can_configure`).
+fn link_command_refusal(chat: &CommandChat, actor: Actor) -> Option<CommandOutcome> {
+    if !chat.is_group {
+        Some(CommandOutcome::Refuse(Message::new("GroupCommandOnly")))
+    } else if !actor.can_configure {
+        Some(CommandOutcome::Refuse(Message::new("GroupAdminOnly")))
+    } else {
+        None
+    }
+}
+
+/// The legacy commands build a default group without saving it when the
+/// group is new, so their change is lost; here the group is recorded.
+async fn set_link(store: &Store, chat: &CommandChat, link: Option<String>, now: i64) -> DbResult<()> {
+    store.groups().upsert_name(chat.chat_id, &chat.title, now).await?;
+    let mut settings = load_settings(store, chat.chat_id).await?.unwrap_or_default();
+    settings.link = link;
+    store.groups().put_settings(chat.chat_id, &chat.title, &settings, now).await
+}
+
+/// `^(https?://)?t(elegram)?.me/(+|joinchat/)[a-zA-Z0-9_-]+$`
+/// (`AdminCommands.cs:308`).
+pub fn is_invite_link(link: &str) -> bool {
+    let rest = link.strip_prefix("https://").or_else(|| link.strip_prefix("http://")).unwrap_or(link);
+    let Some(rest) = rest.strip_prefix("t.me/").or_else(|| rest.strip_prefix("telegram.me/")) else {
+        return false;
+    };
+    let Some(code) = rest.strip_prefix('+').or_else(|| rest.strip_prefix("joinchat/")) else {
+        return false;
+    };
+    !code.is_empty() && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// The group's name as HTML, linked when it has a link: what the
+/// "you joined" PM shows (`Werewolf.cs:741`).
+pub fn linked_group_name(title: &str, link: Option<&str>) -> String {
+    match link.filter(|l| !l.trim().is_empty()) {
+        Some(link) => format!("<a href=\"{}\">{}</a>", escape_html(link), escape_html(title)),
+        None => title.to_string(),
+    }
+}
+
+/// `Extensions.cs::FormatHTML`.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 /// Every locale key this module can emit, for the locale coverage check.

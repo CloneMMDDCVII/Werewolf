@@ -256,3 +256,51 @@ Feature: Group configuration
     And a game is running
     When a player runs /flee
     Then the request is rejected
+
+  # ---------- Group link (/setlink, /remlink) ----------
+  # AdminCommands.cs:273-322. Replies are the legacy hardcoded English.
+  # The legacy commands never saved a group they had just created, so a
+  # link set before /config was lost; here the group is recorded.
+
+  Scenario: An admin sets the group's invite link
+    When an admin runs "/setlink https://t.me/+AbC_12-x" in the group
+    Then the group's link is "https://t.me/+AbC_12-x"
+    And the group is told "Link set:" with the group's name linked
+
+  Scenario Outline: Only Telegram join links are accepted
+    When an admin runs "/setlink <link>" in the group
+    Then the link is <result>
+
+    Examples:
+      | link                              | result   |
+      | t.me/joinchat/AbC123              | accepted |
+      | http://telegram.me/+abc           | accepted |
+      | https://t.me/somegroup            | rejected |
+      | https://example.com/+abc          | rejected |
+      | https://t.me/+abc?start=1         | rejected |
+
+  Scenario: /setlink without a link explains how to use it
+    When an admin runs "/setlink" in the group
+    Then the group is told "You must use /setlink with the link to the group (invite link)"
+
+  Scenario: A public group already has a link
+    Given the group has the public username "villagesquare"
+    When an admin runs "/setlink https://t.me/+abc" in the group
+    Then the group is told "Your group link has already been set to https://telegram.me/villagesquare"
+    And no link is stored
+
+  Scenario: An admin removes the group's link
+    Given the group's link is "https://t.me/+abc"
+    When an admin runs /remlink in the group
+    Then the group has no link
+    And the group is told "Your group link has been removed."
+
+  Scenario: Only admins can change the link, and only in a group
+    When a user who is not an admin runs /setlink or /remlink
+    Then the command is rejected as admin-only
+    When anyone runs them in a private chat
+    Then the command is rejected as group-only
+
+  Scenario: The "you joined" message links the group's name
+    Given the group's link is "https://t.me/+abc"
+    Then the group's name is shown as a link to "https://t.me/+abc", HTML-escaped

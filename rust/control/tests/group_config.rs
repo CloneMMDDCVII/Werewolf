@@ -23,7 +23,7 @@ fn member() -> Actor {
 }
 
 fn group_chat(title: &str) -> CommandChat {
-    CommandChat { chat_id: GROUP, title: title.to_string(), is_group: true }
+    CommandChat { chat_id: GROUP, title: title.to_string(), username: None, is_group: true }
 }
 
 /// One group's settings as the menu sees them: `None` until `/config`
@@ -135,7 +135,7 @@ async fn running_config_again_refreshes_the_groups_name_but_keeps_its_settings()
 
 #[test]
 fn config_only_works_inside_a_group() {
-    let chat = CommandChat { chat_id: 42, title: String::new(), is_group: false };
+    let chat = CommandChat { chat_id: 42, title: String::new(), username: None, is_group: false };
     match config_command(&chat, admin()) {
         CommandOutcome::Refuse(m) => assert_eq!(m.key, "GroupCommandOnly"),
         other => panic!("{other:?}"),
@@ -563,4 +563,102 @@ fn a_stored_document_missing_newer_settings_reads_back_with_their_defaults() {
     assert!(s.is_on(Toggle::AllowExtend));
     assert_eq!(s.night_seconds, 90);
     assert_eq!(s.mode, ModeSetting::Player);
+}
+
+// ---------- Group link (/setlink, /remlink) ----------
+
+async fn configured_db() -> Store {
+    let db = Store::in_memory().await.unwrap();
+    run_config_command(&db, &group_chat("Village Square"), admin(), 1).await.unwrap();
+    db
+}
+
+async fn link_of(db: &Store) -> Option<String> {
+    load_settings(db, GROUP).await.unwrap().unwrap().link
+}
+
+fn reply(outcome: CommandOutcome) -> String {
+    match outcome {
+        CommandOutcome::Reply(text) => text,
+        other => panic!("expected a reply, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn an_admin_sets_the_groups_invite_link() {
+    let db = configured_db().await;
+    let out = run_setlink_command(&db, &group_chat("Village <Square>"), admin(), Some(" https://t.me/+AbC_12-x "), 2)
+        .await
+        .unwrap();
+    assert_eq!(link_of(&db).await.as_deref(), Some("https://t.me/+AbC_12-x"));
+    assert_eq!(reply(out), "Link set: <a href=\"https://t.me/+AbC_12-x\">Village &lt;Square&gt;</a>");
+}
+
+#[tokio::test]
+async fn a_link_set_before_config_is_kept() {
+    let db = Store::in_memory().await.unwrap();
+    run_setlink_command(&db, &group_chat("Village Square"), admin(), Some("t.me/+abc"), 1).await.unwrap();
+    assert_eq!(link_of(&db).await.as_deref(), Some("t.me/+abc"));
+}
+
+#[test]
+fn only_telegram_join_links_are_accepted() {
+    for ok in ["t.me/joinchat/AbC123", "http://telegram.me/+abc", "https://t.me/+AbC_12-x"] {
+        assert!(is_invite_link(ok), "{ok}");
+    }
+    for bad in ["https://t.me/somegroup", "https://example.com/+abc", "https://t.me/+abc?start=1", "https://t.me/+", ""] {
+        assert!(!is_invite_link(bad), "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn setlink_without_a_link_explains_how_to_use_it() {
+    let db = configured_db().await;
+    for arg in [None, Some("  ")] {
+        let out = run_setlink_command(&db, &group_chat("Village Square"), admin(), arg, 2).await.unwrap();
+        assert_eq!(reply(out), "You must use /setlink with the link to the group (invite link)");
+    }
+    let out = run_setlink_command(&db, &group_chat("Village Square"), admin(), Some("https://t.me/x"), 2).await.unwrap();
+    assert_eq!(reply(out), "This is an invalid telegram join link.");
+    assert_eq!(link_of(&db).await, None);
+}
+
+#[tokio::test]
+async fn a_public_group_already_has_a_link() {
+    let db = configured_db().await;
+    let chat = CommandChat { username: Some("villagesquare".into()), ..group_chat("Village Square") };
+    let out = run_setlink_command(&db, &chat, admin(), Some("https://t.me/+abc"), 2).await.unwrap();
+    assert_eq!(reply(out), "Your group link has already been set to https://telegram.me/villagesquare");
+    assert_eq!(link_of(&db).await, None);
+}
+
+#[tokio::test]
+async fn an_admin_removes_the_groups_link() {
+    let db = configured_db().await;
+    run_setlink_command(&db, &group_chat("Village Square"), admin(), Some("https://t.me/+abc"), 2).await.unwrap();
+    let out = run_remlink_command(&db, &group_chat("Village Square"), admin(), 3).await.unwrap();
+    assert_eq!(link_of(&db).await, None);
+    assert_eq!(reply(out), "Your group link has been removed.");
+}
+
+#[tokio::test]
+async fn only_admins_can_change_the_link_and_only_in_a_group() {
+    let db = configured_db().await;
+    let private = CommandChat { is_group: false, ..group_chat("") };
+    for (chat, actor, key) in
+        [(group_chat("Village Square"), member(), "GroupAdminOnly"), (private, admin(), "GroupCommandOnly")]
+    {
+        let set = run_setlink_command(&db, &chat, actor, Some("https://t.me/+abc"), 2).await.unwrap();
+        let rem = run_remlink_command(&db, &chat, actor, 2).await.unwrap();
+        for out in [set, rem] {
+            assert_eq!(out, CommandOutcome::Refuse(Message { key: key.into(), args: vec![] }));
+        }
+    }
+    assert_eq!(link_of(&db).await, None);
+}
+
+#[test]
+fn the_you_joined_message_links_the_groups_name() {
+    assert_eq!(linked_group_name("A & B", Some("https://t.me/+abc")), "<a href=\"https://t.me/+abc\">A &amp; B</a>");
+    assert_eq!(linked_group_name("A & B", None), "A & B");
 }
