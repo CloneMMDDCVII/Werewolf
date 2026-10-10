@@ -19,7 +19,7 @@ use crate::menu::{
     Notice, Screen, Text,
 };
 use db::{DbResult, Store};
-use i18n::Catalog;
+use i18n::{Catalog, LanguageId};
 
 /// What a group or player without a choice speaks (`Helpers.cs:283,302`).
 pub const DEFAULT_LANGUAGE: &str = "English";
@@ -75,6 +75,16 @@ impl LanguageChoices {
         self.files.iter().find(|f| f.file == file)
     }
 
+    /// The file a button's id names, if it is still installed.
+    pub fn file_by_id(&self, id: LanguageId) -> Option<&LanguageFile> {
+        self.files.iter().find(|f| LanguageId::of(&f.file) == id)
+    }
+
+    /// The base language a button's id names.
+    pub fn base_by_id(&self, id: LanguageId) -> Option<&str> {
+        id.find_in(self.bases())
+    }
+
     /// Every base language once, sorted (`GeneralCommands.cs:163`).
     pub fn bases(&self) -> Vec<&str> {
         let mut bases: Vec<&str> = self.files.iter().map(|f| f.base.as_str()).collect();
@@ -99,15 +109,17 @@ pub enum LanguageTarget {
     Player(i64),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Bases and files are named by [`LanguageId`], not by name, so a
+/// button's data stays short however long the name is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LanguageStep {
     /// Show the base list (the group config's `Lang` button).
     OpenBases,
-    PickBase(String),
-    PickFile(String),
+    PickBase(LanguageId),
+    PickFile(LanguageId),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LanguageAction {
     pub target: LanguageTarget,
     pub step: LanguageStep,
@@ -134,7 +146,7 @@ pub fn base_screen(choices: &LanguageChoices, target: LanguageTarget, current: &
     let buttons = choices
         .bases()
         .into_iter()
-        .map(|b| button(target, b.to_string(), LanguageStep::PickBase(b.to_string())))
+        .map(|b| button(target, b.to_string(), LanguageStep::PickBase(LanguageId::of(b))))
         .collect();
     Screen { message: Message::with("WhatLang", vec![Text::Raw(current_base)]), rows: rows_of(buttons, 2) }
 }
@@ -147,7 +159,7 @@ fn variant_screen(choices: &LanguageChoices, target: LanguageTarget, base: &str,
     let buttons = choices
         .variants(base)
         .into_iter()
-        .map(|f| button(target, f.variant.clone(), LanguageStep::PickFile(f.file.clone())))
+        .map(|f| button(target, f.variant.clone(), LanguageStep::PickFile(LanguageId::of(&f.file))))
         .collect();
     Screen { message: Message::with("WhatVariant", vec![Text::Raw(current_variant)]), rows: rows_of(buttons, 2) }
 }
@@ -170,7 +182,10 @@ pub fn handle_language_callback(
             let screen = base_screen(choices, action.target, current);
             return (CallbackOutcome::Show { screen, notice: None }, None);
         }
-        LanguageStep::PickBase(base) => {
+        LanguageStep::PickBase(id) => {
+            let Some(base) = choices.base_by_id(*id) else {
+                return (CallbackOutcome::Ignore, None);
+            };
             let variants = choices.variants(base);
             match variants.as_slice() {
                 [] => return (CallbackOutcome::Ignore, None),
@@ -181,7 +196,7 @@ pub fn handle_language_callback(
                 }
             }
         }
-        LanguageStep::PickFile(file) => match choices.file(file) {
+        LanguageStep::PickFile(id) => match choices.file_by_id(*id) {
             Some(f) => f,
             None => return (CallbackOutcome::Ignore, None),
         },
@@ -274,9 +289,10 @@ pub async fn run_language_callback(
 }
 
 impl LanguageAction {
-    /// `"lng|<g|p><id>|<o|b|f>[|<name>]"`. Base and file names are at most
-    /// 34 bytes in the shipped language files, which keeps the longest
-    /// action under Telegram's 64-byte limit.
+    /// `"lng|<g|p><chat id>|<o|b|f>[|<language id>]"`: at most 41 bytes
+    /// (a 20-character chat id and a 16-character [`LanguageId`]), under
+    /// Telegram's 64 whatever the language names. Ids that no longer match
+    /// an installed file or base decode fine and are ignored on press.
     pub fn encode(&self) -> String {
         let target = match self.target {
             LanguageTarget::Group(id) => format!("g{id}"),
@@ -306,8 +322,8 @@ impl LanguageAction {
         };
         let step = match (parts.next(), parts.next()) {
             (Some("o"), None) => LanguageStep::OpenBases,
-            (Some("b"), Some(base)) => LanguageStep::PickBase(base.to_string()),
-            (Some("f"), Some(file)) => LanguageStep::PickFile(file.to_string()),
+            (Some("b"), Some(base)) => LanguageStep::PickBase(base.parse().map_err(|_| err())?),
+            (Some("f"), Some(file)) => LanguageStep::PickFile(file.parse().map_err(|_| err())?),
             _ => return Err(err()),
         };
         Ok(LanguageAction { target, step })

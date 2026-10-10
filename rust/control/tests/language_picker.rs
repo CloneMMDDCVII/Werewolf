@@ -5,7 +5,7 @@ use control::group_config::{load_settings, main_menu, run_config_command, Comman
 use control::language_picker::*;
 use control::menu::*;
 use db::Store;
-use i18n::Catalog;
+use i18n::{Catalog, LanguageId};
 use std::sync::OnceLock;
 
 const GROUP: i64 = -1001234567890;
@@ -106,7 +106,7 @@ async fn picking_a_base_with_one_file_sets_it_straight_away() {
     let store = Store::in_memory().await.unwrap();
     setlang(&store, true).await;
     assert_eq!(choices().variants("Thai").len(), 1);
-    let outcome = pick(&store, LanguageTarget::Player(PLAYER), LanguageStep::PickBase("Thai".into()), member()).await;
+    let outcome = pick(&store, LanguageTarget::Player(PLAYER), LanguageStep::PickBase(LanguageId::of("Thai")), member()).await;
     let thai = choices().variants("Thai")[0].file.clone();
     assert_eq!(player_language(&store, PLAYER).await.unwrap(), thai);
     assert_eq!(shown(&outcome).message, Message::with("LangSet", vec![Text::Raw("Thai: Normal".into())]));
@@ -117,7 +117,7 @@ async fn picking_a_base_with_one_file_sets_it_straight_away() {
 async fn picking_a_base_with_several_files_asks_for_the_variant() {
     let store = Store::in_memory().await.unwrap();
     setlang(&store, true).await;
-    let outcome = pick(&store, LanguageTarget::Player(PLAYER), LanguageStep::PickBase("English".into()), member()).await;
+    let outcome = pick(&store, LanguageTarget::Player(PLAYER), LanguageStep::PickBase(LanguageId::of("English")), member()).await;
     let screen = shown(&outcome);
     assert_eq!(screen.message, Message::with("WhatVariant", vec![Text::Raw("Normal".into())]));
     let labels = raw_labels(screen);
@@ -135,7 +135,7 @@ async fn picking_a_variant_sets_the_language() {
     let store = Store::in_memory().await.unwrap();
     setlang(&store, true).await;
     let outcome =
-        pick(&store, LanguageTarget::Player(PLAYER), LanguageStep::PickFile("English Star Wars".into()), member()).await;
+        pick(&store, LanguageTarget::Player(PLAYER), LanguageStep::PickFile(LanguageId::of("English Star Wars")), member()).await;
     assert_eq!(player_language(&store, PLAYER).await.unwrap(), "English Star Wars");
     assert_eq!(shown(&outcome).message, Message::with("LangSet", vec![Text::Raw("English: Star Wars".into())]));
 }
@@ -154,7 +154,7 @@ async fn setting_the_groups_language_returns_to_the_config_menu() {
     let store = Store::in_memory().await.unwrap();
     let chat = CommandChat { chat_id: GROUP, title: "Village".into(), username: None, is_group: true };
     run_config_command(&store, &chat, admin(), 1).await.unwrap();
-    let outcome = pick(&store, LanguageTarget::Group(GROUP), LanguageStep::PickFile("English Star Wars".into()), admin()).await;
+    let outcome = pick(&store, LanguageTarget::Group(GROUP), LanguageStep::PickFile(LanguageId::of("English Star Wars")), admin()).await;
     assert_eq!(load_settings(&store, GROUP).await.unwrap().unwrap().language, "English Star Wars");
     let CallbackOutcome::Show { screen, notice: Some(notice) } = outcome else { panic!("{outcome:?}") };
     assert_eq!(screen, main_menu(GROUP));
@@ -167,7 +167,7 @@ async fn non_admins_cannot_change_the_groups_language() {
     let store = Store::in_memory().await.unwrap();
     let chat = CommandChat { chat_id: GROUP, title: "Village".into(), username: None, is_group: true };
     run_config_command(&store, &chat, admin(), 1).await.unwrap();
-    let outcome = pick(&store, LanguageTarget::Group(GROUP), LanguageStep::PickFile("English Star Wars".into()), member()).await;
+    let outcome = pick(&store, LanguageTarget::Group(GROUP), LanguageStep::PickFile(LanguageId::of("English Star Wars")), member()).await;
     assert_eq!(outcome, CallbackOutcome::Notify(Notice { message: Message::new("GroupAdminOnly"), alert: true }));
     assert_eq!(load_settings(&store, GROUP).await.unwrap().unwrap().language, "English");
 }
@@ -184,7 +184,7 @@ fn every_language_button_fits_in_telegrams_callback_data() {
     for target in [LanguageTarget::Group(GROUP), LanguageTarget::Player(i64::MAX)] {
         screens.push(base_screen(choices(), target, "English"));
         for base in choices().bases() {
-            let action = LanguageAction { target, step: LanguageStep::PickBase(base.to_string()) };
+            let action = LanguageAction { target, step: LanguageStep::PickBase(LanguageId::of(base)) };
             if let (CallbackOutcome::Show { screen, .. }, None) =
                 handle_language_callback(choices(), "English", &action, admin())
             {
@@ -216,7 +216,30 @@ fn every_locale_key_the_picker_uses_exists_in_english_xml() {
 async fn presses_for_an_unknown_player_or_group_are_ignored() {
     let store = Store::in_memory().await.unwrap();
     for target in [LanguageTarget::Player(PLAYER), LanguageTarget::Group(GROUP)] {
-        let outcome = pick(&store, target, LanguageStep::PickFile("English".into()), admin()).await;
+        let outcome = pick(&store, target, LanguageStep::PickFile(LanguageId::of("English")), admin()).await;
         assert_eq!(outcome, CallbackOutcome::Ignore);
     }
+}
+
+#[test]
+fn a_file_name_too_long_for_the_legacy_buttons_is_pickable() {
+    // 34 bytes: the legacy "preferred|<group>|<file>|toggle" button
+    // overflowed with it. The id keeps every button the same size.
+    let name = "Singapore (Public Housing Version)";
+    let action = LanguageAction { target: LanguageTarget::Group(i64::MIN), step: LanguageStep::PickFile(LanguageId::of(name)) };
+    assert!(action.encode().len() <= 64, "{}", action.encode());
+    assert_eq!(choices().file_by_id(LanguageId::of(name)).map(|f| f.file.as_str()), Some(name));
+}
+
+#[test]
+fn a_button_for_a_removed_language_is_ignored() {
+    for step in [LanguageStep::PickBase(LanguageId::of("Removed")), LanguageStep::PickFile(LanguageId::of("Removed"))] {
+        let action = LanguageAction { target: LanguageTarget::Player(PLAYER), step };
+        assert_eq!(handle_language_callback(choices(), "English", &action, member()), (CallbackOutcome::Ignore, None));
+    }
+}
+
+#[test]
+fn names_in_button_data_are_rejected() {
+    assert!(LanguageAction::decode("lng|p1|f|English").is_err());
 }

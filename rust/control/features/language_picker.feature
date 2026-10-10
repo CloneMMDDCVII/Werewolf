@@ -91,3 +91,9 @@ Feature: Choosing a language
   Scenario: Every language button fits in Telegram's callback data
     Then every base and variant button encodes to 64 bytes or fewer
     And decodes back to the same action
+    And it carries a short id of the base or file, never the name itself,
+    So a long name such as "Singapore (Public Housing Version)" still works
+
+  Scenario: A button for a language that has since been removed
+    When a player presses it
+    Then nothing happens
