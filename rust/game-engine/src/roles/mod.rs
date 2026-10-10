@@ -93,20 +93,18 @@ pub enum NightAction {
         b: PlayerId,
     },
     /// Harlot visiting a target overnight (Werewolf.cs:2358-2360,
-    /// 2424-2428). Carries `visitor` (not just `target`) so
-    /// the Harlot region of `night::resolve_night_sequence` can kill the right
-    /// player: visiting whoever the wolves' actually ate that same night
-    /// kills the Harlot (Werewolf.cs:2352-2360, `KillMthd.VisitWolf`,
-    /// unconditional — no RNG involved). Every other visit outcome is
-    /// `night::Night::visit`.
+    /// 2424-2428). Resolved by the Harlot region (`night::Night::harlot`):
+    /// visiting whoever the wolves ate that night kills the Harlot
+    /// (Werewolf.cs:2352-2360, `KillMthd.VisitWolf`, no roll). Every other
+    /// visit outcome is `night::Night::visit`.
     Visit {
         visitor: PlayerId,
         target: PlayerId,
     },
     /// Guardian Angel protecting a target overnight (Werewolf.cs:2361-2372,
-    /// 3091 onward). Same caveat as `Visit`: the actual protection
-    /// resolution (does it save them, does the GA risk dying) isn't
-    /// modeled here yet.
+    /// 3091 onward). Whether it saves them, and whether the Guardian Angel
+    /// dies doing it, is the Guardian Angel region
+    /// (`night::Night::guardian_angel`).
     Protect {
         target: PlayerId,
     },
@@ -117,62 +115,51 @@ pub enum NightAction {
     Investigate {
         target: PlayerId,
     },
-    /// Wild Child's (and Doppelganger's — same shape, different transform
-    /// payoff) one-time pick of a "role model" player (Werewolf.cs:1757,
-    /// 1909 for Wild Child; 1927-1938 for Doppelganger). If that player
-    /// dies, `transforms::apply_transforms` turns the picker into a Wolf (Wild
-    /// Child) or a copy of the dead player's role (Doppelganger).
+    /// A Wild Child's or Doppelganger's one-time pick of a role model
+    /// (Werewolf.cs:1757, 1909 for Wild Child; 1927-1938 for Doppelganger).
+    /// When that player dies, `transforms::apply_transforms` turns a Wild
+    /// Child into a Wolf and a Doppelganger into the dead player's role.
     ChooseRoleModel {
         target: PlayerId,
     },
-    /// The cult's proposed conversion target for tonight
-    /// (Werewolf.cs:3690-3735 onward: each surviving cultist effectively
-    /// votes by choosing a target, with a per-target-role success chance).
-    /// The conversion itself is the cult region of the night.
+    /// A Cultist's vote for tonight's conversion (Werewolf.cs:3690-3735
+    /// onward). The cult region (`night::Night::cult`) tallies the votes
+    /// and rolls the target role's conversion chance.
     ConvertVote {
         target: PlayerId,
     },
-    /// The Serial Killer's personal kill choice (Werewolf.cs:2340-2348,
-    /// 2380 onward). Unlike `EatVote`, there's normally only one Serial
-    /// Killer, so there's no consensus to tally.
+    /// The Serial Killer's kill (Werewolf.cs:2340-2348, 2380 onward),
+    /// resolved by `night::Night::serial_killer`. There is one Serial
+    /// Killer, so nothing is tallied.
     SerialKillVote {
         target: PlayerId,
     },
     /// Thief stealing a target's role, night 1 only (Werewolf.cs:4132-4163:
-    /// `StealRole(thief, target)`). Unlike Doppelganger's `ChooseRoleModel`
-    /// (which waits for the role model to die), the steal is immediate —
-    /// modeled as its own variant so a reader isn't left wondering why an
-    /// "immediate" and a "wait for death" mechanic share one action shape.
-    /// Carries `thief` (its own actor) so the Thief region of the night can
-    /// apply the swap: the Thief becomes the target's role, and the target
-    /// becomes a Villager (Werewolf.cs:2483-2486). In `ThiefFull` mode the
-    /// steal can fail (Werewolf.cs:4173).
+    /// `StealRole(thief, target)`). The steal happens tonight, in the Thief
+    /// region (`night::Night::thief`): the Thief becomes the target's role
+    /// and the target becomes a Villager (Werewolf.cs:2483-2486). In
+    /// `ThiefFull` mode the steal can fail (Werewolf.cs:4173).
     StealRole {
         thief: PlayerId,
         target: PlayerId,
     },
     /// Chemist's nightly gambit (Werewolf.cs:3792-3821): visit a target,
-    /// with an RNG chance of killing them (`KillMthd.Chemistry`) or, on
-    /// failure, killing the Chemist instead — see
-    /// the Chemist region of `night::resolve_night_sequence`, which needs `chemist`'s own id
-    /// for exactly that self-kill case, the same reasoning `Shoot` and
-    /// `StealRole` already carry their actor's id for.
+    /// with a roll that kills either them or the Chemist
+    /// (`KillMthd.Chemistry`). Resolved by `night::Night::chemist`.
     Chemistry {
         chemist: PlayerId,
         target: PlayerId,
     },
-    /// Arsonist dousing a target with kerosene, any night, as many nights
-    /// as they like (Werewolf.cs:3792 region / `x.Doused`) — there's no
-    /// `primary_used`-style gate in the legacy code, doused players just
-    /// accumulate in `night::NightMemory::doused`.
+    /// Arsonist dousing a target, any night and as often as they like
+    /// (Werewolf.cs:3792 region / `x.Doused`). Doused players accumulate
+    /// in `night::NightMemory::doused`.
     Douse {
         target: PlayerId,
     },
-    /// Arsonist choosing to detonate ("Spark", Werewolf.cs:1013,
-    /// `player.Choice = -2`) instead of dousing this night: burns every
-    /// doused player at once (`KillMthd.Burn`, Werewolf.cs:3198-3202) — see
-    /// the Arsonist region of `night::resolve_night_sequence`, which `game::run_game`
-    /// calls with this action and the cross-round doused set it keeps.
+    /// Arsonist sparking instead of dousing ("Spark", Werewolf.cs:1013,
+    /// `player.Choice = -2`): every doused player burns at once
+    /// (`KillMthd.Burn`, Werewolf.cs:3198-3202), in the Arsonist region
+    /// (`night::Night::arsonist`).
     Detonate,
     /// The Snow Wolf going out to freeze a target (Werewolf.cs:3092-3184).
     /// The freeze itself is resolved by `freeze::apply_freeze`; this
@@ -216,14 +203,10 @@ pub struct NightContext<'a> {
 /// that distinction from a reader, not clarify it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DayAction {
-    /// Gunner spending a bullet to shoot a suspected player
-    /// (Werewolf.cs:2871-2896). Carries `shooter` (not just `target`) so
-    /// `game::run_game` can apply the Wise Elder special case
-    /// (Werewolf.cs:2887-2889: shooting a Wise Elder demotes the *Gunner*
-    /// to Villager, on top of the Wise Elder still dying normally) without
-    /// needing to guess who fired — every other role's day/night action
-    /// already gets its own actor for free via `ctx.self_id`; `Shoot` just
-    /// didn't carry it forward into the action itself until this needed it.
+    /// Gunner spending a bullet to shoot a player (Werewolf.cs:2871-2896).
+    /// Names the `shooter` because shooting a Wise Elder makes the Gunner
+    /// a Villager as well as killing the Elder (Werewolf.cs:2887-2889,
+    /// `game::demote_gunner_if_shot_a_wise_elder`).
     Shoot { shooter: PlayerId, target: PlayerId },
     /// Blacksmith spreading protective silver dust over the whole
     /// village, once (Werewolf.cs:935, 5083-5092: a yes/no menu, not a
@@ -248,15 +231,14 @@ pub enum DayAction {
     /// (Werewolf.cs:965-973: `_doubleLynch = true`), and explicitly
     /// overriding a Pacifist's veto if both fire the same day
     /// (Werewolf.cs:971: `_pacifistUsed = false; // trouble overrides peace`)
-    /// — whichever of the two acted last wins (`orchestrator::
-    /// last_day_veto`). `game::run_game` holds the second lynch vote.
+    /// — whichever of the two acted last wins
+    /// (`orchestrator::last_day_veto`). `game::run_game` holds the second
+    /// lynch vote.
     Trouble,
     /// Spumpkin's day detonation (Werewolf.cs:2901-2926): pick a target,
     /// with an RNG chance (40%, Werewolf.cs:2907) of killing both the
-    /// target and the Spumpkin himself — see
-    /// `orchestrator::resolve_spumpkin_detonation`, which needs
-    /// `spumpkin`'s own id for the mutual-kill, same reasoning `Shoot`
-    /// carries `shooter`.
+    /// target and the Spumpkin himself, in
+    /// `orchestrator::resolve_spumpkin_detonation`.
     Detonate { spumpkin: PlayerId, target: PlayerId },
     /// Detective snooping on a target by day (Werewolf.cs:2933-2953). What
     /// they learn is sent by `reveals::resolve_detective`.
