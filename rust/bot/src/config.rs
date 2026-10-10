@@ -144,9 +144,14 @@ pub fn load(path: &Path, env_token: Option<String>, env_health_addr: Option<Stri
         return Err(ConfigError::TemplateWritten(path.into()));
     };
 
+    let file_token = file.token.filter(|t| !t.trim().is_empty());
+    let token_from_file = env_token.is_none() && file_token.is_some();
     let token = env_token
-        .or(file.token.filter(|t| !t.trim().is_empty()))
+        .or(file_token)
         .ok_or_else(|| ConfigError::MissingToken(path.into()))?;
+    if token_from_file {
+        warn_if_open_to_others(path);
+    }
     let base = base.unwrap_or_else(|| PathBuf::from("."));
     let health_addr = env_health_addr
         .or(file.health_addr)
@@ -168,6 +173,29 @@ pub fn load(path: &Path, env_token: Option<String>, env_health_addr: Option<Stri
         health_addr,
         path: path.exists().then(|| path.to_path_buf()),
     })
+}
+
+/// A token in a file other users can read is a token they have.
+#[cfg(unix)]
+fn warn_if_open_to_others(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(meta) = std::fs::metadata(path) {
+        if open_to_others(meta.permissions().mode()) {
+            log::warn!(
+                "{} holds the bot token and is open to other users; run  chmod 600 {0}  or use {TOKEN_ENV}",
+                path.display()
+            );
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn warn_if_open_to_others(_: &Path) {}
+
+/// Any group or world permission bit.
+#[cfg(unix)]
+fn open_to_others(mode: u32) -> bool {
+    mode & 0o077 != 0
 }
 
 fn resolve(base: &Path, p: PathBuf) -> PathBuf {
@@ -266,6 +294,16 @@ mod tests {
         let base = Path::new("/srv/wolf");
         assert_eq!(resolve_database_url("sqlite:///data/w.db", base), "sqlite:///data/w.db");
         assert_eq!(resolve_database_url("postgres://u@h/db", base), "postgres://u@h/db");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_owner_only_modes_keep_the_token_private() {
+        assert!(!open_to_others(0o100600));
+        assert!(!open_to_others(0o400));
+        assert!(open_to_others(0o644));
+        assert!(open_to_others(0o640));
+        assert!(open_to_others(0o602));
     }
 
     #[test]
