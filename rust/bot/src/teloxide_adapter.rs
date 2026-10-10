@@ -2,7 +2,7 @@
 //! that turns Telegram updates into [`Incoming`]. This is the only module
 //! that knows teloxide exists.
 
-use crate::telegram::{Button, Chat, ChatKind, Command, Incoming, Keyboard, MsgRef, SendError, Telegram, User};
+use crate::telegram::{Button, Chat, ChatKind, Command, Document, Incoming, Keyboard, MsgRef, SendError, Telegram, User};
 use async_trait::async_trait;
 use moderation::{Mention, PlayerRecord, ReplyTo, Sender};
 use std::time::Duration;
@@ -10,9 +10,10 @@ use teloxide::payloads::{
     AnswerCallbackQuerySetters, EditMessageTextSetters, GetUpdatesSetters, SendMessageSetters,
 };
 use teloxide::prelude::Requester;
+use teloxide::net::Download;
 use teloxide::types::{
-    AllowedUpdate, ChatId, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, LinkPreviewOptions, Message,
-    MessageEntityKind, MessageId, ParseMode, UpdateKind, UserId,
+    AllowedUpdate, ChatId, ChatMemberKind, FileId, InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
+    LinkPreviewOptions, Message, MessageEntityKind, MessageId, ParseMode, ReplyParameters, UpdateKind, UserId,
 };
 use teloxide::{ApiError, Bot, RequestError};
 
@@ -152,6 +153,32 @@ impl Telegram for TeloxideTelegram {
         Ok(member.is_privileged())
     }
 
+    async fn send_reply(&self, chat: i64, text: &str, reply_to: i32) -> Result<MsgRef, SendError> {
+        let reply = ReplyParameters { allow_sending_without_reply: Some(true), ..ReplyParameters::new(MessageId(reply_to)) };
+        let m = self
+            .bot
+            .send_message(ChatId(chat), text)
+            .parse_mode(ParseMode::Html)
+            .link_preview_options(no_preview())
+            .reply_parameters(reply)
+            .await
+            .map_err(map_error)?;
+        Ok(MsgRef { chat, id: m.id.0 })
+    }
+
+    async fn is_group_member(&self, chat: i64, user: i64) -> Result<bool, SendError> {
+        let member = self.bot.get_chat_member(ChatId(chat), UserId(user as u64)).await.map_err(map_error)?;
+        let muted = matches!(&member.kind, ChatMemberKind::Restricted(r) if !r.can_send_messages);
+        Ok(member.kind.is_present() && !muted)
+    }
+
+    async fn download(&self, file_id: &str) -> Result<Vec<u8>, SendError> {
+        let file = self.bot.get_file(FileId(file_id.to_string())).await.map_err(map_error)?;
+        let mut bytes = Vec::new();
+        self.bot.download_file(&file.path, &mut bytes).await.map_err(|e| SendError::Other(e.to_string()))?;
+        Ok(bytes)
+    }
+
     fn bot_username(&self) -> &str {
         &self.username
     }
@@ -199,7 +226,11 @@ pub fn command_from_message(m: &Message, bot_username: &str) -> Option<Command> 
         })
         .filter(|mention| !matches!(mention, Mention::Username(u) if u.eq_ignore_ascii_case(bot_username)))
         .collect();
-    Some(Command { chat: chat(&m.chat), from, name, args, sender, reply_to, mentions })
+    let replied_document = m.reply_to_message().and_then(|r| r.document()).map(|d| Document {
+        file_id: d.file.id.0.clone(),
+        file_name: d.file_name.clone(),
+    });
+    Some(Command { chat: chat(&m.chat), from, name, args, sender, reply_to, mentions, replied_document })
 }
 
 pub fn incoming(update: teloxide::types::Update, bot_username: &str) -> Option<Incoming> {

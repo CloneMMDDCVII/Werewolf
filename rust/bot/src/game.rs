@@ -7,10 +7,10 @@
 //! through its [`GameHandle`], which is `Send + Sync`.
 
 use crate::telegram::{Button, Keyboard, MsgRef, SendError, Telegram};
-use crate::text::{bold, escape, Texts};
+use crate::text::{bold, escape, is_wolf, Texts};
 use async_trait::async_trait;
 use control::game_rules::game_start;
-use control::group_config::GroupSettings;
+use control::group_config::{GroupSettings, Toggle};
 use control::lobby::Lobby;
 use db::{GameId, GameResult, NewGame, NewGamePlayer, Store};
 use game_engine::balancing::balance_with_pool;
@@ -25,7 +25,8 @@ use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
 use game_engine::summary::GameSummary;
 use game_engine::WinOutcome;
-use shared::{GameMode, KillMethod};
+use shared::{GameMode, KillMethod, Role};
+use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -94,6 +95,25 @@ pub struct GameHandle {
     roster: Mutex<Vec<RosterEntry>>,
     /// This game's `ShowRolesDeath` (Random mode may roll it).
     show_roles_on_death: AtomicBool,
+    /// The group's "Shuffle player list".
+    shuffle: AtomicBool,
+    /// Who died, first death first, for the list's order.
+    death_order: Mutex<Vec<PlayerId>>,
+    /// The last player list posted in the group, for `/players`.
+    last_list: Mutex<Option<MsgRef>>,
+    /// When `/players` last answered (10-second throttle,
+    /// Werewolf.cs:1419).
+    last_players_reply: Mutex<Option<Instant>>,
+}
+
+/// What `/players` should do during a game.
+pub enum PlayersReply {
+    /// Asked again within 10 seconds: say nothing.
+    Throttled,
+    /// Point at the list already in the chat.
+    LatestList(MsgRef),
+    /// No list posted yet: send this one.
+    List(String),
 }
 
 impl GameHandle {
@@ -108,6 +128,10 @@ impl GameHandle {
             kill_notify: Notify::new(),
             roster: Mutex::new(vec![]),
             show_roles_on_death: AtomicBool::new(true),
+            shuffle: AtomicBool::new(false),
+            death_order: Mutex::new(vec![]),
+            last_list: Mutex::new(None),
+            last_players_reply: Mutex::new(None),
         };
         (Arc::new(handle), rx)
     }
@@ -150,22 +174,53 @@ impl GameHandle {
         self.killed.load(Ordering::SeqCst)
     }
 
-    /// The `/players` list (Werewolf.cs's `OutputPlayers`).
+    /// `/players` during a game (`OutputPlayers`, Werewolf.cs:1417-1430).
+    pub fn players_reply(&self, texts: &Texts, lang: &str) -> PlayersReply {
+        {
+            let mut last = self.last_players_reply.lock().unwrap();
+            if last.is_some_and(|t| t.elapsed() < Duration::from_secs(10)) {
+                return PlayersReply::Throttled;
+            }
+            *last = Some(Instant::now());
+        }
+        match *self.last_list.lock().unwrap() {
+            Some(msg) => PlayersReply::LatestList(msg),
+            None => PlayersReply::List(self.player_list(texts, lang)),
+        }
+    }
+
+    /// The player list (`SendPlayerList`, Werewolf.cs:1352-1404): the dead
+    /// in the order they died, then the living, shuffled when the group
+    /// asks for it.
     pub fn player_list(&self, texts: &Texts, lang: &str) -> String {
         let roster = self.roster.lock().unwrap().clone();
         let alive = roster.iter().filter(|p| p.alive).count();
+        let mut entries = render_player_list(&roster, self.show_roles_on_death.load(Ordering::SeqCst));
+        let order = self.death_order.lock().unwrap().clone();
+        let died_at = |id: PlayerId| order.iter().position(|d| *d == id).unwrap_or(usize::MAX);
+        entries.sort_by_key(|e| match e.status {
+            PlayerStatus::Alive => usize::MAX,
+            PlayerStatus::Dead { .. } => died_at(e.id),
+        });
+        if self.shuffle.load(Ordering::SeqCst) {
+            let first_alive = entries.iter().position(|e| e.status == PlayerStatus::Alive).unwrap_or(entries.len());
+            entries[first_alive..].shuffle(&mut rand::thread_rng());
+        }
         let mut out = format!("{}: {alive}/{}", bold(&texts.key(lang, "PlayersAlive", &[])), roster.len());
-        for entry in render_player_list(&roster, self.show_roles_on_death.load(Ordering::SeqCst)) {
+        for entry in entries {
             let line = match entry.status {
                 PlayerStatus::Alive => format!("{}: {}", escape(&entry.name), texts.key(lang, "Alive", &[])),
-                PlayerStatus::Dead { revealed: Some(r), .. } => format!(
-                    "{}: {} - {}",
-                    escape(&entry.name),
-                    texts.key(lang, "Dead", &[]),
-                    texts.role_name(lang, r.role)
-                ),
-                PlayerStatus::Dead { revealed: None, .. } => {
-                    format!("{}: {}", escape(&entry.name), texts.key(lang, "Dead", &[]))
+                PlayerStatus::Dead { fled, revealed } => {
+                    let status = texts.key(lang, if fled { "RanAway" } else { "Dead" }, &[]);
+                    match revealed {
+                        Some(r) => format!(
+                            "{}: {status} - {}{}",
+                            escape(&entry.name),
+                            texts.role_name(lang, r.role),
+                            if r.was_in_love { " ❤️" } else { "" }
+                        ),
+                        None => format!("{}: {status}", escape(&entry.name)),
+                    }
                 }
             };
             out.push('\n');
@@ -239,6 +294,7 @@ pub async fn play(setup: GameSetup) {
     // in Random mode (Werewolf.cs:174-211).
     let start = game_start(&settings, requested_mode, &mut rng);
     handle.show_roles_on_death.store(start.rules.show_roles_on_death, Ordering::SeqCst);
+    handle.shuffle.store(settings.is_on(Toggle::ShufflePlayerList), Ordering::SeqCst);
     let dealt = balance_with_pool(
         lobby.players().len(),
         start.mode == GameMode::Chaos,
@@ -319,6 +375,8 @@ pub async fn play(setup: GameSetup) {
         night_deadline: None,
         pending_lynch_time: None,
         summary: None,
+        list_changed: true,
+        asked: vec![],
         next_qid: 1,
         started: Instant::now(),
     };
@@ -345,6 +403,17 @@ pub async fn play(setup: GameSetup) {
         }
     }
     on_finish();
+}
+
+/// The C#'s one-tap abilities: a single button with this label instead
+/// of Yes/No (Werewolf.cs:2287, 2294 and 5327).
+fn single_button(prompt: Prompt) -> Option<&'static str> {
+    match prompt {
+        Prompt::MayorReveal => Some("Reveal"),
+        Prompt::PacifistPeace => Some("Peace"),
+        Prompt::ArsonistSpark => Some("Spark"),
+        _ => None,
+    }
 }
 
 struct Open {
@@ -377,14 +446,16 @@ fn any_time(prompt: Prompt) -> bool {
 
 enum Shape {
     Targets { options: Vec<PlayerId>, count: usize, picked: Vec<PlayerId> },
-    Toggle,
+    /// Yes/No, or, for the C#'s one-tap abilities, a single button with
+    /// this key's label (not pressing it means no).
+    Toggle { single: Option<&'static str> },
 }
 
 impl Open {
     fn no_answer(&self) -> Answer {
         match self.shape {
             Shape::Targets { .. } => Answer::Targets(None),
-            Shape::Toggle => Answer::Toggle(false),
+            Shape::Toggle { .. } => Answer::Toggle(false),
         }
     }
 }
@@ -415,6 +486,12 @@ pub struct TelegramPresenter {
     /// When the game started, for the summary's playing time.
     started: Instant,
     summary: Option<GameSummary>,
+    /// Someone died or fled since the last posted list.
+    list_changed: bool,
+    /// Who the current batch asks what, so a wolf or cultist is pointed
+    /// only at teammates making the same choice (a wolf who ate the Drunk
+    /// isn't asked, Werewolf.cs:5192).
+    asked: Vec<(PlayerId, Prompt)>,
     next_qid: u32,
 }
 
@@ -443,6 +520,23 @@ impl TelegramPresenter {
     async fn flush_lynch_time(&mut self) {
         if let Some(text) = self.pending_lynch_time.take() {
             self.group(&text).await;
+            self.post_player_list().await;
+        }
+    }
+
+    /// Werewolf.cs:1354: posted as each phase starts, unless nothing
+    /// changed (a shuffled list is always posted again).
+    async fn post_player_list(&mut self) {
+        if !self.list_changed && !self.handle.shuffle.load(Ordering::SeqCst) {
+            return;
+        }
+        let text = self.handle.player_list(&self.texts, &self.lang);
+        match self.telegram.send(self.group_id, &text, None).await {
+            Ok(msg) => {
+                *self.handle.last_list.lock().unwrap() = Some(msg);
+                self.list_changed = false;
+            }
+            Err(e) => log::warn!("group {}: player list not sent: {e}", self.group_id),
         }
     }
 
@@ -467,7 +561,32 @@ impl TelegramPresenter {
         }
     }
 
-    fn question_text(&self, prompt: Prompt) -> String {
+    fn question_text(&self, player: PlayerId, prompt: Prompt) -> String {
+        let text = self.prompt_text(prompt);
+        // Werewolf.cs:5190-5214: wolves and cultists are told who to agree with.
+        let team: Option<fn(Role) -> bool> = match prompt {
+            Prompt::WolfEat => Some(is_wolf),
+            Prompt::CultistConvert => Some(|r| r == Role::Cultist),
+            _ => None,
+        };
+        let Some(team) = team else { return text };
+        let teammates: Vec<String> = self
+            .handle
+            .roster
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.alive && e.id != player && team(e.role))
+            .filter(|e| self.asked.contains(&(e.id, prompt)))
+            .map(|e| escape(&e.name))
+            .collect();
+        match self.texts.discuss_with(&self.lang, &teammates) {
+            d if d.is_empty() => text,
+            d => format!("{text}  {d}"),
+        }
+    }
+
+    fn prompt_text(&self, prompt: Prompt) -> String {
         let fallback = match prompt {
             Prompt::WitchHeal => "Who do you want to heal tonight?",
             Prompt::WitchPoison => "Who do you want to poison tonight?",
@@ -504,7 +623,10 @@ impl TelegramPresenter {
                 rows.push(vec![Button::Callback { text: self.t("Skip", &[]), data: callback_data(seq, qid, Choice::Skip) }]);
                 rows
             }
-            Shape::Toggle => vec![vec![
+            Shape::Toggle { single: Some(key) } => {
+                vec![vec![Button::Callback { text: self.t(key, &[]), data: callback_data(seq, qid, Choice::Yes) }]]
+            }
+            Shape::Toggle { single: None } => vec![vec![
                 Button::Callback { text: self.t("Yes", &[]), data: callback_data(seq, qid, Choice::Yes) },
                 Button::Callback { text: self.t("No", &[]), data: callback_data(seq, qid, Choice::No) },
             ]],
@@ -520,16 +642,21 @@ impl TelegramPresenter {
             Question::Targets { player, prompt, options, count, text } => {
                 // The legacy menus never offered yourself, except Cupid's
                 // (self-love is allowed).
-                let options =
+                let mut options: Vec<PlayerId> =
                     options.into_iter().filter(|o| *o != player || prompt == Prompt::CupidLink).collect();
+                if self.handle.shuffle.load(Ordering::SeqCst) {
+                    options.shuffle(&mut rand::thread_rng());
+                }
                 (player, prompt, Shape::Targets { options, count, picked: vec![] }, text)
             }
-            Question::Toggle { player, prompt } => (player, prompt, Shape::Toggle, None),
+            Question::Toggle { player, prompt } => {
+                (player, prompt, Shape::Toggle { single: single_button(prompt) }, None)
+            }
         };
         let keyboard = self.keyboard(qid, &shape);
         let text = match text {
             Some(message) => self.render(&message),
-            None => self.question_text(prompt),
+            None => self.question_text(player, prompt),
         };
         let msg = self.pm(player, &text, Some(keyboard)).await;
         let mut open = Open { index, qid, player, prompt, msg, shape, answer: None };
@@ -575,11 +702,11 @@ impl TelegramPresenter {
                     follow_up = true;
                 }
             }
-            (Shape::Toggle, Choice::Yes) => {
+            (Shape::Toggle { single }, Choice::Yes) => {
                 q.answer = Some(Answer::Toggle(true));
-                chosen_label = Some(self.t("Yes", &[]));
+                chosen_label = Some(self.t(single.unwrap_or("Yes"), &[]));
             }
-            (Shape::Toggle, Choice::No) => {
+            (Shape::Toggle { single: None }, Choice::No) => {
                 q.answer = Some(Answer::Toggle(false));
                 chosen_label = Some(self.t("No", &[]));
             }
@@ -649,6 +776,7 @@ impl TelegramPresenter {
         deadline: Instant,
         on_answer: &mut dyn OnAnswer,
     ) -> Vec<(usize, Answer)> {
+        self.asked = questions.iter().map(|(_, q)| (q.player(), q.prompt())).collect();
         let mut open = vec![];
         for (index, q) in questions {
             open.push(self.open(index, q).await);
@@ -668,6 +796,8 @@ impl TelegramPresenter {
     }
 
     async fn record_death(&mut self, victim: PlayerId, method: KillMethod) {
+        self.list_changed = true;
+        self.handle.death_order.lock().unwrap().push(victim);
         self.handle.update_roster(|r| {
             if let Some(e) = r.iter_mut().find(|e| e.id == victim) {
                 e.alive = false;
@@ -817,6 +947,9 @@ impl Presenter for TelegramPresenter {
                     _ => {}
                 }
                 self.group(&self.render(&announcement.message())).await;
+                if matches!(announcement, Announcement::NightTime { .. } | Announcement::Day { .. }) {
+                    self.post_player_list().await;
+                }
             }
             NarrationEvent::GameSummary(summary) => {
                 let text = summary.render(&|key| self.texts.lookup(&self.lang, key), &|id| self.name(id));
@@ -851,6 +984,15 @@ mod tests {
     fn playing_time_reads_like_the_legacy_summary() {
         assert_eq!(hh_mm_ss(Duration::from_secs(3 * 3600 + 7 * 60 + 9)), "03:07:09");
         assert_eq!(hh_mm_ss(Duration::from_secs(59)), "00:00:59");
+    }
+
+    #[test]
+    fn one_tap_abilities_get_one_button() {
+        assert_eq!(single_button(Prompt::MayorReveal), Some("Reveal"));
+        assert_eq!(single_button(Prompt::PacifistPeace), Some("Peace"));
+        assert_eq!(single_button(Prompt::ArsonistSpark), Some("Spark"));
+        assert_eq!(single_button(Prompt::SandmanSleep), None);
+        assert_eq!(single_button(Prompt::BlacksmithSilver), None);
     }
 
     #[test]

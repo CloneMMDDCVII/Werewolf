@@ -155,6 +155,22 @@ impl Texts {
         };
         self.get(lang, &key, &split_camel(&role_key(role)), &[])
     }
+
+    /// `DiscussWith` naming the teammates a wolf or cultist should agree
+    /// with, or nothing when they're alone (Werewolf.cs:5190-5214).
+    pub fn discuss_with(&self, lang: &str, teammates: &[String]) -> String {
+        if teammates.is_empty() {
+            return String::new();
+        }
+        let and = format!(" {} ", self.key(lang, "And", &[]));
+        self.key(lang, "DiscussWith", &[&teammates.join(&and)])
+    }
+}
+
+/// The legacy `WolfRoles`: the pack that hunts together, without the Snow
+/// Wolf.
+pub fn is_wolf(role: Role) -> bool {
+    matches!(role, Role::Wolf | Role::WolfCub | Role::AlphaWolf | Role::Lycan)
 }
 
 /// `Role`'s serde name, which is also the legacy enum name the locale keys
@@ -217,6 +233,17 @@ pub fn bold(s: &str) -> String {
 mod tests {
     use super::*;
     use game_engine::role_info::role_info;
+
+    #[test]
+    fn discuss_with_joins_names_with_and() {
+        let t = Texts::embedded();
+        assert_eq!(t.discuss_with("English", &[]), "");
+        let and = format!(" {} ", t.key("English", "And", &[]));
+        assert_eq!(
+            t.discuss_with("English", &["Al".into(), "Bo".into()]),
+            t.key("English", "DiscussWith", &[&format!("Al{and}Bo")])
+        );
+    }
 
     #[test]
     fn embedded_english_loads_and_fills() {

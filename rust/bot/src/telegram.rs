@@ -67,6 +67,13 @@ pub trait Telegram: Send + Sync {
     /// Stops the button's loading spinner, optionally with a short toast.
     async fn answer_callback(&self, callback_id: &str, text: Option<&str>) -> Result<(), SendError>;
     async fn is_group_admin(&self, chat: i64, user: i64) -> Result<bool, SendError>;
+    /// Sends `text` as a reply to message `reply_to` in the same chat.
+    async fn send_reply(&self, chat: i64, text: &str, reply_to: i32) -> Result<MsgRef, SendError>;
+    /// In the group and allowed to post: not left, kicked or muted
+    /// (GeneralCommands.cs:334-345).
+    async fn is_group_member(&self, chat: i64, user: i64) -> Result<bool, SendError>;
+    /// The contents of a file someone sent, by its Telegram file id.
+    async fn download(&self, file_id: &str) -> Result<Vec<u8>, SendError>;
     /// The bot's @username, for `t.me` links.
     fn bot_username(&self) -> &str;
 }
@@ -131,6 +138,18 @@ impl<T: Telegram> Telegram for Retrying<T> {
         with_retry!(self, self.inner.is_group_admin(chat, user))
     }
 
+    async fn send_reply(&self, chat: i64, text: &str, reply_to: i32) -> Result<MsgRef, SendError> {
+        with_retry!(self, self.inner.send_reply(chat, text, reply_to))
+    }
+
+    async fn is_group_member(&self, chat: i64, user: i64) -> Result<bool, SendError> {
+        with_retry!(self, self.inner.is_group_member(chat, user))
+    }
+
+    async fn download(&self, file_id: &str) -> Result<Vec<u8>, SendError> {
+        with_retry!(self, self.inner.download(file_id))
+    }
+
     fn bot_username(&self) -> &str {
         self.inner.bot_username()
     }
@@ -155,6 +174,15 @@ impl<T: Telegram + ?Sized> Telegram for Arc<T> {
     }
     async fn is_group_admin(&self, chat: i64, user: i64) -> Result<bool, SendError> {
         (**self).is_group_admin(chat, user).await
+    }
+    async fn send_reply(&self, chat: i64, text: &str, reply_to: i32) -> Result<MsgRef, SendError> {
+        (**self).send_reply(chat, text, reply_to).await
+    }
+    async fn is_group_member(&self, chat: i64, user: i64) -> Result<bool, SendError> {
+        (**self).is_group_member(chat, user).await
+    }
+    async fn download(&self, file_id: &str) -> Result<Vec<u8>, SendError> {
+        (**self).download(file_id).await
     }
     fn bot_username(&self) -> &str {
         (**self).bot_username()
@@ -207,6 +235,14 @@ pub struct Command {
     pub sender: moderation::Sender,
     pub reply_to: Option<moderation::ReplyTo>,
     pub mentions: Vec<moderation::Mention>,
+    /// The file the command replies to, for `/uploadlang`.
+    pub replied_document: Option<Document>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Document {
+    pub file_id: String,
+    pub file_name: Option<String>,
 }
 
 impl Command {
@@ -220,6 +256,7 @@ impl Command {
             sender: moderation::Sender::User,
             reply_to: None,
             mentions: vec![],
+            replied_document: None,
         }
     }
 }
@@ -295,6 +332,15 @@ mod tests {
         }
         async fn answer_callback(&self, _: &str, _: Option<&str>) -> Result<(), SendError> {
             Ok(())
+        }
+        async fn send_reply(&self, chat: i64, _: &str, _: i32) -> Result<MsgRef, SendError> {
+            Ok(MsgRef { chat, id: 1 })
+        }
+        async fn is_group_member(&self, _: i64, _: i64) -> Result<bool, SendError> {
+            Ok(true)
+        }
+        async fn download(&self, _: &str) -> Result<Vec<u8>, SendError> {
+            Ok(vec![])
         }
         async fn is_group_admin(&self, _: i64, _: i64) -> Result<bool, SendError> {
             Ok(false)

@@ -13,6 +13,8 @@ pub struct FakeMessage {
     pub keyboard: Option<Keyboard>,
     /// How many times it was edited after being sent.
     pub edits: u32,
+    /// The message this one replies to.
+    pub reply_to: Option<i32>,
 }
 
 #[derive(Default)]
@@ -22,6 +24,9 @@ struct State {
     messages: Vec<FakeMessage>,
     callback_answers: Vec<(String, Option<String>)>,
     admins: HashSet<(i64, i64)>,
+    /// (group, user) pairs where the user has left the group.
+    left: HashSet<(i64, i64)>,
+    files: HashMap<String, Vec<u8>>,
     unreachable: HashSet<i64>,
     /// Chats whose next send fails with RetryAfter(secs).
     flood: HashMap<i64, u64>,
@@ -46,6 +51,19 @@ impl FakeTelegram {
 
     pub fn make_admin(&self, chat: i64, user: i64) {
         self.state.lock().unwrap().admins.insert((chat, user));
+    }
+
+    /// The user isn't (or is no longer) a member of the group.
+    pub fn leave_group(&self, chat: i64, user: i64) {
+        self.state.lock().unwrap().left.insert((chat, user));
+    }
+
+    /// A file users can send the bot; returns its file id.
+    pub fn add_file(&self, bytes: Vec<u8>) -> String {
+        let mut s = self.state.lock().unwrap();
+        let id = format!("file{}", s.files.len() + 1);
+        s.files.insert(id.clone(), bytes);
+        id
     }
 
     /// The user has blocked the bot: private messages to them fail.
@@ -116,7 +134,7 @@ impl Telegram for FakeTelegram {
         }
         let msg = MsgRef { chat, id: s.next_id };
         s.next_id += 1;
-        s.messages.push(FakeMessage { msg, text: text.into(), keyboard, edits: 0 });
+        s.messages.push(FakeMessage { msg, text: text.into(), keyboard, edits: 0, reply_to: None });
         Ok(msg)
     }
 
@@ -148,6 +166,23 @@ impl Telegram for FakeTelegram {
 
     async fn is_group_admin(&self, chat: i64, user: i64) -> Result<bool, SendError> {
         Ok(self.state.lock().unwrap().admins.contains(&(chat, user)))
+    }
+
+    async fn send_reply(&self, chat: i64, text: &str, reply_to: i32) -> Result<MsgRef, SendError> {
+        let msg = self.send(chat, text, None).await?;
+        let mut s = self.state.lock().unwrap();
+        if let Some(m) = s.messages.iter_mut().find(|m| m.msg == msg) {
+            m.reply_to = Some(reply_to);
+        }
+        Ok(msg)
+    }
+
+    async fn is_group_member(&self, chat: i64, user: i64) -> Result<bool, SendError> {
+        Ok(!self.state.lock().unwrap().left.contains(&(chat, user)))
+    }
+
+    async fn download(&self, file_id: &str) -> Result<Vec<u8>, SendError> {
+        self.state.lock().unwrap().files.get(file_id).cloned().ok_or(SendError::Other("no such file".into()))
     }
 
     fn bot_username(&self) -> &str {

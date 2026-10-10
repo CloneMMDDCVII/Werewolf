@@ -3,9 +3,9 @@
 //! [`GameHandle`]). Every command passes the moderation permission gate
 //! first (`moderation::gate`), as `UpdateHandler` did in the legacy bot.
 
-use crate::game::{self, parse_callback_data, unix_now, Click, GameHandle, GameSetup};
+use crate::game::{self, parse_callback_data, unix_now, Click, GameHandle, GameSetup, PlayersReply};
 use crate::join_timer::{mm_ss, JoinTimer, TimerEvent};
-use control::group_config::{linked_group_name, load_settings, GroupSettings};
+use control::group_config::{linked_group_name, load_settings, GroupSettings, Toggle};
 use crate::spawn::GameSpawner;
 use crate::telegram::{Button, Chat, Command, Incoming, MsgRef, Telegram, User};
 use crate::text::{bold, escape, Texts};
@@ -63,7 +63,8 @@ struct LobbyCtl {
     lobby: Lobby,
     timer: JoinTimer,
     /// Names that joined since the last "joined in the last 30 seconds".
-    unannounced: Vec<String>,
+    /// Joined since the last "have joined" line: (id, name).
+    unannounced: Vec<(i64, String)>,
     /// Messages carrying the Join button, cleared when joining ends.
     join_messages: Vec<MsgRef>,
     settings: GroupSettings,
@@ -130,12 +131,8 @@ impl BotCore {
         };
         for g in games {
             let lang = self.settings(g.group_id).await.language;
-            let text = self.texts.get(
-                &lang,
-                "",
-                "Sorry, the bot restarted and your last game was interrupted. Start a new one with /startgame.",
-                &[],
-            );
+            // Bot.cs:493, what the C# said when a node died mid-game.
+            let text = self.texts.key(&lang, "NodeShutsDown", &[]);
             let _ = self.telegram.send(g.group_id, &text, None).await;
             if let Err(e) = self.store.games().mark_interrupted(g.id, unix_now()).await {
                 log::error!("could not close interrupted game {}: {e}", g.id.0);
@@ -359,6 +356,13 @@ impl BotCore {
         let _ = players.set_reachable(cmd.from.id, true, now).await;
 
         if let Some(group) = cmd.args.strip_prefix("join").and_then(|g| g.parse::<i64>().ok()) {
+            // GeneralCommands.cs:322-345: the link works only for members.
+            if let Ok(false) = self.telegram.is_group_member(group, cmd.from.id).await {
+                let settings = self.settings(group).await;
+                let name = self.lobby_of(group).map(|c| c.lock().unwrap().group_name.clone()).unwrap_or_default();
+                self.say(cmd.from.id, &self.texts.key(&settings.language, "NotMember", &[&bold(&escape(&name))])).await;
+                return;
+            }
             self.join(group, &cmd.from).await;
             return;
         }
@@ -421,7 +425,7 @@ impl BotCore {
             None => {}
         }
         if !self.admission.admit(self.running_games()) {
-            let text = self.texts.get(&lang, "", "I'm very busy right now, so I can't start another game. Please try again shortly.", &[]);
+            let text = self.texts.key(&lang, "NoNodes", &[]);
             self.say(group, &text).await;
             return;
         }
@@ -519,7 +523,7 @@ impl BotCore {
             let mut c = ctl.lock().unwrap();
             let result = c.lobby.join(Candidate { telegram_id: user.id, name: user.name.clone() });
             if result.is_ok() {
-                c.unannounced.push(user.name.trim().to_string());
+                c.unannounced.push((user.id, user.name.trim().to_string()));
                 if c.lobby.should_close_for_joining() {
                     c.timer.force_start(); // the lobby is full
                 }
@@ -554,17 +558,17 @@ impl BotCore {
         ticker.tick().await; // the first tick is immediate
         loop {
             ticker.tick().await;
-            let (events, announce, lang, killed) = {
+            let (events, announce, lang, show_ids, killed) = {
                 let mut c = ctl.lock().unwrap();
                 if c.lobby.state() != control::lobby::LobbyState::Joining {
-                    (vec![], vec![], String::new(), true)
+                    (vec![], vec![], String::new(), false, true)
                 } else {
                     let n = c.lobby.players().len();
                     let has_new = !c.unannounced.is_empty();
                     let events = c.timer.tick(n, has_new);
                     let announce =
                         if events.contains(&TimerEvent::AnnounceJoined) { std::mem::take(&mut c.unannounced) } else { vec![] };
-                    (events, announce, c.settings.language.clone(), false)
+                    (events, announce, c.settings.language.clone(), c.settings.is_on(Toggle::ShowIDs), false)
                 }
             };
             if killed {
@@ -573,8 +577,13 @@ impl BotCore {
             for event in &events {
                 let (text, button) = match event {
                     TimerEvent::AnnounceJoined => {
-                        let names: Vec<String> = announce.iter().map(|n| escape(n)).collect();
-                        (self.texts.key(&lang, "HaveJoined", &[&format!("{} ", names.join(", "))]), false)
+                        // Werewolf.cs:458: with Show IDs, one player per line.
+                        let names = if show_ids {
+                            announce.iter().map(|(id, n)| format!("{} (ID: <code>{id}</code>)\n", escape(n))).collect::<String>()
+                        } else {
+                            format!("{} ", announce.iter().map(|(_, n)| escape(n)).collect::<Vec<_>>().join(", "))
+                        };
+                        (self.texts.key(&lang, "HaveJoined", &[&names]), false)
                     }
                     TimerEvent::Reminder { seconds_left: 60 } => (self.texts.key(&lang, "MinuteLeftToJoin", &[]), true),
                     TimerEvent::Reminder { seconds_left } => {
@@ -671,7 +680,7 @@ impl BotCore {
             let (result, remaining) = {
                 let mut c = ctl.lock().unwrap();
                 let r = c.lobby.leave(cmd.from.id);
-                c.unannounced.retain(|n| n != cmd.from.name.trim());
+                c.unannounced.retain(|(id, _)| *id != cmd.from.id);
                 (r, c.lobby.players().len())
             };
             match result {
@@ -748,7 +757,14 @@ impl BotCore {
             let names: Vec<String> = ctl.lock().unwrap().lobby.players().iter().map(|p| escape(&p.name)).collect();
             format!("{}: {}\n{}", bold(&self.texts.get(&lang, "", "Players", &[])), names.len(), names.join("\n"))
         } else if let Some(game) = self.game_of(group) {
-            game.player_list(&self.texts, &lang)
+            match game.players_reply(&self.texts, &lang) {
+                PlayersReply::Throttled => return,
+                PlayersReply::LatestList(list) => {
+                    let _ = self.telegram.send_reply(group, &self.texts.key(&lang, "LatestList", &[]), list.id).await;
+                    return;
+                }
+                PlayersReply::List(text) => text,
+            }
         } else {
             self.texts.key(&lang, "NoGame", &[])
         };

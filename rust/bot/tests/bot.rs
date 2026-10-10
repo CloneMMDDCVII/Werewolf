@@ -252,12 +252,25 @@ async fn joins_are_announced_in_batches() {
         let bot = Bot::new(10).await;
         bot.register(1..=3).await;
         bot.cmd(GROUP, ADMIN, "/startgame").await;
+        // The timer announces on its first second and then every 30. Wait
+        // for that first line, so the next joins land in one window.
+        // (Storage runs on its own thread and the paused clock moves while
+        // it works, so racing the first second would be timing-dependent.)
+        let joined = |bot: &Bot| -> Vec<String> {
+            bot.tg.texts(GROUP).into_iter().filter(|t| bot.is(t, "HaveJoined", &[""])).collect()
+        };
+        while joined(&bot).is_empty() {
+            tick(1).await;
+        }
+        let window_opened = tokio::time::Instant::now();
         bot.cmd(GROUP, 2, "/join").await;
         bot.cmd(GROUP, 3, "/join").await;
+        assert!(window_opened.elapsed() < Duration::from_secs(29), "the joins took {:?}", window_opened.elapsed());
         tick(31).await;
-        let joined: Vec<String> =
-            bot.tg.texts(GROUP).into_iter().filter(|t| t.contains("Player2") && t.contains("Player3")).collect();
-        assert_eq!(joined.len(), 1, "{}", bot.tg.transcript(GROUP));
+        let lines = joined(&bot);
+        assert_eq!(lines.len(), 2, "{}", bot.tg.transcript(GROUP));
+        assert!(lines[0].contains("Player1") && !lines[0].contains("Player2"), "{}", lines[0]);
+        assert!(lines[1].contains("Player2") && lines[1].contains("Player3"), "{}", lines[1]);
     })
 }
 
@@ -356,7 +369,7 @@ async fn busy_bots_refuse_new_games() {
         let bot = Bot::new(1).await;
         bot.start_game(1..=5).await;
         bot.cmd(OTHER_GROUP, 6, "/startgame").await;
-        assert!(bot.tg.last(OTHER_GROUP).unwrap().text.contains("very busy"));
+        assert!(bot.is(&bot.tg.last(OTHER_GROUP).unwrap().text, "NoNodes", &[]));
     })
 }
 
@@ -460,7 +473,7 @@ async fn games_cut_off_by_a_crash_are_announced_on_restart() {
         }
         let bot = Bot::with_store(10, store.clone()).await;
         bot.core.announce_interrupted_games().await;
-        assert!(bot.tg.transcript(GROUP).contains("bot restarted"));
+        assert!(bot.said(GROUP, "NodeShutsDown", &[]));
         assert_eq!(store.games().result(GameId(1)).await.unwrap(), Some(GameResult::Interrupted));
     })
 }
@@ -590,7 +603,7 @@ async fn the_pacifists_peace_closes_the_lynch_vote() {
             let Some((voter, ballot)) = ballot else { continue };
             let target = ballot.keyboard.as_ref().unwrap()[0][0].text().to_string();
             click(&bot, voter, &ballot, &target).await;
-            click(&bot, pacifist, &peace, &bot.t("Yes", &[])).await;
+            click(&bot, pacifist, &peace, &bot.t("Peace", &[])).await;
 
             let pacifist_name = format!("Player{pacifist}");
             assert!(bot.said(GROUP, "PacifistNoLynch", &[&pacifist_name]), "{}", bot.tg.transcript(GROUP));
@@ -628,5 +641,106 @@ async fn everyone_is_told_their_role_when_the_game_starts() {
         }
         let missing: Vec<i64> = (1..=6).filter(|&id| !knows(id)).collect();
         panic!("not told their role: {missing:?}");
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_group_sees_the_player_list_each_phase_and_the_game_length() {
+    local!(async {
+        let bot = Bot::new(10).await;
+        bot.start_game(1..=7).await;
+        // The first night's list follows its timer line.
+        tick(3).await;
+        let group = bot.tg.transcript(GROUP);
+        let night = group.find(&bot.t("NightTime", &["<b>90</b>"])[..20]).expect(&group);
+        let list = group.find(&bold_prefix(&bot.t("PlayersAlive", &[]))).expect(&group);
+        assert!(list > night, "{group}");
+
+        // /players points at that list rather than posting a new one.
+        bot.cmd(GROUP, 2, "/players").await;
+        let reply = bot.tg.last(GROUP).unwrap();
+        assert!(bot.is(&reply.text, "LatestList", &[]), "{}", reply.text);
+        assert!(reply.reply_to.is_some());
+        // Asked again straight away: nothing.
+        let before = bot.tg.texts(GROUP).len();
+        bot.cmd(GROUP, 3, "/players").await;
+        assert_eq!(bot.tg.texts(GROUP).len(), before);
+
+        bot.play_out(1..=7, 3 * 3600).await;
+        let group = bot.tg.transcript(GROUP);
+        assert!(group.matches(&bold_prefix(&bot.t("PlayersAlive", &[]))).count() >= 2, "{group}");
+        let end = bot.t("EndTime", &["X"]).replace('X', "");
+        let line = group.lines().find(|l| l.starts_with(&end)).unwrap_or_else(|| panic!("no game length: {group}"));
+        assert!(line[end.len()..].trim().len() == 8, "{line}");
+    })
+}
+
+fn bold_prefix(s: &str) -> String {
+    format!("<b>{s}</b>:")
+}
+
+#[tokio::test(start_paused = true)]
+async fn show_ids_lists_joiners_with_their_ids() {
+    local!(async {
+        let bot = Bot::new(10).await;
+        let mut settings = control::group_config::GroupSettings::default();
+        settings.set(control::group_config::Toggle::ShowIDs, true);
+        bot.store.groups().put_settings(GROUP, "Wolf Pack", &settings, 0).await.unwrap();
+        bot.register(1..=2).await;
+        bot.cmd(GROUP, ADMIN, "/startgame").await;
+        bot.cmd(GROUP, 2, "/join").await;
+        tick(31).await;
+        let group = bot.tg.transcript(GROUP);
+        assert!(group.contains("Player2 (ID: <code>2</code>)"), "{group}");
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_join_link_is_for_group_members_only() {
+    local!(async {
+        let bot = Bot::new(10).await;
+        bot.register(1..=2).await;
+        bot.cmd(GROUP, ADMIN, "/startgame").await;
+        bot.tg.leave_group(GROUP, 2);
+        bot.cmd(2, 2, &format!("/start join{GROUP}")).await;
+        assert!(bot.is(&bot.tg.last(2).unwrap().text, "NotMember", &["<b>Wolf Pack</b>"]));
+        bot.cmd(GROUP, ADMIN, "/players").await;
+        assert!(!bot.tg.last(GROUP).unwrap().text.contains("Player2"));
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn wolves_are_told_who_to_eat_with() {
+    local!(async {
+        let players = 1..=10;
+        let ask_eat = Texts::embedded().key("English", "AskEat", &[]);
+        for seed in 0..40 {
+            let bot = Bot::with_seed(seed).await;
+            bot.start_game(players.clone()).await;
+            // The first night's questions.
+            let mut eaters = vec![];
+            for _ in 0..30 {
+                eaters = players
+                    .clone()
+                    .filter_map(|id| bot.tg.open_keyboards(id).into_iter().find(|m| m.text.starts_with(&ask_eat)).map(|m| (id, m.text)))
+                    .collect();
+                if !eaters.is_empty() {
+                    break;
+                }
+                tick(1).await;
+            }
+            if eaters.len() < 2 {
+                continue;
+            }
+            for (id, text) in &eaters {
+                for (other, _) in &eaters {
+                    let named = text.contains(&format!("Player{other}"));
+                    assert_eq!(named, other != id, "player {id}'s prompt: {text}");
+                }
+                assert!(bot.is(text, "DiscussWith", &[""]), "{text}");
+            }
+            return;
+        }
+        panic!("no seed dealt two wolves");
     })
 }
