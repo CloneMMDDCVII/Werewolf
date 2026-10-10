@@ -29,6 +29,7 @@ pub use id::LanguageId;
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::{Reader, Writer};
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -156,10 +157,13 @@ fn parse(raw: &str) -> Result<LanguagePack, LoadError> {
 
                 if deprecated == Some(true) {
                     deprecated_keys.push(key);
-                } else if strings.contains_key(&key) {
-                    duplicate_keys.push(key);
                 } else {
-                    strings.insert(key, values);
+                    match strings.entry(key) {
+                        Entry::Occupied(e) => duplicate_keys.push(e.key().clone()),
+                        Entry::Vacant(e) => {
+                            e.insert(values);
+                        }
+                    }
                 }
             }
             _ => {

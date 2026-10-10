@@ -16,8 +16,8 @@
 //!    letting it silently fall back to generic wording forever (exactly
 //!    how the Fool/Sorcerer/Oracle mismap went unnoticed before someone
 //!    actually looked at the output).
-//! 2. The coverage number itself, printed so it's visible in test output
-//!    - a deliberately un-hidden TODO count, not swept into a comment
+//! 2. The coverage number itself, printed so it's visible in test output:
+//!    a deliberately un-hidden TODO count, not swept into a comment
 //!    that goes stale.
 use i18n::LanguagePack;
 use std::collections::HashSet;

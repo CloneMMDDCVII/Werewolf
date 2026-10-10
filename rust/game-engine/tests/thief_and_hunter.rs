@@ -90,7 +90,7 @@ fn full() -> GameRules {
 async fn play(players: &[AlivePlayer], rules: GameRules, presenter: &mut Night, seed: u64, rounds: u32) {
     run_game_with_rules(
         players,
-        &ALL_ROLES,
+        ALL_ROLES,
         &rules,
         presenter,
         &mut SeededRngSource::new(seed),

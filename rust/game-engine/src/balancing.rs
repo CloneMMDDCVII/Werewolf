@@ -101,7 +101,7 @@ fn candidate_role_pool(rng: &mut dyn RngSource, player_count: usize, disabled_ro
         .collect();
 
     if !possible_wolves.is_empty() {
-        let wolf_count = (player_count / 5).max(1).min(5);
+        let wolf_count = (player_count / 5).clamp(1, 5);
         let mut wolf_to_add = possible_wolves[rng.pick_index(possible_wolves.len())];
         for _ in 0..wolf_count {
             roles_to_assign.push(wolf_to_add);

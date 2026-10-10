@@ -51,12 +51,12 @@ impl Xorshift64 {
     }
 
     fn next_bool(&mut self) -> bool {
-        self.next_u64() % 2 == 0
+        self.next_u64().is_multiple_of(2)
     }
 }
 
-/// Answers every question with a random valid choice or a random decline
-/// - deliberately dumb, since the point is to exercise as many code paths
+/// Answers every question with a random valid choice or a random decline,
+/// deliberately dumb, since the point is to exercise as many code paths
 /// as possible, not to play well.
 struct RandomPresenter {
     rng: Xorshift64,

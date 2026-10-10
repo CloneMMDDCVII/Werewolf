@@ -1632,7 +1632,7 @@ fn secret_lynch_results(
             voters.push((voter, weight));
         }
     }
-    tallies.sort_by(|a, b| b.votes.cmp(&a.votes));
+    tallies.sort_by_key(|t| std::cmp::Reverse(t.votes));
     Some(Announcement::SecretLynchResults(tallies))
 }
 
@@ -1657,7 +1657,7 @@ fn tally_lynch(
         } else {
             1
         };
-        std::iter::repeat(target).take(weight)
+        std::iter::repeat_n(target, weight)
     });
     match majority_target(votes) {
         Some(target) => LynchResult::Lynched(target),

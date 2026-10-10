@@ -82,7 +82,7 @@ async fn play(rules: GameRules, extra: Role) -> Village {
     let mut presenter = Village::default();
     run_game_with_rules(
         &village(extra),
-        &ALL_ROLES,
+        ALL_ROLES,
         &rules,
         &mut presenter,
         &mut SeededRngSource::new(0),

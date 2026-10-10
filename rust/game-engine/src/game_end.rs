@@ -160,13 +160,11 @@ pub fn check_game_end(ctx: &EndContext, rng: &mut dyn RngSource) -> Option<GameE
                 });
             }
         }
-        3 => {
-            if alive
-                .iter()
-                .all(|p| matches!(p.role, Role::Sorcerer | Role::Thief | Role::Doppelganger))
-            {
-                return Some(neutral_ending(ctx));
-            }
+        3 if alive
+            .iter()
+            .all(|p| matches!(p.role, Role::Sorcerer | Role::Thief | Role::Doppelganger)) =>
+        {
+            return Some(neutral_ending(ctx));
         }
         _ => {}
     }
