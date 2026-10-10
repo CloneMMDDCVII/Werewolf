@@ -25,6 +25,7 @@ use shared::{KillMethod, Role};
 /// starting assignment - a Traitor who's turned Wolf by the time this
 /// renders shows as `Wolf`, matching the source rather than a snapshot
 /// from game start).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RosterEntry {
     pub id: PlayerId,
     pub name: String,

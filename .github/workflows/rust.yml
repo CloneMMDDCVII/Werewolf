@@ -40,3 +40,48 @@ jobs:
         with:
           workspaces: rust
       - run: cargo test --workspace --locked
+
+  # The bot as a single download per platform: unzip, run, follow the
+  # instructions it prints. Linux builds are static (musl), so they run on
+  # any distribution without installing anything.
+  release-build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ${{ matrix.target }}
+      - run: cargo build --release --locked -p bot --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          dir="werewolf-bot-${{ matrix.target }}"
+          mkdir -p "$dir/Languages"
+          exe=werewolf-bot
+          if [[ "${{ matrix.target }}" == *windows* ]]; then exe=werewolf-bot.exe; fi
+          cp "target/${{ matrix.target }}/release/$exe" "$dir/"
+          cp "../Werewolf for Telegram/Languages/"*.xml "$dir/Languages/"
+          cp bot/README.md "$dir/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: werewolf-bot-${{ matrix.target }}
+          path: rust/werewolf-bot-${{ matrix.target }}

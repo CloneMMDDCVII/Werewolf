@@ -66,6 +66,12 @@ impl LanguagePack {
         parse(&raw)
     }
 
+    /// Parses a language file already in memory (the bot embeds
+    /// English.xml in its binary so it runs with no files on disk).
+    pub fn from_xml(raw: &str) -> Result<Self, LoadError> {
+        parse(raw)
+    }
+
     /// All variants for a key, for random-variant selection at call sites.
     pub fn variants(&self, key: &str) -> Option<&[String]> {
         self.strings.get(key).map(|v| v.as_slice())

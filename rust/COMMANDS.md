@@ -28,11 +28,11 @@ scope (explained in notes, not just skipped silently)
 
 | Command | Status | Notes |
 |---|---|---|
-| `start` | ⬜ | PM-only onboarding/welcome message |
-| `help` | ⬜ | Static help text, mostly an `i18n` lookup |
+| `start` | ✅ | `bot`: registers the player as reachable for PMs, takes a `join<group>` payload from the Join button, otherwise a welcome |
+| `help` | ✅ | `bot`: the legacy links, only for a bare `/help`. `/rolelist` dropped from it, as that command is ⛔ |
 | `setlang` | ✅ | `control::language_picker`: base then variant picker shared with the group `Lang` option, stored via `db::Players::set_language`. Spec: `control/features/language_picker.feature` |
-| `getlang` | ⬜ | Download language files; reuses `language_picker`'s base/variant picker, needs file sending (and zipping for "All") from the presenter |
-| `ping` | ⬜ | Trivial liveness check |
+| `getlang` | 🟡 | `bot::menus`: `/getlang <file>` sends that file; bare `/getlang` offers bases then variants as buttons. The legacy "All" zip of every file is not offered |
+| `ping` | ✅ | `bot`: sends, then edits in the round-trip time (`Ping2`) |
 | `achv` | ⛔ | Achievement system not planned for this port (no achievement modeling anywhere in `game-engine`) |
 | `chatid` / `changelog` / `runinfo` / `getstatus` / `version` | ⛔ | Bot infra/meta, no game logic |
 | `stats` / `myidles` | ⛔ | Stats tracking - explicitly dropped per `db`'s module doc ("drop stats/achievement/website tables") |
@@ -166,7 +166,7 @@ Mechanics the briefing listed as unported, scoped in
 | Detective snoops by day, wolves may catch them | ✅ | `reveals::resolve_detective` |
 | Troublemaker's second lynch; Pacifist vs Troublemaker, last one wins | ✅ | `game::run_game`, `orchestrator::last_day_veto` |
 | Lynch tie / no votes announcements (no re-vote: `RandomLynch` is `false`) | ✅ | `orchestrator::LynchResult` |
-| Clumsy Guy vote redirect | ✅ | `orchestrator::ask_lynch_vote` |
+| Clumsy Guy vote redirect | ✅ | `orchestrator::LynchVotes` |
 | Revealed Mayor's vote counts double on every later lynch | ✅ | `orchestrator::tally_lynch` |
 | Hunter domino chains | ✅ | `game::process_deaths_and_hunter_shots` |
 | Gunner bullet count shown and carried over a Thief steal | ✅ | `roles::gunner::bullets_left`, `game::apply_thief_steals` |
@@ -178,10 +178,49 @@ Group settings the engine follows, scoped in `features/game-rules.feature`
 
 | Setting | Status | Where |
 |---|---|---|
-| Day/night/lynch timers announced (`NightTime`, `DayTime` + `Day`, `LynchTime`), longer first night and bigger-game days | ✅ | `rules::GameRules::{night_seconds, day_seconds}`. Announced only; the countdown itself belongs to the presenter |
-| Public lynch votes announced as cast | ✅ | `orchestrator::announce_vote` |
+| Day/night/lynch timers announced (`NightTime`, `DayTime` + `Day`, `LynchTime`), longer first night and bigger-game days | ✅ | `rules::GameRules::{night_seconds, day_seconds}`. The countdown is the presenter's (`bot::game`) |
+| Public lynch votes announced as cast | ✅ | `orchestrator::LynchVotes`, called by the presenter as each vote lands (`Presenter::ask_batch`) |
 | Secret lynch: vote counts only, then results with votes and optionally voters | ✅ | `orchestrator::secret_lynch_results` |
 | Show roles on death | ✅ | `NarrationEvent::Death::reveal_role` |
 | End-of-game summary per `ShowRolesEnd` | ✅ | `summary::GameSummary`, `NarrationEvent::GameSummary` |
 | Random mode rolls (mode, thief full, secret lynch, votes, voters, roles on death, burning overkill, end roles) | ✅ | `control::game_rules::game_start`. Divergence: the rolled roles-on-death and end-roles values are used; legacy rolled them and then read the stored flags |
 | Show IDs, shuffle player list, NSFW | ⛔ engine | Display-only, read by the presenter |
+
+## The bot itself (`rust/bot`)
+
+The Telegram front end: `werewolf-bot`, one binary plus `werewolf.toml`
+(see `bot/README.md`). Commands above marked ✅ are wired to Telegram
+there, through the permission gate, with:
+
+- **Join timer** (`bot::join_timer`, `GameTimer` in Werewolf.cs): three
+  minutes, reminders at 60/30/10 seconds, joins announced every 30
+  seconds, late joins buying time back, `/extend` capped at five minutes.
+- **One game per group**, a player in one game at a time, new games
+  refused when memory is short (`control::capacity`) or the bot is
+  shutting down.
+- **Running games** (`bot::game`): what the group's settings say
+  (`control::game_rules::game_start`, Random mode included) and roles
+  dealt with their pool (`balance_with_pool`), roles by PM, each phase's
+  questions sent together under the engine's announced timer (the
+  Snow Wolf's freeze with the rest of the night; day abilities open for
+  the whole day, then the vote), lynch votes announced as they land,
+  buttons closed with `ChoiceAccepted` or `TimesUp`, every engine
+  message, note and the end-of-game summary rendered from the group's
+  language, and every game, death and final role recorded through
+  `db::Games`.
+- **Restarts**: games cut off by a crash are announced to their groups
+  on the next start and closed as interrupted.
+
+Tested end to end without a token: `bot/tests/bot.rs` drives the real
+core, games and an in-memory database against `bot::fake::FakeTelegram`
+on a paused clock.
+
+Known gaps:
+
+- Day abilities (Mayor, Pacifist, Blacksmith, Troublemaker) are
+  announced when the day's batch closes, not the moment they are used,
+  and a Pacifist's peace still lets the vote run before cancelling it.
+  Both come from the engine resolving the day's actions and votes
+  together; announcing them live needs the same `OnAnswer` treatment
+  votes have.
+- `/getlang` doesn't offer the legacy "All" zip.
