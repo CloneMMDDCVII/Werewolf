@@ -4,16 +4,34 @@
 //! being asked. What information comes back is resolution logic this
 //! file doesn't attempt, same as the other investigate-shaped roles.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Sorcerer,
+    behavior: &Sorcerer,
+    night: NightQuestion::Pick(Prompt::SorcererInvestigate),
+    day: DayQuestion::None,
+    info_key: "RoleInfoSorcerer",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 40,
+    frozen_loses_action: true,
+    deaths: DeathLines {
+        eaten: "SorcererEaten",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength: |_| 2,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Sorcerer;
 
 impl RoleBehavior for Sorcerer {
-    fn team(&self) -> Team {
-        Role::Sorcerer.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {

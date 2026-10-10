@@ -21,7 +21,7 @@ use crate::reveals::resolve_detective;
 use crate::rng::RngSource;
 use crate::role_info::{role_info, transform_tells, Cause};
 use crate::roles::gunner::bullets_left;
-use crate::roles::{behavior_for, DayAction, LoversState, NightAction, PlayerId, RoleState};
+use crate::roles::{def, DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::rules::GameRules;
 use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::{KillEvent, WinOutcome};
@@ -68,11 +68,7 @@ pub async fn run_game(
 /// balancer's pool when a caller has none (fixtures, tests); a real game
 /// should pass the pool from `balancing::balance_with_pool`.
 fn default_role_pool() -> Vec<Role> {
-    shared::ALL_ROLES
-        .iter()
-        .copied()
-        .filter(|&r| behavior_for(r).is_available())
-        .collect()
+    shared::ALL_ROLES.iter().copied().filter(|&r| def(r).dealt).collect()
 }
 
 /// `run_game`, with the pool of roles the game was dealt from, which the

@@ -7,13 +7,31 @@
 //! which a `NightContext` carries), so this file stays passive. When no
 //! other wolf is left it turns into a plain Wolf (`game::apply_transforms`).
 
+use crate::roles::definition::*;
 use crate::roles::RoleBehavior;
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::SnowWolf,
+    behavior: &SnowWolf,
+    night: NightQuestion::Freeze,
+    day: DayQuestion::None,
+    info_key: "RoleInfoSnowWolf",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Itself,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        visited_serial_killer: Some("SnowFrozeKiller"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength: |_| 15,
+        pool: Pool::Wolf,
+    },
+    dealt: true,
+};
 
 pub struct SnowWolf;
 
-impl RoleBehavior for SnowWolf {
-    fn team(&self) -> Team {
-        Role::SnowWolf.team()
-    }
-}
+impl RoleBehavior for SnowWolf {}

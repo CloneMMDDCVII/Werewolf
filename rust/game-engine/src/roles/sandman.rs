@@ -6,16 +6,34 @@
 //! nothing resolves (Werewolf.cs:3011-3020). `game::run_game` does that
 //! when it sees `DayAction::Sleep`.
 
+use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Sandman,
+    behavior: &Sandman,
+    night: NightQuestion::None,
+    day: DayQuestion::Ability {
+        prompt: Prompt::SandmanSleep,
+        announce: |sandman| Announcement::SandmanSleepAll { sandman },
+    },
+    info_key: "RoleInfoSandman",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 60,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::RevealedVillage,
+        strength: |_| 3,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Sandman;
 
 impl RoleBehavior for Sandman {
-    fn team(&self) -> Team {
-        Role::Sandman.team()
-    }
-
     fn day_action(&self, ctx: &DayContext, state: &mut RoleState) -> Vec<DayAction> {
         if state.primary_used || !ctx.toggle_choice {
             return vec![];

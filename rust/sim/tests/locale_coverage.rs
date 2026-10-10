@@ -1,7 +1,7 @@
 //! Measures how much of the legacy game's actual message catalog
 //! (`Languages/English.xml`) this port currently reaches, as a real
 //! number rather than a vibe — the same "exhaustive match, no silent
-//! wildcard" instinct behind `roles::behavior_for`, applied to locale
+//! wildcard" instinct behind `game_engine::roles::def`, applied to locale
 //! keys instead of roles.
 //!
 //! This test does **not** yet assert full coverage — categorizing all

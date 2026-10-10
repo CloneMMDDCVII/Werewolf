@@ -10,7 +10,8 @@
 use crate::messages::Note;
 use crate::orchestrator::{AlivePlayer, NarrationEvent};
 use crate::rng::RngSource;
-use crate::roles::{DayAction, NightAction, PlayerId};
+use crate::roles::definition::{SeerSees, SorcererSees};
+use crate::roles::{def, DayAction, NightAction, PlayerId};
 use shared::Role;
 
 /// Chance the wolves learn who the Detective is on a day they snoop
@@ -28,20 +29,19 @@ fn role_of(id: PlayerId, survivors: &[AlivePlayer], start_of_night: &[AlivePlaye
         .map(|p| p.role)
 }
 
-/// What the Seer is told about `role` (Werewolf.cs:3934-3953). The
-/// Traitor reads as Wolf or Villager at random.
+/// What the Seer is told about `role` (Werewolf.cs:3934-3953): its
+/// `RoleDef::seer_sees`.
 fn seer_reading(role: Role, rng: &mut dyn RngSource) -> Role {
-    match role {
-        Role::Traitor => {
+    match def(role).seer_sees {
+        SeerSees::Itself => role,
+        SeerSees::As(shown) => shown,
+        SeerSees::WolfOrVillager => {
             if rng.chance(50) {
                 Role::Wolf
             } else {
                 Role::Villager
             }
         }
-        Role::WolfCub | Role::AlphaWolf | Role::WolfMan => Role::Wolf,
-        Role::Lycan => Role::Villager,
-        other => other,
     }
 }
 
@@ -92,13 +92,13 @@ pub fn resolve_night_readings(
         let Some(role) = role_of(target, survivors, start_of_night) else {
             continue;
         };
-        let note = match role {
-            Role::AlphaWolf | Role::Wolf | Role::WolfCub => Note::SeerSees {
+        let note = match def(role).sorcerer_sees {
+            SorcererSees::Wolf => Note::SeerSees {
                 target,
                 role: Role::Wolf,
             },
-            Role::Seer | Role::SnowWolf => Note::SeerSees { target, role },
-            _ => Note::SorcererOther { target },
+            SorcererSees::Itself => Note::SeerSees { target, role },
+            SorcererSees::Nothing => Note::SorcererOther { target },
         };
         events.push(tell(sorcerer, note));
     }

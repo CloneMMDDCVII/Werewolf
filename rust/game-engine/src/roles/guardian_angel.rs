@@ -5,16 +5,41 @@
 //! guarding a wolf, blocking the Snow Wolf's freeze) is resolved in the
 //! Guardian Angel region of `night` and in `freeze`.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::GuardianAngel,
+    behavior: &GuardianAngel,
+    night: NightQuestion::Pick(Prompt::GuardianAngelProtect),
+    day: DayQuestion::None,
+    info_key: "RoleInfoGuardianAngel",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 60,
+    frozen_loses_action: true,
+    deaths: DeathLines {
+        eaten: "GuardianEaten",
+        serial_killed: "GuardianAngelKilled",
+        visited_serial_killer: Some("GAGuardedKiller"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
+
+/// `GameBalancing.cs::GetStrength`.
+fn strength(all_roles: &[Role]) -> i32 {
+    7 + i32::from(all_roles.contains(&Role::Arsonist))
+}
 
 pub struct GuardianAngel;
 
 impl RoleBehavior for GuardianAngel {
-    fn team(&self) -> Team {
-        Role::GuardianAngel.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if ctx.alive.contains(&target) => {

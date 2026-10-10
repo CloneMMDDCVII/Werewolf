@@ -8,13 +8,33 @@
 //! victim. Not duplicated here to avoid two sources of truth for the same
 //! rule.
 
+use crate::roles::definition::*;
 use crate::roles::RoleBehavior;
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Tanner,
+    behavior: &Tanner,
+    night: NightQuestion::None,
+    day: DayQuestion::None,
+    info_key: "RoleInfoTanner",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
+
+/// `GameBalancing.cs::GetStrength`.
+fn strength(all_roles: &[Role]) -> i32 {
+    all_roles.len() as i32 / 2
+}
 
 pub struct Tanner;
 
-impl RoleBehavior for Tanner {
-    fn team(&self) -> Team {
-        Role::Tanner.team()
-    }
-}
+impl RoleBehavior for Tanner {}

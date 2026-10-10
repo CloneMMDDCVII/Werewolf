@@ -16,7 +16,7 @@ use crate::orchestrator::{grave_digger_fall_chance_percent, AlivePlayer, Narrati
 use crate::reveals::{resolve_night_readings, AugurMemory};
 use crate::rng::RngSource;
 use crate::role_info::{transform_tells, Cause};
-use crate::roles::{NightAction, PlayerId, RoleState};
+use crate::roles::{def, NightAction, PlayerId, RoleState};
 use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
 
@@ -41,28 +41,6 @@ const GUARDIAN_DIES_GUARDING_WOLF_PERCENT: u32 = 50;
 /// The Serial Killer's random kill the night after stumbling into a
 /// grave (Werewolf.cs:3510).
 const SERIAL_KILLER_RANDOM_KILL_PERCENT: u32 = 50;
-
-/// Every `*ConversionChance` in Settings.cs. Roles left out convert at
-/// `ConvertToCult`'s default of 100 (Werewolf.cs:2489).
-fn cult_conversion_chance_percent(role: Role) -> u32 {
-    match role {
-        Role::Oracle => 50,
-        Role::Sandman => 60,
-        Role::WiseElder => 30,
-        Role::Pacifist => 80,
-        Role::Augur => 40,
-        Role::Seer => 40,
-        Role::GuardianAngel => 60,
-        Role::Detective => 70,
-        Role::Cursed => 60,
-        Role::Harlot => 70,
-        Role::Sorcerer => 40,
-        Role::Blacksmith => 75,
-        Role::GraveDigger => 30,
-        Role::Doppelganger | Role::Thief | Role::Spumpkin => 0,
-        _ => 100,
-    }
-}
 
 /// The legacy wolf vote count: most votes wins, ties go to whoever comes
 /// first in the player list (Werewolf.cs:3246-3260). `players` is that
@@ -814,7 +792,7 @@ impl Night<'_, '_> {
                         self.tell_all(&cult, NightNote::CultVisitEmpty(newbie, target));
                     }
                 }
-                r => self.convert(target, cult_conversion_chance_percent(r), newbie),
+                r => self.convert(target, def(r).cult_conversion, newbie),
             },
             Visit::AlreadyDead => {
                 if !self.burning.contains(&target) {

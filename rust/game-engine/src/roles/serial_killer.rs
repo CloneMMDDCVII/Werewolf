@@ -3,16 +3,31 @@
 //! kind, so unlike `wolf::Wolf`'s `EatVote` there's no consensus to tally.
 //! The kill is resolved in the Serial Killer region of `night`.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::SerialKiller,
+    behavior: &SerialKiller,
+    night: NightQuestion::Pick(Prompt::SerialKillerKill),
+    day: DayQuestion::None,
+    info_key: "RoleInfoSerialKiller",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: true,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength: |_| 15,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct SerialKiller;
 
 impl RoleBehavior for SerialKiller {
-    fn team(&self) -> Team {
-        Role::SerialKiller.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {

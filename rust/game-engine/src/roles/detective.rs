@@ -7,16 +7,34 @@
 //! `reveals::resolve_detective`; this file only covers "is this a valid
 //! target to snoop on."
 
+use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Detective,
+    behavior: &Detective,
+    night: NightQuestion::None,
+    day: DayQuestion::Pick(Prompt::DetectiveInvestigate),
+    info_key: "RoleInfoDetective",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 70,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        eaten: "DetectiveEaten",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 6,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Detective;
 
 impl RoleBehavior for Detective {
-    fn team(&self) -> Team {
-        Role::Detective.team()
-    }
-
     fn day_action(&self, ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {

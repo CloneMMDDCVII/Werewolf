@@ -5,7 +5,7 @@
 
 use crate::messages::{Message, MessageArg};
 use crate::orchestrator::{AlivePlayer, NarrationEvent};
-use crate::roles::PlayerId;
+use crate::roles::{def, PlayerId};
 use shared::Role;
 
 fn ids(alive: &[AlivePlayer], keep: impl Fn(&AlivePlayer) -> bool) -> Vec<PlayerId> {
@@ -28,65 +28,11 @@ fn tell_all(to: &[PlayerId], message: Message) -> Vec<NarrationEvent> {
     to.iter().map(|&id| tell(id, message.clone())).collect()
 }
 
-/// `RoleInfo{role}`, the key every role's description is under.
-fn role_info_key(role: Role) -> &'static str {
-    match role {
-        Role::Villager => "RoleInfoVillager",
-        Role::Drunk => "RoleInfoDrunk",
-        Role::Harlot => "RoleInfoHarlot",
-        Role::Seer => "RoleInfoSeer",
-        Role::Traitor => "RoleInfoTraitor",
-        Role::GuardianAngel => "RoleInfoGuardianAngel",
-        Role::Detective => "RoleInfoDetective",
-        Role::Wolf => "RoleInfoWolf",
-        Role::Cursed => "RoleInfoCursed",
-        Role::Gunner => "RoleInfoGunner",
-        Role::Tanner => "RoleInfoTanner",
-        // The Fool is told they're the Seer (Werewolf.cs:1650).
-        Role::Fool => "RoleInfoSeer",
-        Role::WildChild => "RoleInfoWildChild",
-        Role::Beholder => "RoleInfoBeholder",
-        Role::ApprenticeSeer => "RoleInfoApprenticeSeer",
-        Role::Cultist => "RoleInfoCultist",
-        Role::CultistHunter => "RoleInfoCultistHunter",
-        Role::Mason => "RoleInfoMason",
-        Role::Doppelganger => "RoleInfoDoppelganger",
-        Role::Cupid => "RoleInfoCupid",
-        Role::Hunter => "RoleInfoHunter",
-        Role::SerialKiller => "RoleInfoSerialKiller",
-        Role::Sorcerer => "RoleInfoSorcerer",
-        Role::AlphaWolf => "RoleInfoAlphaWolf",
-        Role::WolfCub => "RoleInfoWolfCub",
-        Role::Blacksmith => "RoleInfoBlacksmith",
-        Role::ClumsyGuy => "RoleInfoClumsyGuy",
-        Role::Mayor => "RoleInfoMayor",
-        Role::Prince => "RoleInfoPrince",
-        Role::Lycan => "RoleInfoLycan",
-        Role::Pacifist => "RoleInfoPacifist",
-        Role::WiseElder => "RoleInfoWiseElder",
-        Role::Oracle => "RoleInfoOracle",
-        Role::Sandman => "RoleInfoSandman",
-        Role::WolfMan => "RoleInfoWolfMan",
-        Role::Thief => "RoleInfoThief",
-        Role::Troublemaker => "RoleInfoTroublemaker",
-        Role::Chemist => "RoleInfoChemist",
-        Role::SnowWolf => "RoleInfoSnowWolf",
-        Role::GraveDigger => "RoleInfoGraveDigger",
-        Role::Augur => "RoleInfoAugur",
-        Role::Arsonist => "RoleInfoArsonist",
-        // Not in English.xml yet (the Spumpkin's other lines aren't either).
-        Role::Spumpkin => "RoleInfoSpumpkin",
-        Role::Chef => "RoleInfoChef",
-        Role::Barkeep => "RoleInfoBarkeep",
-        Role::Witch => "RoleInfoWitch",
-    }
-}
-
 /// `GetRoleInfo` (Werewolf.cs:1643-1711): a role's description, with the
 /// team a Mason, Cultist or wolf belongs to, and the Seer a Beholder
 /// watches. `alive` is everyone alive now, the player included.
 pub fn role_info(role: Role, alive: &[AlivePlayer], thief_full: bool) -> Message {
-    let info = Message::new(role_info_key(role), vec![]);
+    let info = Message::new(def(role).info_key, vec![]);
     match role {
         Role::Beholder => info.followed_by(match holder(alive, Role::Seer) {
             Some(seer) => Message::new("BeholderSeer", vec![MessageArg::Player(seer)]),
@@ -413,7 +359,7 @@ pub fn samples() -> Vec<Message> {
     }
     for role in shared::ALL_ROLES {
         if !matches!(role, Role::Spumpkin | Role::Chef | Role::Barkeep | Role::Witch) {
-            out.push(Message::new(role_info_key(*role), vec![]));
+            out.push(Message::new(def(*role).info_key, vec![]));
         }
     }
     out

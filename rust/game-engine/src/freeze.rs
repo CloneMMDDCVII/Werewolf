@@ -15,27 +15,8 @@
 use crate::messages::{FrozenNotice, Note};
 use crate::orchestrator::{AlivePlayer, NarrationEvent, Presenter, Prompt};
 use crate::rng::RngSource;
-use crate::roles::{NightAction, PlayerId};
+use crate::roles::{def, NightAction, PlayerId};
 use shared::{KillMethod, Role};
-
-/// Whether being frozen cancels this role's night action.
-fn freeze_blocks(role: Role) -> bool {
-    matches!(
-        role,
-        Role::Harlot
-            | Role::Chemist
-            | Role::Cultist
-            | Role::CultistHunter
-            | Role::Seer
-            | Role::Sorcerer
-            | Role::Fool
-            | Role::Oracle
-            | Role::Augur
-            | Role::GuardianAngel
-            | Role::SerialKiller
-            | Role::GraveDigger
-    )
-}
 
 /// Chance the Snow Wolf dies visiting a Serial Killer who has a target
 /// tonight (Werewolf.cs:2342: `Program.R.Next(100) < 80`). With no target
@@ -162,7 +143,7 @@ pub fn apply_freeze(
     };
 
     outcome.frozen = Some(target);
-    if freeze_blocks(target_role) || (target_role == Role::Thief && thief_full) {
+    if def(target_role).frozen_loses_action || (target_role == Role::Thief && thief_full) {
         actions.retain(|(actor, _)| *actor != target);
     }
     outcome.events.push(tell(target, Note::Frozen(notice)));

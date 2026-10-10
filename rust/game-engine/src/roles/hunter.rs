@@ -17,13 +17,28 @@
 //! shortcuts, and "Domino" chaining) this proof-of-concept doesn't
 //! distinguish yet.
 
+use crate::roles::definition::*;
 use crate::roles::RoleBehavior;
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Hunter,
+    behavior: &Hunter,
+    night: NightQuestion::None,
+    day: DayQuestion::None,
+    info_key: "RoleInfoHunter",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 6,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Hunter;
 
-impl RoleBehavior for Hunter {
-    fn team(&self) -> Team {
-        Role::Hunter.team()
-    }
-}
+impl RoleBehavior for Hunter {}

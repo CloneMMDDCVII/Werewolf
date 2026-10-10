@@ -368,7 +368,7 @@ mod all_roles_tests {
     /// Exhaustive on purpose, no `_` arm: if a `Role` variant is ever added
     /// without a matching entry in `ALL_ROLES`, this fails to *compile*,
     /// not just to pass a runtime check — same guarantee as
-    /// `roles::behavior_for`'s exhaustive match, applied to keep the
+    /// `game_engine::roles::def`'s exhaustive match, applied to keep the
     /// fuzz-testing role list honest.
     fn assert_every_variant_is_handled(role: Role) {
         match role {

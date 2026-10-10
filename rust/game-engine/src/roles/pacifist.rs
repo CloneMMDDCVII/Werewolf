@@ -4,16 +4,34 @@
 //! affect a death outcome: `orchestrator::apply_day_results` cancels the
 //! resolved lynch target whenever this action is present.
 
+use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Pacifist,
+    behavior: &Pacifist,
+    night: NightQuestion::None,
+    day: DayQuestion::Ability {
+        prompt: Prompt::PacifistPeace,
+        announce: |pacifist| Announcement::PacifistNoLynch { pacifist },
+    },
+    info_key: "RoleInfoPacifist",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 80,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::RevealedVillage,
+        strength: |_| 3,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Pacifist;
 
 impl RoleBehavior for Pacifist {
-    fn team(&self) -> Team {
-        Role::Pacifist.team()
-    }
-
     fn day_action(&self, ctx: &DayContext, state: &mut RoleState) -> Vec<DayAction> {
         if state.primary_used || !ctx.toggle_choice {
             return vec![];

@@ -11,16 +11,31 @@
 //! both regardless — see that function's doc for why the special case is
 //! flavor-only and safe to skip).
 
+use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Spumpkin,
+    behavior: &Spumpkin,
+    night: NightQuestion::None,
+    day: DayQuestion::Pick(Prompt::SpumpkinDetonate),
+    info_key: "RoleInfoSpumpkin",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 0,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 2,
+        pool: Pool::Never,
+    },
+    dealt: true,
+};
 
 pub struct Spumpkin;
 
 impl RoleBehavior for Spumpkin {
-    fn team(&self) -> Team {
-        Role::Spumpkin.team()
-    }
-
     fn day_action(&self, ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {

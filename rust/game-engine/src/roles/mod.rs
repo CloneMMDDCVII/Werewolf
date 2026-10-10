@@ -1,16 +1,14 @@
-//! Every role's logic lives in its own file here, implementing one shared
-//! trait (`RoleBehavior`). The point isn't just organization — it's that
-//! `behavior_for` below is an **exhaustive match over every `Role`
-//! variant**, so the compiler refuses to build if a role is ever added
-//! without a line here saying what to do with it (even if that line is
-//! just "not implemented yet"). That replaces the honor-system comment in
-//! the legacy code (`Shared/Roles.cs:9`): *"If you add a role, make sure
-//! to add it into the SetTeam and GetStrength methods!"* — a instruction
-//! only a person can forget, not the compiler.
+//! One file per role. Each declares the role's facts as `pub const DEF:
+//! RoleDef` (see `definition`) and implements `RoleBehavior`, which turns the
+//! player's answers into actions. `def` below maps every `Role` to its
+//! `DEF` with an exhaustive match, so a new `Role` variant does not build
+//! until it has a file and a line here.
 //!
-//! For a newcomer: start at `behavior_for`, pick a role you're curious
-//! about, and go read its one small file. Nothing else in the game
-//! depends on you understanding any other role first.
+//! What a role *does* once its actions are in is resolved by the night
+//! (`night::resolve_night_sequence`, region by region in the legacy order)
+//! and the day (`orchestrator::apply_day_results`); each role's file says
+//! where. `rust/ARCHITECTURE.md` walks through adding, changing and
+//! deleting a role.
 
 pub mod alpha_wolf;
 pub mod apprentice_seer;
@@ -26,6 +24,7 @@ pub mod cultist;
 pub mod cultist_hunter;
 pub mod cupid;
 pub mod cursed;
+pub mod definition;
 pub mod detective;
 pub mod doppelganger;
 pub mod drunk;
@@ -60,9 +59,10 @@ pub mod wolf;
 pub mod wolf_cub;
 pub mod wolf_man;
 
+pub use definition::RoleDef;
 pub use lovers::LoversState;
 
-use shared::{Role, Team};
+use shared::Role;
 
 /// Deliberately just a `u64` wrapper, not a struct with role/alive-state
 /// attached — a role's logic shouldn't be able to reach into another
@@ -191,17 +191,6 @@ pub enum NightAction {
     },
 }
 
-/// A piece of information about tonight that some role's decision depends
-/// on *before it can even be asked* — not a game rule, a scheduling fact.
-/// The canonical example is Witch: she can't sensibly be asked "heal or
-/// not?" until the wolves' target is known, so her night action has to
-/// resolve in a later step than the wolves' vote, not the same one. See
-/// `RoleBehavior::requires`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NightFact {
-    WolfTarget,
-}
-
 /// Everything a role's `night_action` needs to decide what to do.
 /// `chosen_*` fields represent a player's already-collected input (from
 /// Telegram, in the real bot) — a role's job is to validate and shape that
@@ -316,117 +305,84 @@ pub struct RoleState {
     pub remembered_player: Option<PlayerId>,
 }
 
-/// The seam every role implements. Three hooks for now (this is a proof of
-/// concept, not the full engine) — more will be added as more of the
-/// legacy game loop gets ported, each one another exhaustive match to keep
-/// honest.
-pub trait RoleBehavior {
-    fn team(&self) -> Team;
-
-    /// Called once per night for this role. Most roles do nothing (see
-    /// `villager::Villager` — the template for a no-op role); returns
-    /// zero, one, or (for multi-resource roles like Witch) two actions.
+/// How a role turns its player's answers into actions. Most roles do
+/// nothing (see `villager::Villager`), which is the default.
+pub trait RoleBehavior: Sync {
+    /// Called once per night. Returns zero, one, or (for roles with two
+    /// resources, like the Witch) two actions.
     fn night_action(&self, _ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         vec![]
     }
 
-    /// Called once per day for this role (e.g. Gunner's shot). Most roles
-    /// have no day action at all — that's the default here, not an
-    /// omission, the same way most roles don't override `night_action`.
+    /// Called once per day (the Gunner's shot, the Mayor's reveal).
     fn day_action(&self, _ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         vec![]
     }
-
-    /// Declares what this role's `night_action` needs resolved *before* it
-    /// can be meaningfully asked. Empty for almost every role — Wolf, Seer,
-    /// Harlot etc. can all be asked simultaneously with no ordering
-    /// constraint between them. A future orchestrator would use this to
-    /// compute night resolution order (a topological sort, not a hardcoded
-    /// phase list), so adding a new dependent role is a one-line addition
-    /// here rather than a manual re-sequencing exercise somewhere else.
-    fn requires(&self) -> &'static [NightFact] {
-        &[]
-    }
-
-    /// Whether this role can currently be dealt into a real game. Not the
-    /// same question as "is it implemented" — `Witch` has real, tested
-    /// logic (see `witch` module) but stays gated off (`false`) because
-    /// nothing resolves the `WolfTarget` dependency `requires()` declares
-    /// yet, and shipping her without that would just mean asking the heal
-    /// question with stale/wrong information. Default `true`: most roles
-    /// have no such prerequisite.
-    fn is_available(&self) -> bool {
-        true
-    }
 }
 
-/// A role this proof-of-concept hasn't ported yet. Team is still correct
-/// (reuses `shared::Role::team`), it just has no behavior wired up. This
-/// is the explicit "not yet done" marker `behavior_for` uses for every role
-/// outside the five built out so far — deliberately not a silent
-/// catch-all, see the match below.
-pub struct Unimplemented(pub Role);
-
-impl RoleBehavior for Unimplemented {
-    fn team(&self) -> Team {
-        self.0.team()
-    }
-}
-
-/// Dispatches a `Role` to its behavior. Exhaustive on purpose: every
-/// variant is named explicitly, either routed to a real implementation or
-/// to `Unimplemented`. A `_ => ...` wildcard arm would compile just as
-/// happily whether or not a new role was handled — the whole point is that
-/// this does *not* have one, so adding a `Role` variant without touching
-/// this match is a compile error, not a runtime surprise.
-pub fn behavior_for(role: Role) -> Box<dyn RoleBehavior> {
+/// Every role's `DEF`. Exhaustive on purpose: no `_` arm, so adding a
+/// `Role` variant without a role file is a compile error.
+pub fn def(role: Role) -> &'static RoleDef {
     use Role::*;
     match role {
-        Villager => Box::new(villager::Villager),
-        Wolf => Box::new(wolf::Wolf),
-        Seer => Box::new(seer::Seer),
-        Witch => Box::new(witch::Witch),
-        Cupid => Box::new(cupid::Cupid),
-        Drunk => Box::new(drunk::Drunk),
-        Harlot => Box::new(harlot::Harlot),
-        Traitor => Box::new(traitor::Traitor),
-        GuardianAngel => Box::new(guardian_angel::GuardianAngel),
-        Detective => Box::new(detective::Detective),
-        Cursed => Box::new(cursed::Cursed),
-        Gunner => Box::new(gunner::Gunner),
-        Tanner => Box::new(tanner::Tanner),
-        Fool => Box::new(fool::Fool),
-        WildChild => Box::new(wild_child::WildChild),
-        Beholder => Box::new(beholder::Beholder),
-        ApprenticeSeer => Box::new(apprentice_seer::ApprenticeSeer),
-        Cultist => Box::new(cultist::Cultist),
-        CultistHunter => Box::new(cultist_hunter::CultistHunter),
-        Mason => Box::new(mason::Mason),
-        Doppelganger => Box::new(doppelganger::Doppelganger),
-        Hunter => Box::new(hunter::Hunter),
-        SerialKiller => Box::new(serial_killer::SerialKiller),
-        Sorcerer => Box::new(sorcerer::Sorcerer),
-        AlphaWolf => Box::new(alpha_wolf::AlphaWolf),
-        WolfCub => Box::new(wolf_cub::WolfCub),
-        Blacksmith => Box::new(blacksmith::Blacksmith),
-        ClumsyGuy => Box::new(clumsy_guy::ClumsyGuy),
-        Mayor => Box::new(mayor::Mayor),
-        Prince => Box::new(prince::Prince),
-        Lycan => Box::new(lycan::Lycan),
-        Pacifist => Box::new(pacifist::Pacifist),
-        WiseElder => Box::new(wise_elder::WiseElder),
-        Oracle => Box::new(oracle::Oracle),
-        Sandman => Box::new(sandman::Sandman),
-        WolfMan => Box::new(wolf_man::WolfMan),
-        Thief => Box::new(thief::Thief),
-        Troublemaker => Box::new(troublemaker::Troublemaker),
-        Chemist => Box::new(chemist::Chemist),
-        SnowWolf => Box::new(snow_wolf::SnowWolf),
-        GraveDigger => Box::new(grave_digger::GraveDigger),
-        Augur => Box::new(augur::Augur),
-        Arsonist => Box::new(arsonist::Arsonist),
-        Spumpkin => Box::new(spumpkin::Spumpkin),
-        Chef => Box::new(chef::Chef),
-        Barkeep => Box::new(barkeep::Barkeep),
+        Villager => &villager::DEF,
+        Drunk => &drunk::DEF,
+        Harlot => &harlot::DEF,
+        Seer => &seer::DEF,
+        Traitor => &traitor::DEF,
+        GuardianAngel => &guardian_angel::DEF,
+        Detective => &detective::DEF,
+        Wolf => &wolf::DEF,
+        Cursed => &cursed::DEF,
+        Gunner => &gunner::DEF,
+        Tanner => &tanner::DEF,
+        Fool => &fool::DEF,
+        WildChild => &wild_child::DEF,
+        Beholder => &beholder::DEF,
+        ApprenticeSeer => &apprentice_seer::DEF,
+        Cultist => &cultist::DEF,
+        CultistHunter => &cultist_hunter::DEF,
+        Mason => &mason::DEF,
+        Doppelganger => &doppelganger::DEF,
+        Cupid => &cupid::DEF,
+        Hunter => &hunter::DEF,
+        SerialKiller => &serial_killer::DEF,
+        Sorcerer => &sorcerer::DEF,
+        AlphaWolf => &alpha_wolf::DEF,
+        WolfCub => &wolf_cub::DEF,
+        Blacksmith => &blacksmith::DEF,
+        ClumsyGuy => &clumsy_guy::DEF,
+        Mayor => &mayor::DEF,
+        Prince => &prince::DEF,
+        Lycan => &lycan::DEF,
+        Pacifist => &pacifist::DEF,
+        WiseElder => &wise_elder::DEF,
+        Oracle => &oracle::DEF,
+        Sandman => &sandman::DEF,
+        WolfMan => &wolf_man::DEF,
+        Thief => &thief::DEF,
+        Troublemaker => &troublemaker::DEF,
+        Chemist => &chemist::DEF,
+        SnowWolf => &snow_wolf::DEF,
+        GraveDigger => &grave_digger::DEF,
+        Augur => &augur::DEF,
+        Arsonist => &arsonist::DEF,
+        Spumpkin => &spumpkin::DEF,
+        Chef => &chef::DEF,
+        Barkeep => &barkeep::DEF,
+        Witch => &witch::DEF,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shared::ALL_ROLES;
+
+    #[test]
+    fn every_role_maps_to_its_own_definition() {
+        for &role in ALL_ROLES {
+            assert_eq!(def(role).role, role, "def({role:?}) returns another role's DEF");
+        }
     }
 }

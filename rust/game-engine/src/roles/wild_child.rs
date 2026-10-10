@@ -12,16 +12,34 @@
 //! different, not-yet-modeled trigger (being targeted, not a death) and
 //! stays a known gap.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::WildChild,
+    behavior: &WildChild,
+    night: NightQuestion::RoleModel(Prompt::WildChildRoleModel),
+    day: DayQuestion::None,
+    info_key: "RoleInfoWildChild",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        eaten: "WildChildEaten",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 1,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct WildChild;
 
 impl RoleBehavior for WildChild {
-    fn team(&self) -> Team {
-        Role::WildChild.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, state: &mut RoleState) -> Vec<NightAction> {
         if state.primary_used {
             return vec![];

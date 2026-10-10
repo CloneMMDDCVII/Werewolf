@@ -5,16 +5,34 @@
 //! `LinkLovers` action; everything about what loving someone *means* for
 //! win conditions belongs to `lovers`, not to Cupid.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Cupid,
+    behavior: &Cupid,
+    night: NightQuestion::Pair(Prompt::CupidLink),
+    day: DayQuestion::None,
+    info_key: "RoleInfoCupid",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        serial_killed: "CupidKilled",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 2,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Cupid;
 
 impl RoleBehavior for Cupid {
-    fn team(&self) -> Team {
-        Role::Cupid.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, state: &mut RoleState) -> Vec<NightAction> {
         if state.primary_used {
             return vec![];

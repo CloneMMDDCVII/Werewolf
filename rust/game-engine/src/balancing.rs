@@ -23,44 +23,23 @@
 //! bit-for-bit.
 
 use crate::rng::RngSource;
+use crate::roles::def;
+use crate::roles::definition::{BalanceGroup, Pool};
 use shared::{Role, ALL_ROLES, EATING_WOLVES};
 
 /// `GameBalancing.cs:32`: the four eating wolves, without the Snow Wolf.
 const WOLF_ROLES: [Role; 4] = EATING_WOLVES;
 
-/// `GameBalancing.cs:43`: roles whose team isn't "village" for balancing
-/// purposes — used to compute team sizes and strength totals, not the
-/// same partition as `shared::Team` (Thief and Sorcerer are their own
-/// `Team` variants but count as "non-village" here for balance purposes
-/// only, matching the source exactly).
-const NON_VILLAGE_ROLES: [Role; 11] = [
-    Role::Cultist,
-    Role::SerialKiller,
-    Role::Tanner,
-    Role::Wolf,
-    Role::AlphaWolf,
-    Role::Sorcerer,
-    Role::WolfCub,
-    Role::Lycan,
-    Role::Thief,
-    Role::SnowWolf,
-    Role::Arsonist,
-];
-
-/// `GameBalancing.cs:44`: roles whose presence is obvious/self-revealing
-/// to the village, capped at one per three players to avoid an
-/// unbalanced "everyone already knows who to trust" game.
-const REVEALED_VILLAGE_ROLES: [Role; 6] = [
-    Role::Blacksmith,
-    Role::Mayor,
-    Role::Pacifist,
-    Role::Gunner,
-    Role::Sandman,
-    Role::Troublemaker,
-];
-
+/// `GameBalancing.cs:43`: counted against the village when balancing (see
+/// `RoleDef::balance`).
 fn is_non_village(role: Role) -> bool {
-    NON_VILLAGE_ROLES.contains(&role)
+    def(role).balance.group == BalanceGroup::NonVillage
+}
+
+/// `GameBalancing.cs:44`: village roles that reveal themselves, capped at
+/// one per three players.
+fn is_revealed_village(role: Role) -> bool {
+    def(role).balance.group == BalanceGroup::RevealedVillage
 }
 
 /// Fisher-Yates (Durstenfeld), the same algorithm `Shuffle<T>`
@@ -117,16 +96,10 @@ fn candidate_role_pool(rng: &mut dyn RngSource, player_count: usize, disabled_ro
     }
 
     for &role in ALL_ROLES {
-        match role {
-            r if r.is_wolf() => {}
-            Role::CultistHunter | Role::Cultist => {
-                if player_count > 10 {
-                    roles_to_assign.push(role);
-                }
-            }
-            Role::Spumpkin => {}
-            Role::Chef | Role::Barkeep | Role::Witch => {}
-            _ => roles_to_assign.push(role),
+        match def(role).balance.pool {
+            Pool::Always => roles_to_assign.push(role),
+            Pool::OverTenPlayers if player_count > 10 => roles_to_assign.push(role),
+            Pool::OverTenPlayers | Pool::Wolf | Pool::Never => {}
         }
     }
 
@@ -148,130 +121,10 @@ fn candidate_role_pool(rng: &mut dyn RngSource, player_count: usize, disabled_ro
 
 /// `GameBalancing.cs::GetStrength` (216-314): a rough "how much does this
 /// role swing the game" score, some context-dependent on the rest of
-/// `all_roles` (a `Seer` is worth less if a `Lycan`/`WolfMan` can spoof
-/// her check, a `Cursed` is worth less the more wolves could bite them,
-/// ...). Used only to keep non-chaos games within `balance`'s variance
-/// threshold - `chaos` mode skips this scoring entirely, matching the
-/// source (`if (!chaos) { ...strength checks... }`).
-///
-/// Exhaustive over every `Role`, including `Chef`/`Barkeep`/`Witch` (which
-/// [`candidate_role_pool`] never actually includes) - `0` for all three,
-/// same treatment `Thief`/`Chemist` already get for "doesn't meaningfully
-/// swing the balance," not a real legacy value (there isn't one; these
-/// roles postdate `GameBalancing.cs`).
+/// `all_roles`. Each role's is its `RoleDef::balance.strength`. Used only
+/// to keep non-chaos games within `balance`'s variance threshold.
 pub fn role_strength(role: Role, all_roles: &[Role]) -> i32 {
-    let wolf_roles = WOLF_ROLES;
-    let non_convertible_roles: [Role; 13] = [
-        Role::Seer,
-        Role::GuardianAngel,
-        Role::Detective,
-        Role::Cursed,
-        Role::Harlot,
-        Role::Hunter,
-        Role::Doppelganger,
-        Role::Wolf,
-        Role::AlphaWolf,
-        Role::WolfCub,
-        Role::SerialKiller,
-        Role::Lycan,
-        Role::Thief,
-    ];
-    let count = |r: Role| all_roles.iter().filter(|&&x| x == r).count() as i32;
-
-    match role {
-        Role::Villager => 1,
-        Role::Drunk => 3,
-        Role::Harlot => 6,
-        Role::Seer => 7 - count(Role::Lycan) - (count(Role::WolfMan) * 2),
-        Role::Traitor => 0,
-        Role::GuardianAngel => 7 + i32::from(all_roles.contains(&Role::Arsonist)),
-        Role::Detective => 6,
-        Role::Wolf => 10,
-        Role::Cursed => {
-            1 - all_roles
-                .iter()
-                .filter(|&&x| wolf_roles.contains(&x) || x == Role::SnowWolf)
-                .count() as i32
-                / 2
-        }
-        Role::Gunner => 6,
-        Role::Tanner => all_roles.len() as i32 / 2,
-        Role::Fool => 3,
-        Role::WildChild => 1,
-        Role::Beholder => {
-            1 + i32::from(all_roles.contains(&Role::Seer)) * 4 + i32::from(all_roles.contains(&Role::Fool))
-        }
-        Role::ApprenticeSeer => 6,
-        Role::Cultist => {
-            10 + all_roles
-                .iter()
-                .filter(|&&x| !non_convertible_roles.contains(&x))
-                .count() as i32
-        }
-        Role::CultistHunter => {
-            if count(Role::Cultist) == 0 {
-                1
-            } else {
-                7
-            }
-        }
-        Role::Mason => {
-            let masons = count(Role::Mason);
-            if masons <= 1 {
-                1
-            } else {
-                masons + 3
-            }
-        }
-        Role::Doppelganger => 2,
-        Role::Cupid => 2,
-        Role::Hunter => 6,
-        Role::SerialKiller => 15,
-        Role::Sorcerer => 2,
-        Role::AlphaWolf => 12,
-        Role::WolfCub => {
-            let can_have_another_wolf = [
-                Role::AlphaWolf,
-                Role::Wolf,
-                Role::Lycan,
-                Role::SnowWolf,
-                Role::WildChild,
-                Role::Doppelganger,
-                Role::Cursed,
-                Role::Traitor,
-            ]
-            .iter()
-            .any(|r| all_roles.contains(r));
-            if can_have_another_wolf {
-                12
-            } else {
-                10
-            }
-        }
-        Role::Blacksmith => 5,
-        Role::ClumsyGuy => -1,
-        Role::Mayor => 4,
-        Role::Prince => 3,
-        Role::WolfMan => 1,
-        Role::Augur => 5,
-        Role::Pacifist => 3,
-        Role::WiseElder => 3,
-        Role::Oracle => 4,
-        Role::Sandman => 3,
-        Role::Lycan => 10,
-        // Werewolf.cs:296-298: "Testing 0 instead of 4 since thief
-        // doesn't really seem to 'harm' the village team a lot" - the
-        // source's own comment, kept verbatim since it explains a
-        // deliberately-tuned value that looks like it could be a typo.
-        Role::Thief => 0,
-        Role::Troublemaker => 5,
-        Role::Chemist => 0,
-        Role::SnowWolf => 15,
-        Role::GraveDigger => 5,
-        Role::Arsonist => 8,
-        Role::Spumpkin => 2,
-        Role::Chef | Role::Barkeep | Role::Witch => 0,
-    }
+    (def(role).balance.strength)(all_roles)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -396,10 +249,7 @@ pub fn balance_with_pool(
             let variance_allowed = (player_count / 4) as i32 + 1;
             balanced = balanced && (village_strength - enemy_strength).abs() <= variance_allowed;
 
-            let revealed_count = roles_to_assign
-                .iter()
-                .filter(|r| REVEALED_VILLAGE_ROLES.contains(r))
-                .count();
+            let revealed_count = roles_to_assign.iter().filter(|r| is_revealed_village(**r)).count();
             if revealed_count * 3 > roles_to_assign.len() {
                 balanced = false;
             }

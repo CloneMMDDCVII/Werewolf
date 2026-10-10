@@ -18,8 +18,31 @@
 //! only covers "is there a bullet left, and is this a valid target,"
 //! same as before.
 
+use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Gunner,
+    behavior: &Gunner,
+    night: NightQuestion::None,
+    day: DayQuestion::Shoot,
+    info_key: "RoleInfoGunner",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        eaten: "GunnerEaten",
+        serial_killed: "GunnerKilled",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::RevealedVillage,
+        strength: |_| 6,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Gunner;
 
@@ -32,10 +55,6 @@ pub fn bullets_left(state: &RoleState) -> u8 {
 }
 
 impl RoleBehavior for Gunner {
-    fn team(&self) -> Team {
-        Role::Gunner.team()
-    }
-
     fn day_action(&self, ctx: &DayContext, state: &mut RoleState) -> Vec<DayAction> {
         if state.primary_used && state.secondary_used {
             return vec![];

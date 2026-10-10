@@ -20,23 +20,39 @@
 //! only tracks a majority target, not individual visitor identity, so
 //! that case is left out rather than guessed at.
 
+use crate::roles::definition::*;
 use crate::roles::RoleBehavior;
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::GraveDigger,
+    behavior: &GraveDigger,
+    night: NightQuestion::None,
+    day: DayQuestion::None,
+    info_key: "RoleInfoGraveDigger",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 30,
+    frozen_loses_action: true,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 5,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct GraveDigger;
 
-impl RoleBehavior for GraveDigger {
-    fn team(&self) -> Team {
-        Role::GraveDigger.team()
-    }
-}
+impl RoleBehavior for GraveDigger {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shared::Team;
 
     #[test]
     fn grave_digger_is_village_team() {
-        assert_eq!(GraveDigger.team(), Team::Village);
+        assert_eq!(Role::GraveDigger.team(), Team::Village);
     }
 }

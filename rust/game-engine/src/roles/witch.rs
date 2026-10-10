@@ -6,25 +6,36 @@
 //! ever need at most one action, but the Witch can use both potions on
 //! the same night.
 //!
-//! **Gated off** (`is_available() == false`): the heal potion only makes
-//! sense as "save the wolves' victim," which means Witch can't be asked
-//! her question until the wolf vote has actually resolved — a genuine
-//! information dependency, declared via `requires()`, not a difficulty
-//! rating. There's no orchestrator yet to resolve night actions in
-//! dependency order, so shipping her live would mean asking the heal
-//! question with a `wolf_target` that's always `None` — the logic below
-//! is real and tested, it's just not wired to a table yet.
+//! The heal only makes sense as "save the wolves' victim", so the Witch is
+//! asked after the wolves' vote (`NightQuestion::AfterWolves`). She is not
+//! dealt (`dealt: false`): she has no legacy texts or balancing weight.
+//! Her potions are resolved in the Witch region of `night`.
 
-use crate::roles::{NightAction, NightContext, NightFact, RoleBehavior, RoleState};
-use shared::{Role, Team};
+use crate::roles::definition::*;
+use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Witch,
+    behavior: &Witch,
+    night: NightQuestion::AfterWolves,
+    day: DayQuestion::None,
+    info_key: "RoleInfoWitch",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 0,
+        pool: Pool::Never,
+    },
+    dealt: false,
+};
 
 pub struct Witch;
 
 impl RoleBehavior for Witch {
-    fn team(&self) -> Team {
-        Role::Witch.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, state: &mut RoleState) -> Vec<NightAction> {
         let mut actions = vec![];
 
@@ -51,14 +62,6 @@ impl RoleBehavior for Witch {
         }
 
         actions
-    }
-
-    fn requires(&self) -> &'static [NightFact] {
-        &[NightFact::WolfTarget]
-    }
-
-    fn is_available(&self) -> bool {
-        false
     }
 }
 
@@ -110,7 +113,7 @@ mod tests {
 
     /// The load-bearing test: heal doesn't fire just because a target was
     /// chosen — it needs the wolf's target to actually be known and to
-    /// match. This is what makes `requires()` more than decorative.
+    /// match, which is why she is asked after the wolves.
     #[test]
     fn witch_cannot_heal_without_a_resolved_wolf_target() {
         let witch = Witch;
@@ -144,15 +147,5 @@ mod tests {
         };
         let mut state = RoleState::default();
         assert_eq!(witch.night_action(&ctx, &mut state), vec![]);
-    }
-
-    #[test]
-    fn witch_declares_a_dependency_on_the_wolf_target() {
-        assert_eq!(Witch.requires(), &[NightFact::WolfTarget]);
-    }
-
-    #[test]
-    fn witch_is_not_yet_available_to_players() {
-        assert!(!Witch.is_available());
     }
 }

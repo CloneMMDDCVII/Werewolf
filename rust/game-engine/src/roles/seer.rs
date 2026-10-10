@@ -5,16 +5,41 @@
 //! disguises (Lycan reads as Villager, Wolf Man as Wolf), is resolved in
 //! `reveals::resolve_night_readings`.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Seer,
+    behavior: &Seer,
+    night: NightQuestion::Pick(Prompt::SeerCheck),
+    day: DayQuestion::None,
+    info_key: "RoleInfoSeer",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Itself,
+    cult_conversion: 40,
+    frozen_loses_action: true,
+    deaths: DeathLines {
+        eaten: "SeerEaten",
+        serial_killed: "SeerKilled",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
+
+/// `GameBalancing.cs::GetStrength`.
+fn strength(all_roles: &[Role]) -> i32 {
+    let count = |r: Role| all_roles.iter().filter(|&&x| x == r).count() as i32;
+    7 - count(Role::Lycan) - (count(Role::WolfMan) * 2)
+}
 
 pub struct Seer;
 
 impl RoleBehavior for Seer {
-    fn team(&self) -> Team {
-        Role::Seer.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {

@@ -9,16 +9,35 @@
 //! role (see `seer`/`sorcerer` module docs). Nothing extra to model here.
 //! Team is already correct via `Role::is_wolf`.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Lycan,
+    behavior: &Lycan,
+    night: NightQuestion::Pick(Prompt::WolfEat),
+    day: DayQuestion::None,
+    info_key: "RoleInfoLycan",
+    seer_sees: SeerSees::As(Role::Villager),
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        fell_in_grave: "WolfFellPublic",
+        visited_serial_killer: Some("SerialKillerKilledWolf"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength: |_| 10,
+        pool: Pool::Wolf,
+    },
+    dealt: true,
+};
 
 pub struct Lycan;
 
 impl RoleBehavior for Lycan {
-    fn team(&self) -> Team {
-        Role::Lycan.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if is_valid_target(ctx, target) => {

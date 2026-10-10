@@ -18,16 +18,34 @@
 //! `wolf_cub_bonus_pending`), and the Arsonist region of `night::resolve_night_sequence`
 //! turns a `Detonate` action plus that set into `KillMethod::Burn` deaths.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Arsonist,
+    behavior: &Arsonist,
+    night: NightQuestion::DouseOrSpark,
+    day: DayQuestion::None,
+    info_key: "RoleInfoArsonist",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        visited_serial_killer: Some("ArsonistVisitKiller"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength: |_| 8,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Arsonist;
 
 impl RoleBehavior for Arsonist {
-    fn team(&self) -> Team {
-        Role::Arsonist.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, state: &mut RoleState) -> Vec<NightAction> {
         if ctx.toggle_choice {
             return vec![NightAction::Detonate];

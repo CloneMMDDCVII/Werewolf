@@ -9,16 +9,36 @@
 //! already occupied (Werewolf.cs:2424-2428) is resolution logic across
 //! multiple players' actions this proof-of-concept still doesn't attempt.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Harlot,
+    behavior: &Harlot,
+    night: NightQuestion::Pick(Prompt::HarlotVisit),
+    day: DayQuestion::None,
+    info_key: "RoleInfoHarlot",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 70,
+    frozen_loses_action: true,
+    deaths: DeathLines {
+        eaten: "HarlotEaten",
+        fell_in_grave: "HarlotFellPublic",
+        visited_serial_killer: Some("HarlotFuckKillerPublic"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 6,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Harlot;
 
 impl RoleBehavior for Harlot {
-    fn team(&self) -> Team {
-        Role::Harlot.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if ctx.alive.contains(&target) => {

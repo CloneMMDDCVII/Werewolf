@@ -16,23 +16,15 @@
 //! number, and implementers (a real Telegram adapter, a test double)
 //! never need to know or care how many roles-that-pick-N-players exist.
 //!
-//! Resolution happens in dependency order, derived from
-//! `RoleBehavior::requires()` rather than a hardcoded phase list: every
-//! role whose dependencies are empty is asked in one batch first, then
-//! anything depending on a fact produced by that batch (currently just
-//! `NightFact::WolfTarget`, produced by tallying `NightAction::EatVote`)
-//! is asked in a second batch with that fact filled in. This is
-//! deliberately only two levels deep for now — there's exactly one
-//! dependent role (`Witch`) and one fact — generalizing to a real N-level
-//! topological sort is future work for whenever a second dependency shows
-//! up and two hardcoded levels stop being enough.
+//! Which question each role gets is its `RoleDef` (`roles::def`). The
+//! night is asked in one batch, then a second for roles that need the
+//! wolves' target first (`NightQuestion::AfterWolves`, the Witch).
 
 use crate::death_text::{death_message, DeathContext};
 use crate::messages::{Announcement, Message, MessageArg, Note, SecretTally};
 use crate::rng::RngSource;
-use crate::roles::{
-    behavior_for, DayAction, DayContext, LoversState, NightAction, NightContext, NightFact, PlayerId, RoleState,
-};
+use crate::roles::definition::{DayQuestion, NightQuestion};
+use crate::roles::{def, DayAction, DayContext, LoversState, NightAction, NightContext, PlayerId, RoleState};
 use crate::rules::GameRules;
 use async_trait::async_trait;
 use shared::{KillMethod, Role, Team};
@@ -273,17 +265,10 @@ pub enum NarrationEvent {
 /// which is more than this batch of "easy, unambiguous" mappings signed
 /// up for.
 ///
-/// `KillMethod::Eat`'s per-role flavor (Werewolf.cs:4218-4267, the
-/// `p.KilledByRole == IRole.Wolf && !p.DiedByVisitingKiller &&
-/// !p.DiedByVisitingVictim` branch) is a *different* switch from the
-/// `SerialKilled` one below — ten roles get their own `"{Role}Eaten"` key
-/// (`ApprenticeSeer`, `Detective`, `Drunk`, `Fool`, `Gunner`, `Harlot`,
-/// `Mason`, `Seer`, `Sorcerer`, `WildChild`), `GuardianAngel` gets
-/// `"GuardianEaten"` (not `"GuardianAngelEaten"` — checked, that key
-/// doesn't exist), and everyone else falls through to `"DefaultEaten"`.
-/// The wolves' kill and the Wolf Cub's bonus kill are both plain
-/// `KillMethod::Eat`, not a "visiting" death (that's `VisitWolf`, the
-/// Harlot's own case below), matching this branch's guard exactly.
+/// The lines that depend on the victim's role (eaten, killed by the Serial
+/// Killer, fallen into a grave, killed visiting the Serial Killer) are the
+/// role's `RoleDef::deaths`. `KillMethod::Eat` covers the wolves' kill
+/// and the Wolf Cub's bonus kill alike (Werewolf.cs:4218-4267).
 pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> {
     match method {
         KillMethod::Lynch => Some("LynchKill"),
@@ -306,22 +291,8 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         // `p.PlayerRole` before it ever looks at `KilledByRole`, so a
         // wolf and a Harlot dying to the exact same mechanic still get
         // different text.
-        KillMethod::VisitKiller => Some(match role {
-            r if r.is_eating_wolf() => "SerialKillerKilledWolf",
-            // SnowWolf gets its own key even though it's wolf-team too
-            // (Werewolf.cs:4396-4397: `case IRole.SnowWolf: if (KilledByRole
-            // == SerialKiller) msg = "SnowFrozeKiller"`) - checked directly,
-            // not folded into the plain-wolf case above.
-            Role::SnowWolf => "SnowFrozeKiller",
-            Role::Cultist => "CultConvertKillerPublic",
-            Role::Harlot => "HarlotFuckKillerPublic",
-            Role::CultistHunter => "SerialKillerKilledCH",
-            Role::Thief => "ThiefStoleKiller",
-            Role::GuardianAngel => "GAGuardedKiller",
-            Role::Chemist => "ChemistSKPublic",
-            Role::Arsonist => "ArsonistVisitKiller",
-            _ => return None,
-        }),
+        // Werewolf.cs:4322-4406: the line depends on who walked in.
+        KillMethod::VisitKiller => def(role).deaths.visited_serial_killer,
         // A Cultist killed by the Cultist Hunter, hunted or while trying
         // to convert them (Werewolf.cs:4342-4346).
         KillMethod::Hunt => Some("HunterKilledCultist"),
@@ -330,45 +301,12 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
         // (Werewolf.cs:3893-3897 → `KilledByRole == SerialKiller` +
         // `DiedByVisitingVictim`, 4370-4371).
         KillMethod::VisitVictim => Some("HarlotFuckedKilledPublic"),
-        KillMethod::Eat => Some(match role {
-            Role::ApprenticeSeer => "ApprenticeSeerEaten",
-            Role::Detective => "DetectiveEaten",
-            Role::Drunk => "DrunkEaten",
-            Role::Fool => "FoolEaten",
-            Role::Gunner => "GunnerEaten",
-            Role::Harlot => "HarlotEaten",
-            Role::Mason => "MasonEaten",
-            Role::Seer => "SeerEaten",
-            Role::Sorcerer => "SorcererEaten",
-            Role::WildChild => "WildChildEaten",
-            Role::GuardianAngel => "GuardianEaten",
-            _ => "DefaultEaten",
-        }),
-        // Werewolf.cs:4251-4262. `Cupid` belongs in this list too (it was
-        // missing before — checked directly against the real switch,
-        // which includes `IRole.Cupid` alongside `Blacksmith`/`Cultist`/
-        // `Drunk`/`GuardianAngel`/`Gunner`/`Mayor`/`Prince`/`Seer`).
-        KillMethod::SerialKilled => Some(match role {
-            Role::Gunner => "GunnerKilled",
-            Role::Seer => "SeerKilled",
-            Role::Drunk => "DrunkKilled",
-            Role::Mayor => "MayorKilled",
-            Role::Prince => "PrinceKilled",
-            Role::Cultist => "CultistKilled",
-            Role::GuardianAngel => "GuardianAngelKilled",
-            Role::Blacksmith => "BlacksmithKilled",
-            Role::Cupid => "CupidKilled",
-            _ => "DefaultKilled",
-        }),
+        KillMethod::Eat => Some(def(role).deaths.eaten),
+        // Werewolf.cs:4251-4262.
+        KillMethod::SerialKilled => Some(def(role).deaths.serial_killed),
         // Werewolf.cs:4288-4302, the "killed by visiting Grave Digger"
         // switch.
-        KillMethod::FallGrave => Some(match role {
-            r if r.is_eating_wolf() => "WolfFellPublic",
-            Role::Harlot => "HarlotFellPublic",
-            Role::Cultist => "CultistFellPublic",
-            Role::Thief => "ThiefFellPublic",
-            _ => "DefaultFellPublic",
-        }),
+        KillMethod::FallGrave => Some(def(role).deaths.fell_in_grave),
         // The Chemist region of `night` produces this for either the target (success)
         // or the Chemist themself (failure) - two different real messages
         // (Werewolf.cs:3801-3814: `ChemistSuccessPublic`/`ChemistFailPublic`),
@@ -1072,33 +1010,6 @@ pub struct AlivePlayer {
     pub role: Role,
 }
 
-/// Maps a role to the shape of question it needs asked, if any. Roles with
-/// no entry here (Villager, Drunk, Traitor, Cursed, Tanner — see their
-/// module docs) have no night question at all; `night_action` is still
-/// called for them with an empty context, which is harmless since their
-/// implementations don't look at it.
-fn one_target_prompt(role: Role) -> Option<Prompt> {
-    match role {
-        Role::Wolf => Some(Prompt::WolfEat),
-        Role::SerialKiller => Some(Prompt::SerialKillerKill),
-        Role::Seer => Some(Prompt::SeerCheck),
-        Role::Harlot => Some(Prompt::HarlotVisit),
-        Role::GuardianAngel => Some(Prompt::GuardianAngelProtect),
-        Role::Fool => Some(Prompt::FoolInvestigate),
-        Role::WildChild => Some(Prompt::WildChildRoleModel),
-        Role::Doppelganger => Some(Prompt::DoppelgangerRoleModel),
-        Role::CultistHunter => Some(Prompt::CultistHunterInvestigate),
-        Role::Sorcerer => Some(Prompt::SorcererInvestigate),
-        Role::Oracle => Some(Prompt::OracleInvestigate),
-        Role::Cultist => Some(Prompt::CultistConvert),
-        Role::AlphaWolf | Role::WolfCub | Role::Lycan => Some(Prompt::WolfEat),
-        Role::Thief => Some(Prompt::ThiefSteal),
-        Role::Chemist => Some(Prompt::ChemistBrew),
-        Role::Arsonist => Some(Prompt::ArsonistDouse),
-        _ => None,
-    }
-}
-
 /// Who a night menu offers (Werewolf.cs:5157-5212): every other living
 /// player, less the wolves and the Snow Wolf for a wolf, and less the
 /// cult for a Cultist.
@@ -1111,14 +1022,6 @@ fn night_options(player: &AlivePlayer, players: &[AlivePlayer]) -> Vec<PlayerId>
         .filter(|o| player.role != Role::Cultist || o.role != Role::Cultist)
         .map(|o| o.id)
         .collect()
-}
-
-/// Roles with a yes/no night decision instead of a target pick.
-fn toggle_night_prompt(role: Role) -> Option<Prompt> {
-    match role {
-        Role::Arsonist => Some(Prompt::ArsonistSpark),
-        _ => None,
-    }
 }
 
 /// Asks every night question and turns the answers into `NightAction`s,
@@ -1165,11 +1068,12 @@ pub async fn resolve_night_with_freeze(
         .map(|(snow_wolf, options)| batch.targets(*snow_wolf, Prompt::SnowWolfFreeze, options, 1));
     let mut asked = vec![];
     for player in players {
-        if !behavior_for(player.role).requires().is_empty() || skip.contains(&player.id) {
-            continue; // handled in stage 2, or not asked
+        let night = def(player.role).night;
+        if night == NightQuestion::AfterWolves || skip.contains(&player.id) {
+            continue; // asked in stage 2, or not asked
         }
         let state = states.entry(player.id).or_default();
-        if player.role == Role::Chemist && !state.primary_used {
+        if matches!(night, NightQuestion::BrewThenPick(_)) && !state.primary_used {
             state.primary_used = true;
             let note = crate::messages::Note::Night(crate::messages::NightNote::ChemistBrewing);
             presenter.narrate(NarrationEvent::Private { to: player.id, note }).await;
@@ -1181,34 +1085,37 @@ pub async fn resolve_night_with_freeze(
             target: None,
             toggle: None,
         };
-        if player.role == Role::Cupid {
-            a.cupid = Some(batch.targets(player.id, Prompt::CupidLink, &alive, 2));
-        } else if player.role == Role::Arsonist {
-            let options: Vec<PlayerId> = alive
-                .iter()
-                .copied()
-                .filter(|&id| id != player.id && !doused.contains(&id))
-                .collect();
-            let living_doused: Vec<PlayerId> = alive.iter().copied().filter(|id| doused.contains(id)).collect();
-            let text = if living_doused.is_empty() {
-                Message::new("AskArsonistNoDoused", vec![])
-            } else {
-                Message::new("AskArsonist", vec![]).followed_by(Message::new(
-                    "AlreadyDousedList",
-                    vec![MessageArg::PlayersAnd(living_doused.clone())],
-                ))
-            };
-            a.target = Some(batch.targets_with_text(player.id, Prompt::ArsonistDouse, &options, text));
-            if !living_doused.is_empty() {
-                a.toggle = Some(batch.toggle(player.id, Prompt::ArsonistSpark));
+        let options = || night_options(player, players);
+        match night {
+            NightQuestion::Pair(prompt) => a.cupid = Some(batch.targets(player.id, prompt, &alive, 2)),
+            NightQuestion::Pick(prompt) | NightQuestion::BrewThenPick(prompt) => {
+                a.target = Some(batch.targets(player.id, prompt, &options(), 1));
             }
-        } else {
             // A role model is picked once (Werewolf.cs:5222-5237).
-            let picked = matches!(player.role, Role::WildChild | Role::Doppelganger) && state.primary_used;
-            a.target = one_target_prompt(player.role)
-                .filter(|_| !picked)
-                .map(|prompt| batch.targets(player.id, prompt, &night_options(player, players), 1));
-            a.toggle = toggle_night_prompt(player.role).map(|prompt| batch.toggle(player.id, prompt));
+            NightQuestion::RoleModel(prompt) if !state.primary_used => {
+                a.target = Some(batch.targets(player.id, prompt, &options(), 1));
+            }
+            NightQuestion::DouseOrSpark => {
+                let options: Vec<PlayerId> = alive
+                    .iter()
+                    .copied()
+                    .filter(|&id| id != player.id && !doused.contains(&id))
+                    .collect();
+                let living_doused: Vec<PlayerId> = alive.iter().copied().filter(|id| doused.contains(id)).collect();
+                let text = if living_doused.is_empty() {
+                    Message::new("AskArsonistNoDoused", vec![])
+                } else {
+                    Message::new("AskArsonist", vec![]).followed_by(Message::new(
+                        "AlreadyDousedList",
+                        vec![MessageArg::PlayersAnd(living_doused.clone())],
+                    ))
+                };
+                a.target = Some(batch.targets_with_text(player.id, Prompt::ArsonistDouse, &options, text));
+                if !living_doused.is_empty() {
+                    a.toggle = Some(batch.toggle(player.id, Prompt::ArsonistSpark));
+                }
+            }
+            NightQuestion::RoleModel(_) | NightQuestion::None | NightQuestion::Freeze | NightQuestion::AfterWolves => {}
         }
         asked.push(a);
     }
@@ -1219,7 +1126,7 @@ pub async fn resolve_night_with_freeze(
         .zip(single_target_answer(&answers, freeze_index))
         .map(|((snow_wolf, _), target)| (snow_wolf, target));
     for a in &asked {
-        let behavior = behavior_for(a.player.role);
+        let behavior = def(a.player.role).behavior;
         let state = states.entry(a.player.id).or_default();
         let ctx = NightContext {
             alive: &alive,
@@ -1252,26 +1159,17 @@ pub async fn resolve_night_with_freeze(
     let mut batch = BatchBuilder::default();
     let mut asked = vec![];
     for player in players {
-        let behavior = behavior_for(player.role);
-        if behavior.requires().is_empty() {
+        if def(player.role).night != NightQuestion::AfterWolves {
             continue; // already handled in stage 1
         }
-        debug_assert!(
-            behavior.requires().contains(&NightFact::WolfTarget),
-            "stage 2 currently only understands WolfTarget-dependent roles"
-        );
-        // Witch is the only stage-2 role today: ask both her potion
-        // questions. `is_available()` is a role-assignment-time concern
-        // (whether she's dealt into the game at all), not enforced here —
-        // if she's in `players`, the orchestrator resolves her correctly
-        // regardless, which is what proves the dependency plumbing works.
+        // The Witch is the only stage-2 role: both her potion questions.
         let heal = batch.targets(player.id, Prompt::WitchHeal, &alive, 1);
         let poison = batch.targets(player.id, Prompt::WitchPoison, &alive, 1);
         asked.push((*player, heal, poison));
     }
     let answers = ask_phase(presenter, Phase::Night, &batch.questions, &mut Quiet).await;
     for (player, heal, poison) in asked {
-        let behavior = behavior_for(player.role);
+        let behavior = def(player.role).behavior;
         let state = states.entry(player.id).or_default();
         let ctx = NightContext {
             alive: &alive,
@@ -1304,40 +1202,6 @@ fn lynch_majority(votes: impl Iterator<Item = PlayerId>) -> Option<PlayerId> {
         None // tie
     } else {
         Some(*first.0)
-    }
-}
-
-/// Maps a role to its day-phase question, if it has one. Most roles have
-/// no day action, which is the default `RoleBehavior::day_action` already
-/// returns. Takes the player's state because a Gunner with no bullets left
-/// is not asked at all (Werewolf.cs:5102: `if (gunner.Bullet > 0)`).
-fn one_target_day_prompt(role: Role, state: &RoleState) -> Option<Prompt> {
-    match role {
-        Role::Gunner => match crate::roles::gunner::bullets_left(state) {
-            0 => None,
-            bullets => Some(Prompt::GunnerShoot { bullets }),
-        },
-        Role::Spumpkin => Some(Prompt::SpumpkinDetonate),
-        // The Detective snoops by day, resolved at the end of the day
-        // phase (Werewolf.cs:2933-2953), not at night.
-        Role::Detective => Some(Prompt::DetectiveInvestigate),
-        _ => None,
-    }
-}
-
-/// Roles with a yes/no day decision instead of a target pick.
-fn toggle_day_prompt(role: Role) -> Option<Prompt> {
-    match role {
-        Role::Mayor => Some(Prompt::MayorReveal),
-        Role::Pacifist => Some(Prompt::PacifistPeace),
-        Role::Troublemaker => Some(Prompt::TroublemakerTrouble),
-        // Blacksmith's "spread silver" is a village-wide yes/no
-        // (Werewolf.cs:5083-5092), not a target pick - see
-        // `roles::blacksmith`'s doc for the earlier wrong assumption this
-        // corrects.
-        Role::Blacksmith => Some(Prompt::BlacksmithSilver),
-        Role::Sandman => Some(Prompt::SandmanSleep),
-        _ => None,
     }
 }
 
@@ -1527,22 +1391,15 @@ impl OnAnswer for DayAnswers<'_> {
         if *answer != Answer::Toggle(true) {
             return vec![];
         }
-        let id = player.id;
-        let announcement = match player.role {
-            Role::Mayor => Announcement::MayorReveal { mayor: id },
-            Role::Pacifist => {
-                self.peace = true;
-                Announcement::PacifistNoLynch { pacifist: id }
-            }
-            Role::Troublemaker => {
-                self.peace = false;
-                Announcement::TroublemakerDoubleLynch { troublemaker: id }
-            }
-            Role::Blacksmith => Announcement::BlacksmithSpreadSilver { blacksmith: id },
-            Role::Sandman => Announcement::SandmanSleepAll { sandman: id },
-            _ => return vec![],
+        let DayQuestion::Ability { announce, .. } = def(player.role).day else {
+            return vec![];
         };
-        vec![NarrationEvent::Announce(announcement)]
+        match player.role {
+            Role::Pacifist => self.peace = true,
+            Role::Troublemaker => self.peace = false,
+            _ => {}
+        }
+        vec![NarrationEvent::Announce(announce(player.id))]
     }
 
     fn closed(&self, index: usize) -> bool {
@@ -1688,16 +1545,26 @@ pub async fn resolve_day(
         day.votes.ask(&mut batch, player, &alive);
         let state = states.entry(player.id).or_default();
         let others: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != player.id).collect();
-        let target =
-            one_target_day_prompt(player.role, state).map(|prompt| batch.targets(player.id, prompt, &others, 1));
-        if let (Some(index), Role::Gunner) = (target, player.role) {
+        let question = def(player.role).day;
+        let prompt = match question {
+            DayQuestion::Pick(prompt) => Some(prompt),
+            // A Gunner with no bullets left is not asked (Werewolf.cs:5102).
+            DayQuestion::Shoot => match crate::roles::gunner::bullets_left(state) {
+                0 => None,
+                bullets => Some(Prompt::GunnerShoot { bullets }),
+            },
+            DayQuestion::None | DayQuestion::Ability { .. } => None,
+        };
+        let target = prompt.map(|prompt| batch.targets(player.id, prompt, &others, 1));
+        if let (Some(index), DayQuestion::Shoot) = (target, question) {
             day.shots.push((index, *player));
         }
         // Each yes/no ability is used once, and not offered again
         // (Werewolf.cs:5070-5100, `!HasUsedAbility`).
-        let toggle = toggle_day_prompt(player.role)
-            .filter(|_| !state.primary_used)
-            .map(|prompt| batch.toggle(player.id, prompt));
+        let toggle = match question {
+            DayQuestion::Ability { prompt, .. } if !state.primary_used => Some(batch.toggle(player.id, prompt)),
+            _ => None,
+        };
         if let Some(index) = toggle {
             day.abilities.push((index, *player));
         }
@@ -1712,7 +1579,7 @@ pub async fn resolve_day(
 
     let mut day_actions = vec![];
     for (player, target, toggle) in asked {
-        let behavior = behavior_for(player.role);
+        let behavior = def(player.role).behavior;
         let state = states.entry(player.id).or_default();
         let ctx = DayContext {
             alive: &alive,

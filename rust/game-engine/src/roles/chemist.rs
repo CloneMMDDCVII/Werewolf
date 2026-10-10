@@ -7,16 +7,34 @@
 //! same "propose the target, someone else resolves the RNG" split as
 //! every other gambit in this crate.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Chemist,
+    behavior: &Chemist,
+    night: NightQuestion::BrewThenPick(Prompt::ChemistBrew),
+    day: DayQuestion::None,
+    info_key: "RoleInfoChemist",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: true,
+    deaths: DeathLines {
+        visited_serial_killer: Some("ChemistSKPublic"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 0,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Chemist;
 
 impl RoleBehavior for Chemist {
-    fn team(&self) -> Team {
-        Role::Chemist.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {

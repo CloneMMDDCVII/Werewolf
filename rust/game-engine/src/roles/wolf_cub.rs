@@ -15,16 +15,56 @@
 //! already correct (`shared::Role::WolfCub` maps to `Team::Wolf`, and
 //! `Role::is_wolf` already counts WolfCub as wolf muscle).
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::WolfCub,
+    behavior: &WolfCub,
+    night: NightQuestion::Pick(Prompt::WolfEat),
+    day: DayQuestion::None,
+    info_key: "RoleInfoWolfCub",
+    seer_sees: SeerSees::As(Role::Wolf),
+    sorcerer_sees: SorcererSees::Wolf,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        fell_in_grave: "WolfFellPublic",
+        visited_serial_killer: Some("SerialKillerKilledWolf"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength,
+        pool: Pool::Wolf,
+    },
+    dealt: true,
+};
+
+/// `GameBalancing.cs::GetStrength`.
+fn strength(all_roles: &[Role]) -> i32 {
+    let can_have_another_wolf = [
+        Role::AlphaWolf,
+        Role::Wolf,
+        Role::Lycan,
+        Role::SnowWolf,
+        Role::WildChild,
+        Role::Doppelganger,
+        Role::Cursed,
+        Role::Traitor,
+    ]
+    .iter()
+    .any(|r| all_roles.contains(r));
+    if can_have_another_wolf {
+        12
+    } else {
+        10
+    }
+}
 
 pub struct WolfCub;
 
 impl RoleBehavior for WolfCub {
-    fn team(&self) -> Team {
-        Role::WolfCub.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if is_valid_target(ctx, target) => {

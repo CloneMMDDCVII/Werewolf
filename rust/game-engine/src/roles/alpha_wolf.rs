@@ -11,16 +11,35 @@
 //! maps to `Team::Wolf`, and `Role::is_wolf` already counts AlphaWolf as
 //! wolf muscle for win-condition purposes).
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::AlphaWolf,
+    behavior: &AlphaWolf,
+    night: NightQuestion::Pick(Prompt::WolfEat),
+    day: DayQuestion::None,
+    info_key: "RoleInfoAlphaWolf",
+    seer_sees: SeerSees::As(Role::Wolf),
+    sorcerer_sees: SorcererSees::Wolf,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        fell_in_grave: "WolfFellPublic",
+        visited_serial_killer: Some("SerialKillerKilledWolf"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength: |_| 12,
+        pool: Pool::Wolf,
+    },
+    dealt: true,
+};
 
 pub struct AlphaWolf;
 
 impl RoleBehavior for AlphaWolf {
-    fn team(&self) -> Team {
-        Role::AlphaWolf.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if is_valid_target(ctx, target) => {

@@ -13,16 +13,37 @@
 //! than Sandman's "everyone sleeps" payoff is `sandman::Sandman`'s: the
 //! wolves are skipped in `game::run_game_with_rules`.
 
+use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Blacksmith,
+    behavior: &Blacksmith,
+    night: NightQuestion::None,
+    day: DayQuestion::Ability {
+        prompt: Prompt::BlacksmithSilver,
+        announce: |blacksmith| Announcement::BlacksmithSpreadSilver { blacksmith },
+    },
+    info_key: "RoleInfoBlacksmith",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 75,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        serial_killed: "BlacksmithKilled",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::RevealedVillage,
+        strength: |_| 5,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Blacksmith;
 
 impl RoleBehavior for Blacksmith {
-    fn team(&self) -> Team {
-        Role::Blacksmith.team()
-    }
-
     fn day_action(&self, ctx: &DayContext, state: &mut RoleState) -> Vec<DayAction> {
         if state.primary_used || !ctx.toggle_choice {
             return vec![];

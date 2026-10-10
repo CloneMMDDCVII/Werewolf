@@ -5,16 +5,34 @@
 //! cancel each other, and whichever came last wins
 //! (`orchestrator::last_day_veto`); `game::run_game` holds the second vote.
 
+use crate::roles::definition::*;
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Troublemaker,
+    behavior: &Troublemaker,
+    night: NightQuestion::None,
+    day: DayQuestion::Ability {
+        prompt: Prompt::TroublemakerTrouble,
+        announce: |troublemaker| Announcement::TroublemakerDoubleLynch { troublemaker },
+    },
+    info_key: "RoleInfoTroublemaker",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::RevealedVillage,
+        strength: |_| 5,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Troublemaker;
 
 impl RoleBehavior for Troublemaker {
-    fn team(&self) -> Team {
-        Role::Troublemaker.team()
-    }
-
     fn day_action(&self, ctx: &DayContext, state: &mut RoleState) -> Vec<DayAction> {
         if state.primary_used || !ctx.toggle_choice {
             return vec![];

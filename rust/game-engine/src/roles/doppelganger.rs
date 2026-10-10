@@ -8,16 +8,31 @@
 //! Werewolf.cs:1936-1937). `game::apply_transforms` handles this using the
 //! role-at-death information `game::record_deaths` already tracks.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Doppelganger,
+    behavior: &Doppelganger,
+    night: NightQuestion::RoleModel(Prompt::DoppelgangerRoleModel),
+    day: DayQuestion::None,
+    info_key: "RoleInfoDoppelganger",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 0,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 2,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Doppelganger;
 
 impl RoleBehavior for Doppelganger {
-    fn team(&self) -> Team {
-        Role::Doppelganger.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, state: &mut RoleState) -> Vec<NightAction> {
         if state.primary_used {
             return vec![];

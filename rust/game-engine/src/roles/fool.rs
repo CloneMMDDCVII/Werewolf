@@ -7,16 +7,34 @@
 //! produce, not something this file decides — it only validates the
 //! target, same as Detective.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Fool,
+    behavior: &Fool,
+    night: NightQuestion::Pick(Prompt::FoolInvestigate),
+    day: DayQuestion::None,
+    info_key: "RoleInfoSeer",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: true,
+    deaths: DeathLines {
+        eaten: "FoolEaten",
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 3,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Fool;
 
 impl RoleBehavior for Fool {
-    fn team(&self) -> Team {
-        Role::Fool.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {

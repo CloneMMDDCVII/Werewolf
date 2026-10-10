@@ -18,13 +18,28 @@
 //!   `RoleState::primary_used` one-shot flag every other "first time
 //!   only" role uses.
 
+use crate::roles::definition::*;
 use crate::roles::RoleBehavior;
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::WiseElder,
+    behavior: &WiseElder,
+    night: NightQuestion::None,
+    day: DayQuestion::None,
+    info_key: "RoleInfoWiseElder",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 30,
+    frozen_loses_action: false,
+    deaths: DeathLines::DEFAULT,
+    balance: Balance {
+        group: BalanceGroup::Village,
+        strength: |_| 3,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct WiseElder;
 
-impl RoleBehavior for WiseElder {
-    fn team(&self) -> Team {
-        Role::WiseElder.team()
-    }
-}
+impl RoleBehavior for WiseElder {}

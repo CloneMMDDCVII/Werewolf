@@ -3,22 +3,60 @@
 //! the real per-target-role resolution (RNG conversion chance, the
 //! Hunter/CultistHunter/wolf-team/Grave-Digger special cases) lives in
 //! the cult region of `night::resolve_night_sequence`, not here, the same split as
-//! every other role whose payoff isn't decided by this file alone. Unlike
-//! Wolf, there's no `NightFact` dependency here: the cult doesn't need
-//! anyone else's decision resolved first (though the *resolution* does
-//! need to know whether the wolves went eating — that's `run_game`'s job
-//! to pass along, not this proposal's).
+//! every other role whose payoff isn't decided by this file alone.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, PlayerId, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Cultist,
+    behavior: &Cultist,
+    night: NightQuestion::Pick(Prompt::CultistConvert),
+    day: DayQuestion::None,
+    info_key: "RoleInfoCultist",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 100,
+    frozen_loses_action: true,
+    deaths: DeathLines {
+        serial_killed: "CultistKilled",
+        fell_in_grave: "CultistFellPublic",
+        visited_serial_killer: Some("CultConvertKillerPublic"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        strength,
+        pool: Pool::OverTenPlayers,
+    },
+    dealt: true,
+};
+
+/// `GameBalancing.cs::GetStrength`.
+fn strength(all_roles: &[Role]) -> i32 {
+    10 + all_roles.iter().filter(|&&x| !NON_CONVERTIBLE.contains(&x)).count() as i32
+}
+
+/// `GameBalancing.cs::GetStrength`'s roles the cult can't win over.
+const NON_CONVERTIBLE: [Role; 13] = [
+    Role::Seer,
+    Role::GuardianAngel,
+    Role::Detective,
+    Role::Cursed,
+    Role::Harlot,
+    Role::Hunter,
+    Role::Doppelganger,
+    Role::Wolf,
+    Role::AlphaWolf,
+    Role::WolfCub,
+    Role::SerialKiller,
+    Role::Lycan,
+    Role::Thief,
+];
 
 pub struct Cultist;
 
 impl RoleBehavior for Cultist {
-    fn team(&self) -> Team {
-        Role::Cultist.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
         match ctx.chosen_target {
             Some(target) if is_valid_target(ctx, target) => {

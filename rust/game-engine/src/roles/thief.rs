@@ -11,16 +11,39 @@
 //! instead (Werewolf.cs:4164-4189). The swap itself is
 //! `game::swap_roles` in both modes.
 
+use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
-use shared::{Role, Team};
+
+pub const DEF: RoleDef = RoleDef {
+    role: Role::Thief,
+    behavior: &Thief,
+    night: NightQuestion::Pick(Prompt::ThiefSteal),
+    day: DayQuestion::None,
+    info_key: "RoleInfoThief",
+    seer_sees: SeerSees::Itself,
+    sorcerer_sees: SorcererSees::Nothing,
+    cult_conversion: 0,
+    frozen_loses_action: false,
+    deaths: DeathLines {
+        fell_in_grave: "ThiefFellPublic",
+        visited_serial_killer: Some("ThiefStoleKiller"),
+        ..DeathLines::DEFAULT
+    },
+    balance: Balance {
+        group: BalanceGroup::NonVillage,
+        // Werewolf.cs:296-298: "Testing 0 instead of 4 since thief
+        // doesn't really seem to 'harm' the village team a lot" - the
+        // source's own comment, kept verbatim since it explains a
+        // deliberately-tuned value that looks like it could be a typo.
+        strength: |_| 0,
+        pool: Pool::Always,
+    },
+    dealt: true,
+};
 
 pub struct Thief;
 
 impl RoleBehavior for Thief {
-    fn team(&self) -> Team {
-        Role::Thief.team()
-    }
-
     fn night_action(&self, ctx: &NightContext, state: &mut RoleState) -> Vec<NightAction> {
         if state.primary_used {
             return vec![];
