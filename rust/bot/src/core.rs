@@ -55,6 +55,10 @@ impl Admission for MaxGames {
     }
 }
 
+/// How long [`BotCore::announce_interrupted_games`] waits before asking the
+/// database a second time.
+pub const INTERRUPTED_RETRY_DELAY: Duration = Duration::from_secs(2);
+
 pub struct CoreConfig {
     pub default_language: String,
     pub global_admins: Vec<i64>,
@@ -144,13 +148,25 @@ impl BotCore {
     }
 
     /// Games the last process left unfinished (crash or forced exit): tell
-    /// each group, and close the game in the history as interrupted.
+    /// each group, and close the game in the history as interrupted. A
+    /// database that fails the first time (still starting, briefly
+    /// unreachable) gets one more try after [`INTERRUPTED_RETRY_DELAY`].
     pub async fn announce_interrupted_games(&self) {
         let games = match self.store.games().unfinished().await {
             Ok(g) => g,
             Err(e) => {
-                log::error!("could not list unfinished games: {e}");
-                return;
+                log::warn!(
+                    "could not list unfinished games: {e}; retrying in {}s",
+                    INTERRUPTED_RETRY_DELAY.as_secs()
+                );
+                tokio::time::sleep(INTERRUPTED_RETRY_DELAY).await;
+                match self.store.games().unfinished().await {
+                    Ok(g) => g,
+                    Err(e) => {
+                        log::error!("could not list unfinished games: {e}");
+                        return;
+                    }
+                }
             }
         };
         for g in games {

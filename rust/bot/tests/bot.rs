@@ -633,6 +633,19 @@ async fn games_cut_off_by_a_crash_are_announced_on_restart() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn an_unreachable_database_is_asked_twice_for_interrupted_games() {
+    local!(async {
+        let store = Store::in_memory().await.unwrap();
+        let bot = Bot::with_store(10, store.clone()).await;
+        store.close().await;
+        let before = tokio::time::Instant::now();
+        bot.core.announce_interrupted_games().await;
+        assert!(before.elapsed() >= bot::core::INTERRUPTED_RETRY_DELAY);
+        assert!(bot.tg.transcript(GROUP).is_empty());
+    })
+}
+
+#[tokio::test(start_paused = true)]
 async fn shutdown_lets_games_finish_or_stops_them() {
     local!(async {
         let bot = Bot::new(10).await;
