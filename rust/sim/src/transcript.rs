@@ -119,7 +119,7 @@ impl<'a> TranscriptPresenter<'a> {
     }
 }
 
-/// Some locale templates carry a `{0}`/`{1}` for data this proof-of-concept
+/// Some locale templates carry a `{0}`/`{1}` for data the engine
 /// doesn't track (e.g. `AskShoot`'s "{0} bullet(s) remain." needs a
 /// Gunner's remaining-bullet count, which `RoleState` doesn't expose to a
 /// presenter). Leaving the raw brace in the transcript would read as a

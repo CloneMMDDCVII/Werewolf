@@ -104,7 +104,7 @@ pub enum JoinError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeaveError {
     /// Werewolf.cs:832: leaving (during joining) only makes sense while
-    /// still `Joining` - this proof-of-concept doesn't model the
+    /// still `Joining` - the lobby doesn't model the
     /// running-game flee path (see module doc).
     NotJoining,
     NotInGame,

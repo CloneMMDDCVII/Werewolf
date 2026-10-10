@@ -71,11 +71,9 @@ use shared::Role;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerId(pub u64);
 
-/// What a night action resolves to. The orchestrator (not shown in this
-/// proof-of-concept — it would live in `control` or a future `engine`
-/// runtime loop) is responsible for actually applying these: e.g.
-/// collecting all `EatVote`s and killing whoever the wolves agree on.
-/// Roles only ever describe *intent*, never mutate game state directly.
+/// What a player chose at night. Roles only describe intent; the night
+/// (`night::resolve_night_sequence`) applies these, e.g. tallying the
+/// `EatVote`s and attacking whoever the wolves agree on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NightAction {
     EatVote {
@@ -99,8 +97,8 @@ pub enum NightAction {
     /// the Harlot region of `night::resolve_night_sequence` can kill the right
     /// player: visiting whoever the wolves' actually ate that same night
     /// kills the Harlot (Werewolf.cs:2352-2360, `KillMthd.VisitWolf`,
-    /// unconditional — no RNG involved). Being unable to visit someone
-    /// already occupied (Werewolf.cs:2424-2428) is still not modeled.
+    /// unconditional — no RNG involved). Every other visit outcome is
+    /// `night::Night::visit`.
     Visit {
         visitor: PlayerId,
         target: PlayerId,
@@ -130,8 +128,7 @@ pub enum NightAction {
     /// The cult's proposed conversion target for tonight
     /// (Werewolf.cs:3690-3735 onward: each surviving cultist effectively
     /// votes by choosing a target, with a per-target-role success chance).
-    /// This models only the *proposal*; the conversion itself is
-    /// RNG-and-role-dependent resolution logic not modeled here.
+    /// The conversion itself is the cult region of the night.
     ConvertVote {
         target: PlayerId,
     },
@@ -146,11 +143,10 @@ pub enum NightAction {
     /// (which waits for the role model to die), the steal is immediate —
     /// modeled as its own variant so a reader isn't left wondering why an
     /// "immediate" and a "wait for death" mechanic share one action shape.
-    /// Carries `thief` (its own actor) so `game::run_game` can apply the
-    /// swap: the Thief becomes the target's role, and the target becomes
-    /// a Villager (Werewolf.cs:2483-2486, the non-`ThiefFull` case this
-    /// proof-of-concept models). The RNG success chance `ThiefFull` mode
-    /// rolls (Werewolf.cs:4173) is still not attempted.
+    /// Carries `thief` (its own actor) so the Thief region of the night can
+    /// apply the swap: the Thief becomes the target's role, and the target
+    /// becomes a Villager (Werewolf.cs:2483-2486). In `ThiefFull` mode the
+    /// steal can fail (Werewolf.cs:4173).
     StealRole {
         thief: PlayerId,
         target: PlayerId,
@@ -168,10 +164,7 @@ pub enum NightAction {
     /// Arsonist dousing a target with kerosene, any night, as many nights
     /// as they like (Werewolf.cs:3792 region / `x.Doused`) — there's no
     /// `primary_used`-style gate in the legacy code, doused players just
-    /// accumulate. This proof-of-concept only tracks the *most recent*
-    /// douse via `RoleState::remembered_player`, not the full doused set
-    /// (which would need a `Vec`, not a single slot) — see `arsonist`
-    /// module doc for why that's an honest gap, not a bug.
+    /// accumulate in `night::NightMemory::doused`.
     Douse {
         target: PlayerId,
     },
@@ -203,10 +196,8 @@ pub struct NightContext<'a> {
     pub poison_target: Option<PlayerId>,
     pub love_targets: Option<(PlayerId, PlayerId)>,
     /// The wolves' resolved target for tonight, if it's already known by
-    /// the time this role is being asked. `None` either means "no wolf
-    /// vote happened yet" or "the wolves had no valid target" — this
-    /// proof-of-concept doesn't yet distinguish the two, since there's no
-    /// orchestrator to produce either case for real.
+    /// the time this role is being asked: `None` when the wolves have not
+    /// voted yet or chose nobody.
     pub wolf_target: Option<PlayerId>,
     /// Generic yes/no decision, for the roles whose action isn't "pick a
     /// player" at all — e.g. Sandman's once-per-game "put everyone to
@@ -236,8 +227,7 @@ pub enum DayAction {
     Shoot { shooter: PlayerId, target: PlayerId },
     /// Blacksmith spreading protective silver dust over the whole
     /// village, once (Werewolf.cs:935, 5083-5092: a yes/no menu, not a
-    /// target pick — an earlier version of this action wrongly modeled
-    /// it as `{ target: PlayerId }`). The effect lands the *following*
+    /// target pick). The effect lands the *following*
     /// night: every wolf-team role gets no valid targets at all
     /// (Werewolf.cs:5191: `if (!_silverSpread) { ...assign wolf targets...
     /// }` — nothing runs in the `else`), so `game::run_game_with_rules`

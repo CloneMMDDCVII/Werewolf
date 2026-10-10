@@ -72,7 +72,7 @@ pub struct DeathReveal {
 /// Builds the same per-player status Werewolf.cs's non-shuffled
 /// `SendPlayerList` shows (the `else` branch, 1388-1394) - preserves
 /// `roster`'s given order rather than the source's `OrderBy(x =>
-/// x.TimeDied)` (this proof-of-concept has no `TimeDied` to sort by;
+/// x.TimeDied)` (the engine has no `TimeDied` to sort by;
 /// ordering is left to the caller, who has whatever ordering context it
 /// tracked getting here).
 pub fn render_player_list(roster: &[RosterEntry], reveal_roles_on_death: bool) -> Vec<PlayerListEntry> {

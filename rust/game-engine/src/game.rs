@@ -1,10 +1,8 @@
-//! The full loop: night, then day, checking for a winner after each,
-//! repeating until one is found or a safety cap is hit. This is the first
-//! thing in the crate that ties `orchestrator`'s phase resolution to the
-//! `evaluate_winner_with_kills` win-condition logic across *multiple*
-//! rounds — until now, every proof (`day_orchestration.rs`,
-//! `fixture_day_replay.rs`) checked a single night or a single day in
-//! isolation.
+//! One game from start to finish: [`run_game_with_rules`] deals nothing
+//! itself (the caller passes roles in `players`), tells everyone their role,
+//! then loops night, day, and a second lynch when a Troublemaker asked for
+//! one, checking for the end after each step. [`Game`] holds the state that
+//! lives across rounds.
 
 use crate::death_text::{death_message, DeathContext};
 use crate::freeze::{apply_freeze, freeze_question};
@@ -39,21 +37,10 @@ pub struct GameOutcome {
     pub deaths: Vec<(PlayerId, KillMethod)>,
 }
 
-/// Runs the game to completion: night, day, check win, repeat. `max_rounds`
-/// is a safety cap, not a rule — a night+day round where both the eat and
-/// lynch votes tie produces zero deaths, and without a cap that would loop
-/// forever. Hitting the cap returns `WinOutcome::Unimplemented` rather than
-/// panicking, since "the vote never resolved" is a real (if unlikely)
-/// outcome this proof-of-concept doesn't have a tie-breaker rule for.
-///
-/// Any `WinOutcome` other than `Team(_)` (i.e. `RngDependent`,
-/// `InsufficientData`, `Unimplemented`) is treated as "keep playing," which
-/// is honest for `evaluate_common`'s genuine "game continues" cases but
-/// **not** for the RNG/data-gap cases — a real game would have resolved
-/// those (with a coin flip, say) rather than continuing. That's a known
-/// divergence from real play, not a hidden one: those cases already return
-/// distinct, named variants specifically so a caller can tell them apart
-/// from an actual "no winner yet."
+/// Runs the game to completion with the default role pool and rules.
+/// `max_rounds` is a safety cap, not a rule: a round where both votes tie
+/// kills nobody, and without a cap that would loop forever. Hitting it
+/// ends the game with `WinOutcome::Unimplemented`.
 pub async fn run_game(
     players: &[AlivePlayer],
     presenter: &mut dyn Presenter,

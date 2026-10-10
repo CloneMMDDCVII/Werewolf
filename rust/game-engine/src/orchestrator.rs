@@ -1,20 +1,11 @@
-//! Ties the individual role files together into an actual night
-//! resolution, without ever knowing where questions go or answers come
-//! from. That's the `Presenter` trait: the orchestrator calls
-//! `ask_targets` and gets answers back, and has no idea whether it's
-//! talking to a real Telegram chat or a scripted test harness. `sim` and
-//! (eventually) `control` each implement `Presenter` their own way; this
-//! file never depends on either.
+//! Everything that asks players something, and the day. Questions go out
+//! through the [`Presenter`] trait, so this module never knows whether it
+//! is talking to Telegram or a scripted test. `bot` and `sim` each
+//! implement `Presenter` their own way.
 //!
-//! `Presenter` has exactly one question-asking method, parameterized by
-//! how many targets are wanted, rather than one method per arity
-//! (`ask_target`, `ask_two_targets`, ...). A one-per-arity design is fine
-//! for exactly one extra case, but it doesn't stop there — the moment a
-//! third arity shows up (a role linking three players, say), every
-//! `Presenter` implementation would need a matching new method forever.
-//! Collapsing to `ask_targets(.., count)` means "how many" is just a
-//! number, and implementers (a real Telegram adapter, a test double)
-//! never need to know or care how many roles-that-pick-N-players exist.
+//! `Presenter` asks for targets with a count (`ask_targets(.., count)`)
+//! rather than one method per number of targets, so a role that picks
+//! three players needs no new method on every presenter.
 //!
 //! Which question each role gets is its `RoleDef` (`roles::def`). The
 //! night is asked in one batch, then a second for roles that need the
@@ -107,15 +98,13 @@ pub enum Prompt {
 /// real Telegram presenter and a text-transcript presenter should both
 /// read it from here rather than each maintaining their own copy that can
 /// silently drift out of sync with each other. `None` means there's no
-/// exact legacy key (a new role not in the original game, or a menu this
-/// proof-of-concept's `Prompt` doesn't line up 1:1 with) — callers decide
+/// exact legacy key (a new role not in the original game, or a menu the
+/// legacy game words differently) — callers decide
 /// their own fallback wording, that part **is** a presentation choice.
 ///
 /// Verified directly against `Languages/English.xml` and Werewolf.cs's
-/// `SendNightActions`/`SendDayActions` switches, not guessed — an earlier
-/// version of this table (before it lived here) wrongly assumed
-/// Fool/Sorcerer/Oracle had no matching key, when they actually reuse
-/// Seer's `AskSee` verbatim (Werewolf.cs:5174-5178).
+/// `SendNightActions`/`SendDayActions` switches,. Fool, Sorcerer and Oracle
+/// reuse the Seer's `AskSee` (Werewolf.cs:5174-5178).
 pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
     match prompt {
         Prompt::WolfEat => Some("AskEat"),
@@ -219,11 +208,8 @@ pub enum NarrationEvent {
     /// player *was*, not just what they became.
     Transform { player: PlayerId, from: Role, to: Role },
     /// The game has ended. Carries the whole `WinOutcome`, not just a
-    /// `Team`, so a presenter can tell a genuine "no winner yet" (never
-    /// produced — `run_game` only emits this once it actually returns)
-    /// apart from the honest non-`Team` cases (`RngDependent`,
-    /// `InsufficientData`, `Unimplemented`) this proof-of-concept
-    /// sometimes has to report instead of a clean win.
+    /// `Team`: a game that hit the round cap ends with `Unimplemented`,
+    /// and an admin's `/killgame` with `Killed`.
     GameOver {
         winner: crate::WinOutcome,
         /// The winner's line (see `game_over_message`).
@@ -243,8 +229,7 @@ pub enum NarrationEvent {
     GameSummary(crate::summary::GameSummary),
 }
 
-/// Maps a death to the real legacy flavor key, where this proof-of-concept
-/// has one.
+/// Maps a death to the legacy flavor key, where there is one.
 ///
 /// The legacy `*Killed` keys (`GunnerKilled`, `SeerKilled`, `PrinceKilled`,
 /// ...) are all Serial-Killer-specific flavor text, not general per-role
@@ -680,13 +665,10 @@ pub trait Presenter {
     /// `control::lobby::Lobby::leave` already covers.
     ///
     /// The legacy game reacts to a flee the instant the command arrives,
-    /// mid-question if need be. This proof-of-concept has no
-    /// interrupt-mid-`await` mechanism for that — `game::run_game` polls
-    /// this at three checkpoints per round instead (start of the round,
-    /// after night resolves, after day resolves), the same places it
-    /// already checks for a win. A flee lands within one of those three
-    /// windows, not instantly, which is an honest approximation stated
-    /// here rather than a silent gap: a real Telegram-backed presenter
+    /// mid-question if need be. The engine cannot interrupt an `await`,
+    /// so `game::run_game_with_rules` polls this wherever it checks for
+    /// the end of the game (after each step of the round). A flee lands
+    /// at the next checkpoint, not instantly. A Telegram-backed presenter
     /// would drain whatever `/flee` commands arrived since the last
     /// poll. Default: nobody ever flees, so every existing test/fixture
     /// presenter's behavior is unchanged without needing to implement
@@ -1032,8 +1014,8 @@ fn night_options(player: &AlivePlayer, players: &[AlivePlayer]) -> Vec<PlayerId>
 /// legacy count, `night::wolf_vote_winner`), and the freeze picked as
 /// `(snow_wolf, target)`. What the actions do is `night::resolve_night_sequence`.
 ///
-/// Roles that `requires` a fact from this batch (the Witch, who needs the
-/// wolves' target) are asked in a second batch once it is known.
+/// Roles asked after the wolves (`NightQuestion::AfterWolves`: the Witch,
+/// who needs the wolves' target) get a second batch once it is known.
 ///
 /// Players in `skip` get no menu tonight: drunk wolves, and wolves after
 /// the Blacksmith's silver (Werewolf.cs:5191, 5316). A Chemist who hasn't
@@ -1859,36 +1841,17 @@ mod apply_day_results_tests {
     }
 }
 
-/// The "a death can trigger one more question" case
-/// `night::resolve_night_sequence` and `apply_day_results` can't express — they only ever turn
-/// already-made decisions into deaths, never ask a new one afterward
-/// (Werewolf.cs:5420-5484: `HunterFinalShot`, called the moment a Hunter
-/// dies, by *any* method). Called by `run_game` right after a batch of
-/// deaths is applied, with the roster still reflecting who survived that
-/// batch: every dead Hunter in `died_with_roles` gets asked one
-/// `ask_targets` question — a different `Prompt` depending on whether they
-/// were lynched or killed some other way, since the legacy game's own
-/// text differs by exactly that (`killMethod == KillMthd.Lynch`) — and
-/// whoever they pick dies too, via `KillMethod::HunterShot`.
+/// The Hunter's final shot (Werewolf.cs:5420-5484, `HunterFinalShot`).
+/// Called by the game right after a batch of deaths, with the roster
+/// already showing who survived it. Each Hunter in `died_with_roles` is
+/// asked once, with a different prompt when lynched
+/// (`killMethod == KillMthd.Lynch` in legacy), and whoever they pick dies
+/// by `KillMethod::HunterShot`.
 ///
-/// **Scoped to the core mechanic only.** The legacy code passes
-/// `hunterFinalShot: false` (skipping this entirely) for several specific
-/// cases this proof-of-concept doesn't distinguish: dying by falling into
-/// a Grave Digger's trap, an idle/flee death, an Arsonist's mass burn, a
-/// wolf-standoff sub-case where the Hunter already shot back at a visiting
-/// wolf, and a couple of hardcoded 2-player endgame shortcuts. Every one
-/// of those would incorrectly grant a shot here.
-///
-/// One of those cases *is* modeled precisely, though: a plain wolf-eat
-/// (`KillMethod::Eat`) death always passes `hunterFinalShot: false`
-/// (Werewolf.cs:3419, the `default:` case of the wolf-eat resolution
-/// switch — reached by every eaten role including Hunter itself, whose
-/// own case falls through to it when its shoot-back RNG fails,
-/// Werewolf.cs:3413) — confirmed to apply uniformly to both the primary
-/// wolf-eat and the Wolf Cub's bonus kill, since both targets are pushed
-/// through this same switch (Werewolf.cs:3239-3270). So `KillMethod::Eat`
-/// is excluded here entirely, unconditionally — no question is asked at
-/// all for that death method, not just a different prompt.
+/// A Hunter eaten by the wolves, burned by the Arsonist or fallen into a
+/// grave gets no shot: legacy passes `hunterFinalShot: false` there
+/// (Werewolf.cs:3419, 3199, 2391). A Hunter who shoots back at the pack
+/// does so in `night::Night::wolves_attack` instead.
 ///
 /// Asks each dead Hunter in this batch once. "Domino" chains (a Hunter's
 /// shot landing on *another* Hunter, Werewolf.cs:5480-5481) are handled by
@@ -2018,9 +1981,8 @@ pub(crate) fn grave_digger_fall_chance_percent(dug_graves: u32, visitor_is_villa
 /// The real code passes a `null` `killMethod` for the Spumpkin's own
 /// death (`KillPlayer(spumpkin, killMethod: null, killer: null, ...)`),
 /// which in the source only affects whether a DB kill row gets written
-/// and whether a Hunter final shot could trigger — irrelevant here (this
-/// proof-of-concept doesn't write history rows, and a Spumpkin isn't a
-/// Hunter), so both deaths are given the same `KillMethod::Shoot` rather
+/// and whether a Hunter final shot could trigger — irrelevant here (the
+/// engine writes no kill rows, and a Spumpkin isn't a Hunter), so both deaths are given the same `KillMethod::Shoot` rather
 /// than inventing a "no method" case this crate's `(PlayerId, KillMethod)`
 /// death shape has no room for.
 ///
@@ -2028,8 +1990,8 @@ pub(crate) fn grave_digger_fall_chance_percent(dug_graves: u32, visitor_is_villa
 /// Wise Elder transforms the *Spumpkin* to Villager first) doesn't change
 /// who dies — `KillPlayer(spumpkin, ...)` and `KillPlayer(check, ...)`
 /// both still run unconditionally right after, regardless of which
-/// branch of that `switch` fired — so it's flavor/achievement bookkeeping
-/// only, safe to skip without changing lethality.
+/// branch of that `switch` fired — so it is achievement bookkeeping
+/// that does not change who dies.
 pub fn resolve_spumpkin_detonation(day_actions: &[DayAction], rng: &mut dyn RngSource) -> Vec<(PlayerId, KillMethod)> {
     day_actions
         .iter()

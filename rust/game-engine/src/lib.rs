@@ -1,10 +1,17 @@
-//! Core game engine. Covers the deterministic majority-path win-condition
-//! logic ported from `Werewolf.cs::CheckForWin`/`DoGameEnd` (Werewolf
-//! Node/Werewolf.cs:4479-4636), a proof-of-concept role-behavior structure
-//! (see `roles` module) for every legacy role, and a dependency-ordered night
-//! orchestrator (see `orchestrator` module) that ties them together behind
-//! an abstract `Presenter` trait — this crate never depends on Telegram
-//! (or on `sim`), only on the idea that *something* can answer a question.
+//! The game engine: every rule of the legacy game (`Werewolf Node/Werewolf.cs`)
+//! with no I/O. A game runs in [`game::run_game_with_rules`] and talks to the
+//! outside world only through the [`orchestrator::Presenter`] trait, so
+//! this crate depends on neither Telegram nor `sim`.
+//!
+//! Where things live:
+//! - [`roles`]: one file per role, holding its [`roles::RoleDef`];
+//! - [`night`]: the night, resolved region by region in the legacy order;
+//! - [`orchestrator`]: asking questions, the day, deaths and the hunter's shot;
+//! - [`game_end`]: the live end-of-game check;
+//! - [`evaluate_winner`] and [`evaluate_winner_with_kills`]: the RNG-free
+//!   win check the fixture replays use.
+//!
+//! `rust/ARCHITECTURE.md` walks through a game and through adding a role.
 
 pub mod balancing;
 pub mod death_text;
