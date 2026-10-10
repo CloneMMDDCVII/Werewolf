@@ -724,8 +724,11 @@ dependencies = [
 name = "moderation"
 version = "0.1.0"
 dependencies = [
+ "db",
  "i18n",
  "serde",
+ "shared",
+ "tokio",
 ]
 
 [[package]]

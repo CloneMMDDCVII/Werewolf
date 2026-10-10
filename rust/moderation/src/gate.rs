@@ -41,7 +41,8 @@ pub fn policy_for(trigger: &str) -> Option<CommandPolicy> {
         "forcestart" | "smite" => GROUP_ADMIN,
         "config" => CommandPolicy { group_admin_only: true, in_group_only: true, ..ANYONE },
         "killgame" => CommandPolicy { in_group_only: true, ..GLOBAL_ADMIN },
-        "getban" | "permban" | "remban" => GLOBAL_ADMIN,
+        "getban" | "permban" | "remban" | "restore" => GLOBAL_ADMIN,
+        "getidles" => CommandPolicy { group_admin_only: true, allow_anonymous_admins: true, ..ANYONE },
         "start" | "help" | "ping" | "setlang" | "getlang" => ANYONE,
         _ => return None,
     };

@@ -24,6 +24,7 @@ mod bans;
 mod games;
 mod groups;
 mod migrations;
+mod moderation_queries;
 mod players;
 
 pub use bans::{BanIssuer, BanRecord, BanSource, Bans, NewBan};

@@ -38,13 +38,27 @@ scope (explained in notes, not just skipped silently)
 
 ## Admin (AdminCommands.cs) — group/global admin tools
 
-All ⛔ for now: `smite`, `config`, `uploadlang`, `getban`, `validatelangs`,
-`getidles`, `remlink`, `setlink`, `addach`, `remach`, `restore`,
-`reviewgifs`, `fi`, `approvegifs`, `disapprovegifs`, `fixgifs`. Group
-config (`config`) and moderation (`smite`, `getban`) are the two worth
-revisiting first if this list gets picked back up - `moderation::Ban`
-already models the data shape `getban`/bans would need, just no command
-layer yet.
+Scope: `notes/scopes/moderation.feature` in the project folder. Every
+command here is pure logic in the `moderation` crate (no Telegram, no
+SQL), run over storage by `moderation::Moderation` (`db::Store`).
+
+| Command | Legacy source | Status | Notes |
+|---|---|---|---|
+| `smite` | `AdminCommands.cs:26-63` → `Werewolf.cs::FleePlayer` (5357-5391) | ✅ | A forced flee. `moderation::smite_targets` picks the ids (reply, mentions, one typed id); joining: `Lobby::leave`; running game: `Presenter::drain_fled_players`, the same path as `/flee`. Skips "allow flee", silent for dead or absent targets. A player reported twice in one window now dies once (was a real double-death bug in `apply_fled_players`). The C#'s "cannot flee while initializing" can't happen here: `try_start` and `assign_roles` leave no gap |
+| `getban` | `AdminCommands.cs:131-158`, target via `Extensions.cs::GetTarget` (136-185) | ✅ | `moderation::getban_report` + `resolve_target`. Changes: an expired ban reads "Not banned" (the C# showed negative time until the next refresh); reasons are HTML-escaped |
+| `getidles` | `AdminCommands.cs:220-271`, `werewolf.sql` `Get[Group]IdleKills24Hours` | ✅ | `moderation::idles` + `db::Games::idle_kills_since` |
+| `restore` | `AdminCommands.cs:496-581`, `UpdateHandler.cs:1125-1152`, `werewolf.sql` `RestoreAccount` | ✅ | `moderation::restore` scores the pair; `db::Games::move_player_history` moves games and kills. No row ids to compare, so "old is newer" checks Telegram ids only; empty histories no longer crash it. Achievement merge dropped with achievements. The yes/no buttons (dev-only confirm) are the presenter's |
+| `config` | `AdminCommands.cs:66-100` | — | Owned by the group-config work, not this table |
+| `setlink` / `remlink` | `AdminCommands.cs:273-322` | — | Group settings, same owner as `config` |
+| `uploadlang` / `validatelangs` | `AdminCommands.cs:102-218` | ⬜ | Language-file tooling, belongs with `i18n` |
+| `addach` / `remach` | `AdminCommands.cs:324-494` | ⛔ | Achievements are dropped |
+| `reviewgifs` / `approvegifs` / `disapprovegifs` / `fixgifs` | `AdminCommands.cs:583-900` | ⛔ | Donation gifs; donations return later as Telegram Stars |
+| `fi` | `AdminCommands.cs:671-684` | ⛔ | Bot run info, infra |
+
+Also in `moderation`, used by every command above and the gameplay ones:
+
+- **Permission gate** (`moderation::gate::check`, `UpdateHandler.cs:327-440`): banned senders are dropped silently, then anonymous/channel senders, blocked support chats, dev / lang admin / global admin / group-only / group admin, in the C#'s order. `policy_for(trigger)` holds each ported command's `[Command(...)]` flags. Not ported: the flood counter (`AddCount`), which is transport rate limiting.
+- **Bans** (`moderation::BanList`, persisted via `db::Bans`): one ban in force per player, history kept in storage, legacy `GlobalBan` rows convert with `SqlDateTime.MaxValue` as permanent.
 
 ## Dev/infra (DevCommands.cs, GifCommands.cs, HelpCommands.cs)
 
@@ -56,8 +70,17 @@ All ⛔, no plan to port: bot-fleet management (`bangroup`, `build`,
 `skipvote`, `playtime`, `winchart`, `asplode`, `notifyspam`, `notifyban`,
 `ohaider`, `movelang`, `commitlangs`, `resetlink`, `user`, `unlockbeta`,
 `lockbeta`, `preferred`, `leavegroup`, `reloadenglish`, `clearcount`,
-`sendonline`, `adddonation`, `updatestatus`, `getbans`, `permban`,
-`remban`, `getcommands`, `grouplist`, `rolelist`).
+`sendonline`, `adddonation`, `updatestatus`, `getbans`,
+`getcommands`, `grouplist`, `rolelist`).
+
+`permban` and `remban` (`DevCommands.cs:848-1055`, global admin) are the
+exceptions and are ✅: they are how bans get issued and lifted, so they
+live with the rest of moderation (`moderation::permban` / `remban`,
+stored through `Moderation`). A new ban replaces the player's previous
+one in memory and adds to their history in storage; the reason is every
+non-target word (the C# dropped the first word whatever it was). Lifting
+keeps the row, marked lifted. `getbans` stays ⛔: it dumps the in-memory
+spam-filter list, which isn't ported.
 
 `killgame` (`DevCommands.cs:237`, admin-only force-end of a running
 game) is the one exception, and it's ✅ now: `Presenter::game_was_killed`,

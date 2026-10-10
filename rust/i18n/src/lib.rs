@@ -68,6 +68,17 @@ impl LanguagePack {
         self.strings.get(key)?.first().map(|s| s.as_str())
     }
 
+    /// The first variant for `key` with `{0}`, `{1}`, ... replaced by
+    /// `args` in order (the C# `GetLocaleString(key, lang, args)`), or
+    /// `None` when the pack has no such key.
+    pub fn format(&self, key: &str, args: &[&str]) -> Option<String> {
+        let mut text = self.get(key)?.to_string();
+        for (i, arg) in args.iter().enumerate() {
+            text = text.replace(&format!("{{{i}}}"), arg);
+        }
+        Some(text)
+    }
+
     /// All value variants across every key, flattened.
     pub fn variants_iter(&self) -> impl Iterator<Item = &str> {
         self.strings.values().flatten().map(|s| s.as_str())

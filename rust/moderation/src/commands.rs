@@ -121,7 +121,7 @@ pub struct BanReport {
 pub fn permban(message: &CommandMessage, issuer: &BanIssuer, players: &dyn PlayerDirectory, now: Timestamp) -> BanReport {
     let reason = ban_reason(message);
     let mut report = BanReport::default();
-    let mut ban = |player: &PlayerRecord, report: &mut BanReport| {
+    let ban = |player: &PlayerRecord, report: &mut BanReport| {
         report.smite.push(player.telegram_id);
         report.issued.push(Ban {
             telegram_id: player.telegram_id,
