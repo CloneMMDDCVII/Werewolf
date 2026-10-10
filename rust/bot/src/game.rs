@@ -17,7 +17,7 @@ use game_engine::balancing::balance_with_pool;
 use game_engine::game::run_game_with_rules;
 use game_engine::messages::{Announcement, Message};
 use game_engine::orchestrator::{
-    prompt_locale_key, transform_locale_key, AlivePlayer, Answer, NarrationEvent, OnAnswer, Phase, Presenter, Prompt,
+    prompt_locale_key, AlivePlayer, Answer, NarrationEvent, OnAnswer, Phase, Presenter, Prompt,
     Question, Quiet,
 };
 use game_engine::player_list::{render_player_list, PlayerStatus, RosterEntry};
@@ -321,10 +321,6 @@ pub async fn play(setup: GameSetup) {
         summary: None,
         next_qid: 1,
     };
-
-    for p in &players {
-        presenter.pm(p.id, &texts.role_info(&lang, p.role), None).await;
-    }
 
     let outcome = run_game_with_rules(&players, &pool, &start.rules, &mut presenter, &mut rng, MAX_ROUNDS).await;
     presenter.flush_lynch_time().await;
@@ -773,7 +769,7 @@ impl Presenter for TelegramPresenter {
                     self.group(&self.render(&message)).await;
                 }
             }
-            NarrationEvent::Transform { player, from, to } => {
+            NarrationEvent::Transform { player, to, .. } => {
                 if let Some(game) = self.game_id {
                     let _ = self.store.games().set_final_role(game, player.0 as i64, to).await;
                 }
@@ -782,14 +778,11 @@ impl Presenter for TelegramPresenter {
                         e.role = to;
                     }
                 });
-                // Transform messages tell the player privately what they
-                // became; announcing them would give roles away.
-                let text = match transform_locale_key(from, to) {
-                    Some(key) => self.texts.get(&self.lang, key, "", &[&self.name(player)]),
-                    None => String::new(),
-                };
-                let text = if text.is_empty() { self.texts.role_info(&self.lang, to) } else { text };
-                self.pm(player, &text, None).await;
+                // What the player and their team are told comes as `Tell`s.
+            }
+            NarrationEvent::Tell { to, message } => {
+                let text = self.render(&message);
+                self.pm(to, &text, None).await;
             }
             NarrationEvent::GameOver { winner, message } => {
                 let text = match (&winner, message) {

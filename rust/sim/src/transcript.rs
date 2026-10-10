@@ -19,7 +19,7 @@
 
 use async_trait::async_trait;
 use game_engine::orchestrator::{
-    prompt_locale_key, transform_locale_key, NarrationEvent,
+    prompt_locale_key, NarrationEvent,
     Presenter, Prompt,
 };
 use game_engine::messages::{render, Message};
@@ -42,13 +42,6 @@ fn prompt_fallback_text(prompt: Prompt) -> &'static str {
         Prompt::SpumpkinDetonate => "(no locale key in English.xml) Who do you want to detonate on?",
         _ => "Who do you choose?",
     }
-}
-
-/// Same idea, for a transform with no legacy key (see
-/// `orchestrator::transform_locale_key` — e.g. a Doppelganger copying a
-/// role other than the four with dedicated flavor text).
-fn transform_fallback_template() -> &'static str {
-    "{0} has transformed."
 }
 
 /// Whether a prompt is asked during the night or day phase — purely for
@@ -220,24 +213,13 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
                 self.lines.push(format!("{line} ({method:?})"));
             }
             NarrationEvent::Transform { player, from, to } => {
-                let name = self.name(player);
-                let template = match transform_locale_key(from, to) {
-                    Some(key) => self.pack.get(key).unwrap_or_else(|| transform_fallback_template()),
-                    None => transform_fallback_template(),
-                };
-                // `{0}` means different things across these legacy keys -
-                // the transforming player's own name in `DGToWolf`, but
-                // the *dead role model's* name in `WildChildTransform`/
-                // `ApprenticeNowSeer`. `NarrationEvent::Transform` doesn't
-                // carry "who died to cause this," only who transformed
-                // and between which roles, so this always fills `{0}`
-                // with the transforming player's own name - correct for
-                // the Doppelganger keys, an honest approximation for the
-                // other two rather than plumbing more context through
-                // for this slice.
-                let line = template.replace("{0}", &name);
-                self.lines
-                    .push(format!("{} ({from:?} -> {to:?})", strip_unfilled_placeholders(&line)));
+                // What the player is told comes as `Tell`s (see
+                // `game_engine::role_info`); this marks the change itself.
+                self.lines.push(format!("[{} turns from {from:?} to {to:?}]", self.name(player)));
+            }
+            NarrationEvent::Tell { to, message } => {
+                let text = self.render_message(&message);
+                self.lines.push(format!("(to {}) {text}", self.name(to)));
             }
             NarrationEvent::Private { to, note } => {
                 let text = self.render_message(&note.message());

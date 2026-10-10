@@ -47,6 +47,10 @@ pub enum MessageArg {
     Voters(Vec<(PlayerId, u32)>),
     /// Nested messages, one per line.
     Lines(Vec<Message>),
+    /// Player names, comma-separated.
+    Players(Vec<PlayerId>),
+    /// Player names joined with the language's "and" (`And`).
+    PlayersAnd(Vec<PlayerId>),
     /// "{name} was {role}", the reveal legacy death lines append when the
     /// group shows roles on death (`$"{p.GetName()} {GetLocaleString("Was")}
     /// {GetDescription(p.PlayerRole)}"`).
@@ -77,6 +81,11 @@ pub fn render(message: &Message, lookup: &dyn Fn(&str) -> Option<String>, name: 
                 .map(|&(id, n)| if n > 1 { format!("{} ({n})", name(id)) } else { name(id) })
                 .collect::<Vec<_>>()
                 .join(", "),
+            MessageArg::Players(list) => list.iter().map(|&id| name(id)).collect::<Vec<_>>().join(", "),
+            MessageArg::PlayersAnd(list) => {
+                let and = lookup("And").map(|a| format!(" {} ", a.trim())).unwrap_or_else(|| " and ".to_string());
+                list.iter().map(|&id| name(id)).collect::<Vec<_>>().join(&and)
+            }
             MessageArg::Lines(lines) => {
                 lines.iter().map(|m| render(m, lookup, name)).collect::<Vec<_>>().join("\n")
             }
@@ -135,6 +144,10 @@ pub enum Note {
     StealKiller,
     /// Told to the Thief after a steal (Werewolf.cs:2214).
     ThiefStoleRole { target: PlayerId },
+    /// Told to a Wild Child or Doppelganger who didn't pick a role model
+    /// on the first night, naming the one picked for them
+    /// (Werewolf.cs:1765, 1777).
+    RoleModelChosen { target: PlayerId },
     /// Told to the player robbed by a Thief (Werewolf.cs:2261): they
     /// become the Thief in full mode, a Villager otherwise.
     ThiefStoleYourRoleThief,
@@ -306,6 +319,8 @@ pub enum Announcement {
     HunterSkipChoice { hunter: PlayerId, lynched: bool },
     /// Werewolf.cs:5473, a dying Hunter who shot the Wise Elder.
     HunterKilledWiseElder { hunter: PlayerId, elder: PlayerId },
+    /// Werewolf.cs:2890, a Gunner who shot the Wise Elder.
+    GunnerShotWiseElder { gunner: PlayerId, elder: PlayerId },
     /// Last-two endings (Werewolf.cs:4544-4578, 4840-4894).
     HunterKillsWolfEnd { hunter: PlayerId, wolf: PlayerId },
     WolfKillsHunterEnd { hunter: PlayerId, wolf: PlayerId },
@@ -362,6 +377,7 @@ impl Note {
             Note::ThiefFell { .. } => "ThiefFell",
             Note::StealKiller => "StealKiller",
             Note::ThiefStoleRole { .. } => "ThiefStoleRole",
+            Note::RoleModelChosen { .. } => "RoleModelChosen",
             Note::ThiefStoleYourRoleThief => "ThiefStoleYourRoleThief",
             Note::ThiefStoleYourRoleVillager => "ThiefStoleYourRoleVillager",
             Note::FellDigger { by, .. } => match by {
@@ -401,6 +417,7 @@ impl Note {
             | Note::ThiefStealDead { target }
             | Note::ThiefFell { target }
             | Note::ThiefStoleRole { target }
+            | Note::RoleModelChosen { target }
             | Note::HunterFindCultist { target }
             | Note::HunterFailedToFind { target }
             | Note::HunterVisitDead { target }
@@ -441,6 +458,7 @@ impl Announcement {
             Announcement::HunterSkipChoice { lynched: true, .. } => "HunterSkipChoiceLynched",
             Announcement::HunterSkipChoice { lynched: false, .. } => "HunterSkipChoiceShot",
             Announcement::HunterKilledWiseElder { .. } => "HunterKilledWiseElder",
+            Announcement::GunnerShotWiseElder { .. } => "GunnerShotWiseElder",
             Announcement::HunterKillsWolfEnd { .. } => "HunterKillsWolfEnd",
             Announcement::WolfKillsHunterEnd { .. } => "WolfKillsHunterEnd",
             Announcement::SKHunterEnd { .. } => "SKHunterEnd",
@@ -470,6 +488,7 @@ impl Announcement {
             | Announcement::HunterSkipChoice { hunter: one, .. }
             | Announcement::SandmanSleepAll { sandman: one } => vec![Player(*one)],
             Announcement::HunterKilledWiseElder { hunter: a, elder: b }
+            | Announcement::GunnerShotWiseElder { gunner: a, elder: b }
             | Announcement::HunterKillsWolfEnd { hunter: a, wolf: b }
             | Announcement::WolfKillsHunterEnd { hunter: a, wolf: b }
             | Announcement::SKHunterEnd { serial_killer: a, hunter: b }
@@ -542,6 +561,7 @@ pub fn all_message_keys() -> Vec<&'static str> {
         Note::ThiefFell { target: p },
         Note::StealKiller,
         Note::ThiefStoleRole { target: p },
+        Note::RoleModelChosen { target: p },
         Note::ThiefStoleYourRoleThief,
         Note::ThiefStoleYourRoleVillager,
         Note::FellDigger { visitor: p, by: DiggerVisitor::Wolf },
@@ -583,6 +603,7 @@ pub fn all_message_keys() -> Vec<&'static str> {
             Announcement::HunterSkipChoice { hunter: p, lynched: true },
             Announcement::HunterSkipChoice { hunter: p, lynched: false },
             Announcement::HunterKilledWiseElder { hunter: p, elder: p },
+            Announcement::GunnerShotWiseElder { gunner: p, elder: p },
             Announcement::HunterKillsWolfEnd { hunter: p, wolf: p },
             Announcement::WolfKillsHunterEnd { hunter: p, wolf: p },
             Announcement::SKHunterEnd { serial_killer: p, hunter: p },
@@ -601,8 +622,13 @@ pub fn all_message_keys() -> Vec<&'static str> {
         .map(Announcement::locale_key),
     );
     keys.extend(NightNote::samples().iter().map(NightNote::locale_key));
+    keys.extend(["DigGraves", "DigNoGraves", "And"]);
     keys.extend(["SecretLynchResultEach", "SecretLynchResultNumber", "Burning", "ChemistKillWiseElder"]);
     keys.extend(crate::summary::SUMMARY_KEYS);
+    let mut role_info: Vec<&'static str> = crate::role_info::samples().iter().map(|m| m.key).collect();
+    role_info.sort_unstable();
+    role_info.dedup();
+    keys.extend(role_info);
     keys
 }
 

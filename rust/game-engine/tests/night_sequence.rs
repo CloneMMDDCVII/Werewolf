@@ -2,7 +2,7 @@
 //! loop adds around the night resolver.
 
 use async_trait::async_trait;
-use game_engine::messages::{Announcement, NightNote, Note};
+use game_engine::messages::{render, Announcement, Message, MessageArg, NightNote, Note};
 use game_engine::orchestrator::{AlivePlayer, NarrationEvent, Presenter, Prompt};
 use game_engine::rng::SeededRngSource;
 use game_engine::roles::PlayerId;
@@ -153,4 +153,35 @@ async fn the_burned_share_one_line_when_roles_are_shown() {
         })
         .collect();
     assert_eq!(burns, vec![(P2, Some("Burning")), (P3, None)]);
+}
+
+#[tokio::test]
+async fn the_grave_digger_is_told_whose_graves_to_dig() {
+    let players = roster(&[Role::GraveDigger, Role::Wolf, Role::Villager, Role::Villager, Role::Villager, Role::Villager]);
+    let mut night = Night::new(&[(Prompt::WolfEat, P3)]);
+    play(&players, &mut night, 0, 2).await;
+    let graves: Vec<Message> = night
+        .narrated
+        .iter()
+        .filter_map(|e| match e {
+            NarrationEvent::Tell { to, message } if *to == P1 && message.key.starts_with("Dig") => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        graves,
+        vec![Message::new("DigNoGraves", vec![]), Message::new("DigGraves", vec![MessageArg::PlayersAnd(vec![P3])])]
+    );
+}
+
+#[test]
+fn graves_are_listed_with_and() {
+    let message = Message::new("DigGraves", vec![MessageArg::PlayersAnd(vec![P2, P3])]);
+    let lookup = |key: &str| match key {
+        "DigGraves" => Some("You dig for {0}.".to_string()),
+        "And" => Some("and".to_string()), // the files' " and " may come back trimmed
+        _ => None,
+    };
+    let text = render(&message, &lookup, &|id| format!("P{}", id.0));
+    assert_eq!(text, "You dig for P2 and P3.");
 }

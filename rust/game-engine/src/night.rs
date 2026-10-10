@@ -15,6 +15,7 @@ use crate::messages::{DiggerVisitor, NightNote, Note};
 use crate::orchestrator::{grave_digger_fall_chance_percent, AlivePlayer, NarrationEvent};
 use crate::rng::RngSource;
 use crate::roles::{NightAction, PlayerId, RoleState};
+use crate::role_info::{transform_tells, Cause};
 use shared::{KillMethod, Role, Team};
 use std::collections::HashMap;
 
@@ -267,11 +268,18 @@ impl Night<'_, '_> {
         }
     }
 
-    fn transform(&mut self, player: PlayerId, to: Role) {
+    /// Changes a living player's role, with what `Transform` tells them
+    /// and their teams (see `role_info`). The dead keep theirs.
+    fn transform(&mut self, player: PlayerId, to: Role, cause: Cause) {
+        if self.is_dead(player) {
+            return;
+        }
         if let Some(p) = self.alive.iter_mut().find(|p| p.id == player) {
             let from = p.role;
             p.role = to;
             self.outcome.events.push(NarrationEvent::Transform { player, from, to });
+            let living: Vec<AlivePlayer> = self.alive.iter().filter(|p| !self.is_dead(p.id)).copied().collect();
+            self.outcome.events.extend(transform_tells(player, from, to, cause, &living, self.input.thief_full));
         }
     }
 
@@ -499,7 +507,7 @@ impl Night<'_, '_> {
             }
         };
         match self.role(target) {
-            Some(Role::Cursed) => self.transform(target, Role::Wolf),
+            Some(Role::Cursed) => self.transform(target, Role::Wolf, Cause::BiteCursed),
             Some(Role::Drunk) => {
                 if eaten(self) {
                     let note = match second.filter(|&s| s != target) {
@@ -729,7 +737,7 @@ impl Night<'_, '_> {
     /// `ConvertToCult` (Werewolf.cs:2489-2509).
     fn convert(&mut self, target: PlayerId, chance: u32, newbie: PlayerId) {
         if self.roll(chance) {
-            self.transform(target, Role::Cultist);
+            self.transform(target, Role::Cultist, Cause::ConvertToCult);
             self.memory.cult_joined.insert(target, self.input.night);
         } else {
             let cultists = self.living(|r| r == Role::Cultist);
@@ -929,9 +937,9 @@ impl Night<'_, '_> {
         }
         let Some(stolen) = self.role(target) else { return };
         let victim_becomes = if self.input.thief_full { Role::Thief } else { Role::Villager };
-        self.transform(target, victim_becomes);
-        self.transform(thief, stolen);
+        self.transform(target, victim_becomes, Cause::ThiefStolen);
         self.note(thief, Note::ThiefStoleRole { target });
+        self.transform(thief, stolen, Cause::ThiefSteal { from: target });
         let robbed = if self.input.thief_full { Note::ThiefStoleYourRoleThief } else { Note::ThiefStoleYourRoleVillager };
         self.note(target, robbed);
         let taken = self.states.remove(&target).unwrap_or_default();
@@ -964,9 +972,7 @@ impl Night<'_, '_> {
             d.method == KillMethod::Chemistry && d.by != Some(d.victim) && self.role(d.victim) == Some(Role::WiseElder)
         });
         if let Some(chemist) = self.first_living(Role::Chemist).filter(|_| killed_elder) {
-            if let Some(p) = self.alive.iter_mut().find(|p| p.id == chemist) {
-                p.role = Role::Villager;
-            }
+            self.transform(chemist, Role::Villager, Cause::KillElder);
         }
     }
 }

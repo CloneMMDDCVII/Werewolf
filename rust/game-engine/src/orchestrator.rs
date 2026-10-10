@@ -50,6 +50,7 @@ pub enum Prompt {
     DetectiveInvestigate,
     FoolInvestigate,
     WildChildRoleModel,
+    DoppelgangerRoleModel,
     CupidLink,
     WitchHeal,
     WitchPoison,
@@ -131,6 +132,7 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
         Prompt::DetectiveInvestigate => Some("AskDetect"),
         Prompt::CultistHunterInvestigate => Some("AskHunt"),
         Prompt::WildChildRoleModel => Some("AskRoleModel"),
+        Prompt::DoppelgangerRoleModel => Some("AskDoppelganger"),
         Prompt::CupidLink => Some("AskCupid1"),
         Prompt::LynchVote => Some("AskLynch"),
         Prompt::GunnerShoot { .. } => Some("AskShoot"),
@@ -166,6 +168,7 @@ pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::DetectiveInvestigate,
     Prompt::FoolInvestigate,
     Prompt::WildChildRoleModel,
+    Prompt::DoppelgangerRoleModel,
     Prompt::CupidLink,
     Prompt::WitchHeal,
     Prompt::WitchPoison,
@@ -235,6 +238,9 @@ pub enum NarrationEvent {
     },
     /// Something told to one player only — see `messages::Note`.
     Private { to: PlayerId, note: Note },
+    /// A whole message told to one player only, for what `Note` can't
+    /// carry: role info and team lists (see `role_info`).
+    Tell { to: PlayerId, message: crate::messages::Message },
     /// Something told to the whole group — see `messages::Announcement`.
     Announce(Announcement),
     /// The end-of-game summary, right after `GameOver`.
@@ -386,45 +392,6 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
     }
 }
 
-/// Maps a resolved transform to its real legacy flavor key. Covers the
-/// transforms `game::apply_transforms`/`demote_gunner_if_shot_a_wise_elder`
-/// actually model: Traitor→Wolf (`TraitorTurnWolf`), ApprenticeSeer→Seer
-/// (`ApprenticeNowSeer`), WildChild→Wolf (`WildChildTransform`),
-/// Doppelganger copying a dead role model into one of the four roles the
-/// legacy game has dedicated flavor text for (`DGToWolf`/`DGToCult`/
-/// `DGToMason`/`DGToSnowWolf` — a Doppelganger copying any other role has
-/// no dedicated key, checked directly), and a Gunner demoted for shooting
-/// the Wise Elder (`GunnerShotWiseElder`). That last one is matched on
-/// `(Gunner, Villager)` alone, not some more specific "reason" tag — safe
-/// today because nothing else in this proof-of-concept produces that
-/// exact transform, but a second cause of a Gunner becoming a Villager
-/// would need `NarrationEvent::Transform` to carry a cause, not just
-/// `from`/`to`, to disambiguate correctly.
-pub fn transform_locale_key(from: Role, to: Role) -> Option<&'static str> {
-    match (from, to) {
-        (Role::Traitor, Role::Wolf) => Some("TraitorTurnWolf"),
-        (Role::ApprenticeSeer, Role::Seer) => Some("ApprenticeNowSeer"),
-        (Role::WildChild, Role::Wolf) => Some("WildChildTransform"),
-        (Role::Doppelganger, Role::Wolf) => Some("DGToWolf"),
-        (Role::Doppelganger, Role::Cultist) => Some("DGToCult"),
-        (Role::Doppelganger, Role::Mason) => Some("DGToMason"),
-        (Role::Doppelganger, Role::SnowWolf) => Some("DGToSnowWolf"),
-        (Role::Gunner, Role::Villager) => Some("GunnerShotWiseElder"),
-        // Werewolf.cs:4495, sent when the Snow Wolf is the last wolf left.
-        (Role::SnowWolf, Role::Wolf) => Some("SnowWolfTurnWolf"),
-        // The cult's recruitment message (Werewolf.cs:2063: `Send
-        // (GetLocaleString("CultConvertYou"), p.Id)`) doesn't vary by what
-        // the convert used to be - a genuine `(_, Cultist)` wildcard, not
-        // a missing case list. `(Doppelganger, Cultist)` still needs its
-        // own more specific `DGToCult` above (Rust match arms take the
-        // first one that fits, so the specific arm has to come first) -
-        // Doppelganger's own conversion flavor is different text
-        // entirely, checked directly against Werewolf.cs:2165-2172.
-        (_, Role::Cultist) => Some("CultConvertYou"),
-        _ => None,
-    }
-}
-
 /// Maps a game-ending `WinOutcome` to its real legacy per-team victory
 /// key. Only defined for an actual `Team` win — the RNG/data-gap
 /// `WinOutcome` variants (`RngDependent`, `InsufficientData`,
@@ -546,17 +513,6 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "ChemistSuccessPublic",
         "ChemistFailPublic",
         "Flee",
-        // transform_locale_key's non-`None` outputs.
-        "TraitorTurnWolf",
-        "ApprenticeNowSeer",
-        "WildChildTransform",
-        "DGToWolf",
-        "DGToCult",
-        "DGToMason",
-        "DGToSnowWolf",
-        "GunnerShotWiseElder",
-        "SnowWolfTurnWolf",
-        "CultConvertYou",
         // game_over_locale_key's non-`None` outputs.
         "VillageWins",
         "WolfWins",
@@ -598,24 +554,6 @@ mod locale_mapping_tests {
     #[test]
     fn a_new_role_has_no_legacy_prompt_key() {
         assert_eq!(prompt_locale_key(Prompt::WitchHeal), None);
-    }
-
-    #[test]
-    fn known_transforms_map_to_their_real_keys() {
-        assert_eq!(transform_locale_key(Role::Traitor, Role::Wolf), Some("TraitorTurnWolf"));
-        assert_eq!(transform_locale_key(Role::ApprenticeSeer, Role::Seer), Some("ApprenticeNowSeer"));
-        assert_eq!(transform_locale_key(Role::WildChild, Role::Wolf), Some("WildChildTransform"));
-        assert_eq!(transform_locale_key(Role::Doppelganger, Role::SnowWolf), Some("DGToSnowWolf"));
-    }
-
-    #[test]
-    fn a_doppelganger_copying_an_uncelebrated_role_has_no_key() {
-        assert_eq!(transform_locale_key(Role::Doppelganger, Role::Villager), None);
-    }
-
-    #[test]
-    fn a_gunner_demoted_for_shooting_the_wise_elder_has_a_key() {
-        assert_eq!(transform_locale_key(Role::Gunner, Role::Villager), Some("GunnerShotWiseElder"));
     }
 
     #[test]
@@ -1018,6 +956,7 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
         Role::GuardianAngel => Some(Prompt::GuardianAngelProtect),
         Role::Fool => Some(Prompt::FoolInvestigate),
         Role::WildChild => Some(Prompt::WildChildRoleModel),
+        Role::Doppelganger => Some(Prompt::DoppelgangerRoleModel),
         Role::CultistHunter => Some(Prompt::CultistHunterInvestigate),
         Role::Sorcerer => Some(Prompt::SorcererInvestigate),
         Role::Oracle => Some(Prompt::OracleInvestigate),
@@ -1109,7 +1048,11 @@ pub async fn resolve_night_with_freeze(
         if player.role == Role::Cupid {
             a.cupid = Some(batch.targets(player.id, Prompt::CupidLink, &alive, 2));
         } else {
-            a.target = one_target_prompt(player.role).map(|prompt| batch.targets(player.id, prompt, &alive, 1));
+            // A role model is picked once (Werewolf.cs:5222-5237).
+            let picked = matches!(player.role, Role::WildChild | Role::Doppelganger) && state.primary_used;
+            a.target = one_target_prompt(player.role)
+                .filter(|_| !picked)
+                .map(|prompt| batch.targets(player.id, prompt, &alive, 1));
             a.toggle = toggle_night_prompt(player.role).map(|prompt| batch.toggle(player.id, prompt));
         }
         asked.push(a);

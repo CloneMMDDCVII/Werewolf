@@ -13,6 +13,7 @@ use crate::messages::{Announcement, Message, MessageArg, NightNote, Note};
 use crate::orchestrator::game_over_message;
 use crate::roles::gunner::bullets_left;
 use crate::night::{resolve_night_sequence, NightInput, NightMemory};
+use crate::role_info::{role_info, transform_tells, Cause};
 use crate::rules::GameRules;
 use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::orchestrator::{
@@ -150,6 +151,12 @@ pub async fn run_game_with_rules(
     let mut frozen_last_night: Option<PlayerId> = None;
     let mut augur = AugurMemory::default();
 
+    // Everyone is told their role, with their team (Werewolf.cs:622, 1612-1641).
+    for p in &alive {
+        let message = role_info(p.role, &alive, rules.thief_full);
+        presenter.narrate(NarrationEvent::Tell { to: p.id, message }).await;
+    }
+
     for round in 1..=max_rounds {
         apply_pending_alpha_bites(&bitten_pending, &mut alive, presenter).await;
         bitten_pending.clear();
@@ -170,15 +177,25 @@ pub async fn run_game_with_rules(
             // Werewolf.cs:5295-5296 excludes Flee/Idle deaths from the count -
             // Flee is reachable now (see apply_fled_players), so this filter
             // is doing real work, not just kept for later.
-            let mut dug_graves = deaths[deaths_counted_for_graves..]
+            let buried: Vec<PlayerId> = deaths[deaths_counted_for_graves..]
                 .iter()
                 .filter(|&&(_, method)| method != KillMethod::Flee && method != KillMethod::Idle)
-                .count() as u32;
+                .map(|&(id, _)| id)
+                .collect();
+            let mut dug_graves = buried.len() as u32;
             deaths_counted_for_graves = deaths.len();
 
             let start_of_night = alive.clone();
             let night_seconds = rules.night_seconds(round, &alive);
             presenter.narrate(NarrationEvent::Announce(Announcement::NightTime { seconds: night_seconds })).await;
+            // Told as the night's questions go out (Werewolf.cs:5295-5310).
+            let graves = match buried.as_slice() {
+                [] => Message::new("DigNoGraves", vec![]),
+                _ => Message::new("DigGraves", vec![MessageArg::PlayersAnd(buried.clone())]),
+            };
+            for digger in alive.iter().filter(|p| p.role == Role::GraveDigger) {
+                presenter.narrate(NarrationEvent::Tell { to: digger.id, message: graves.clone() }).await;
+            }
             if rules.thief_full {
                 // A full-mode Thief may try every night (Werewolf.cs:4166).
                 for p in alive.iter().filter(|p| p.role == Role::Thief) {
@@ -196,6 +213,9 @@ pub async fn run_game_with_rules(
             let freeze_ask = freeze_question(&alive, frozen_last_night, silver_spread_tonight);
             let (mut tagged_actions, _, freeze) =
                 resolve_night_with_freeze(&alive, &mut states, freeze_ask, presenter, &skip).await;
+            if round == 1 {
+                narrate_all(pick_missing_role_models(&alive, &mut states, rng), presenter).await;
+            }
             let wolf_cub_votes =
                 if wolf_cub_bonus_pending { ask_wolf_cub_votes(&alive, &skip, presenter).await } else { vec![] };
             wolf_cub_bonus_pending = false;
@@ -280,7 +300,7 @@ pub async fn run_game_with_rules(
         let (day_actions, lynch) = resolve_day(&alive, &mut states, rules, presenter, rng).await;
         let veto = last_day_veto(&day_actions);
         let lynch_target_role = lynch.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
-        demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
+        let shot_elder = demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
         silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
         sandman_sleeps_tonight = day_actions.contains(&DayAction::Sleep);
         let mut day_deaths = apply_day_results(&day_actions, lynch.target(), lynch_target_role, &mut states);
@@ -317,6 +337,10 @@ pub async fn run_game_with_rules(
             presenter,
         )
         .await;
+        if let Some((gunner, elder)) = shot_elder {
+            // After the shot's own line (Werewolf.cs:2889-2890).
+            presenter.narrate(NarrationEvent::Announce(Announcement::GunnerShotWiseElder { gunner, elder })).await;
+        }
 
         if let Some(outcome) =
             check_for_game_end(round, &setup, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths, &bitten_pending, rng).await
@@ -657,8 +681,11 @@ async fn process_deaths(
     let died_with_roles = record_deaths(alive, &all_deaths, kills, deaths);
     narrate_deaths(&all_deaths, &died_with_roles, by, alive, lovers, deaths, reveal_role, presenter).await;
     alive.retain(|p| !all_deaths.iter().any(|&(v, _)| v == p.id));
-    let transforms = apply_transforms(alive, states, &died_with_roles);
-    narrate_all(transforms, presenter).await;
+    for event in apply_transforms(alive, states, &died_with_roles) {
+        let tells = tells_for_transform(&event, alive, states, &died_with_roles);
+        presenter.narrate(event).await;
+        narrate_all(tells, presenter).await;
+    }
     (all_deaths, died_with_roles)
 }
 
@@ -729,15 +756,14 @@ async fn demote_gunner_if_shot_a_wise_elder(
     day_actions: &[DayAction],
     alive: &mut [AlivePlayer],
     presenter: &mut dyn Presenter,
-) {
-    let shooter = day_actions.iter().find_map(|a| match a {
+) -> Option<(PlayerId, PlayerId)> {
+    let (shooter, elder) = day_actions.iter().find_map(|a| match a {
         DayAction::Shoot { shooter, target } => {
             let target_role = alive.iter().find(|p| p.id == *target).map(|p| p.role);
-            (target_role == Some(Role::WiseElder)).then_some(*shooter)
+            (target_role == Some(Role::WiseElder)).then_some((*shooter, *target))
         }
         _ => None,
-    });
-    let Some(shooter) = shooter else { return };
+    })?;
     if let Some(gunner) = alive.iter_mut().find(|p| p.id == shooter) {
         let from = gunner.role;
         presenter
@@ -749,6 +775,7 @@ async fn demote_gunner_if_shot_a_wise_elder(
             .await;
         gunner.role = Role::Villager;
     }
+    Some((shooter, elder))
 }
 
 /// Turns every player bitten last night (Werewolf.cs:2988-2998,
@@ -783,7 +810,33 @@ async fn apply_pending_alpha_bites(
         if let Some(p) = alive.iter_mut().find(|p| p.id == player) {
             p.role = Role::Wolf;
         }
+        // No role info here, so whether the Thief steals every night
+        // doesn't matter.
+        narrate_all(transform_tells(player, from, Role::Wolf, Cause::AlphaBitten, alive, false), presenter).await;
     }
+}
+
+/// Werewolf.cs:1753-1779: a Wild Child or Doppelganger who didn't pick a
+/// role model on the first night is given a random one, and isn't asked
+/// again.
+fn pick_missing_role_models(
+    alive: &[AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    rng: &mut dyn RngSource,
+) -> Vec<NarrationEvent> {
+    let mut told = vec![];
+    for p in alive.iter().filter(|p| matches!(p.role, Role::WildChild | Role::Doppelganger)) {
+        let state = states.entry(p.id).or_default();
+        let others: Vec<PlayerId> = alive.iter().map(|o| o.id).filter(|&id| id != p.id).collect();
+        if state.remembered_player.is_some() || others.is_empty() {
+            continue;
+        }
+        let target = others[rng.pick_index(others.len())];
+        state.remembered_player = Some(target);
+        state.primary_used = true;
+        told.push(NarrationEvent::Private { to: p.id, note: Note::RoleModelChosen { target } });
+    }
+    told
 }
 
 /// The wolves' second kill after a Wolf Cub died, asked alongside the
@@ -811,6 +864,37 @@ async fn ask_wolf_cub_votes(
 /// The legacy `WolfRoles` (Werewolf.cs:48): the wolves who eat.
 fn is_eating_wolf(role: Role) -> bool {
     matches!(role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan)
+}
+
+/// What one of `apply_transforms`' changes tells the player and their
+/// teams (see `role_info::transform_tells`).
+fn tells_for_transform(
+    event: &NarrationEvent,
+    alive: &[AlivePlayer],
+    states: &HashMap<PlayerId, RoleState>,
+    just_died: &[(PlayerId, Role)],
+) -> Vec<NarrationEvent> {
+    let &NarrationEvent::Transform { player, from, to } = event else { return vec![] };
+    let model = || states.get(&player).and_then(|s| s.remembered_player);
+    let cause = match from {
+        Role::SnowWolf => Cause::SnowWolfAlone,
+        Role::Traitor => Cause::Traitor,
+        Role::ApprenticeSeer => Cause::ApprenticeSeer {
+            model: just_died.iter().find(|&&(_, role)| role == Role::Seer).map(|&(id, _)| id),
+        },
+        Role::WildChild => match model() {
+            Some(model) => Cause::WildChild { model },
+            None => return vec![],
+        },
+        Role::Doppelganger => match model() {
+            Some(model) => Cause::Doppelganger { model },
+            None => return vec![],
+        },
+        _ => return vec![],
+    };
+    // A Doppelganger who copies a Thief is told the plain Thief's role
+    // info; deaths don't carry the game's rules this far.
+    transform_tells(player, from, to, cause, alive, false)
 }
 
 /// Applies role transforms. Most are triggered by the current alive
@@ -955,7 +1039,10 @@ mod alpha_bite_transform_tests {
         assert_eq!(alive[0].role, Role::Wolf);
         assert_eq!(
             presenter.transforms,
-            vec![NarrationEvent::Transform { player: bitten, from: Role::Seer, to: Role::Wolf }]
+            vec![
+                NarrationEvent::Transform { player: bitten, from: Role::Seer, to: Role::Wolf },
+                NarrationEvent::Tell { to: bitten, message: Message::new("BittenTurned", vec![]) },
+            ]
         );
     }
 

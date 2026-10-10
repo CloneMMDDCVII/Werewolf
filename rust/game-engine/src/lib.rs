@@ -17,6 +17,7 @@ pub mod reveals;
 pub mod orchestrator;
 pub mod player_list;
 pub mod rng;
+pub mod role_info;
 pub mod roles;
 pub mod rules;
 pub mod summary;

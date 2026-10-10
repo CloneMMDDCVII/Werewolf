@@ -604,3 +604,28 @@ async fn the_pacifists_peace_closes_the_lynch_vote() {
         panic!("no seed dealt a Pacifist who lived to the lynch vote");
     })
 }
+
+#[tokio::test(start_paused = true)]
+async fn everyone_is_told_their_role_when_the_game_starts() {
+    local!(async {
+        let bot = Bot::new(10).await;
+        bot.start_game(1..=6).await;
+        let pack = bot.texts.pack("English");
+        let infos: Vec<String> = shared::ALL_ROLES
+            .iter()
+            .filter_map(|r| pack.variants(&format!("RoleInfo{r:?}")))
+            .flat_map(|v| v.iter().map(|t| bot::text::fill(t, &[])))
+            .collect();
+        let knows = |id: i64| bot.tg.texts(id).iter().any(|t| infos.iter().any(|i| t.starts_with(i.as_str())));
+        // Storage runs on its own thread, so give the game task a few
+        // (paused-clock) seconds to deal.
+        for _ in 0..30 {
+            if (1..=6).all(knows) {
+                return;
+            }
+            tick(1).await;
+        }
+        let missing: Vec<i64> = (1..=6).filter(|&id| !knows(id)).collect();
+        panic!("not told their role: {missing:?}");
+    })
+}

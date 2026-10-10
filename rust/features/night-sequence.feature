@@ -188,3 +188,18 @@ Feature: Night death lines
       | a Cultist        | visiting a wolf               | CultConvertWolfPublic      |
       | the Chemist      | visiting the SK               | ChemistSKPublic            |
       | the Arsonist     | visiting the SK               | ArsonistVisitKiller        |
+
+Feature: The Grave Digger's graves
+
+  Scenario Outline: The Grave Digger is told whose graves they dig
+    Given <deaths> since the last night the Grave Digger dug
+    When the night's questions go out
+    Then the Grave Digger is told <told>
+    Examples:
+      | deaths                                  | told                                         |
+      | nobody died (fleeing doesn't count)     | "DigNoGraves"                                |
+      | two players died                        | "DigGraves" naming them, joined with "And"   |
+
+  Scenario: No graves on a night the Sandman slept
+    Given the Sandman put the village to sleep
+    Then the Grave Digger is told nothing, and those deaths still count next night
