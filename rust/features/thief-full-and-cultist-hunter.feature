@@ -25,6 +25,8 @@ Feature: Thief full mode
       | a wolf, cultist or snow wolf   | the Thief is told "ThiefStealFailed"           |
       | a Harlot or GA who went out    | the Thief is told "ThiefStealFailed"           |
       | the Serial Killer              | the Thief dies and is told "StealKiller"       |
+      | someone who died tonight       | the Thief is told "ThiefStealDead"             |
+      | a Grave Digger who dug, and the Thief falls | the Thief dies, told "ThiefFell"; the digger is told "ThiefFellDigger" |
 
   Scenario: A frozen Thief cannot steal in full mode
     Given the Snow Wolf froze the Thief
@@ -42,4 +44,12 @@ Feature: Cultist Hunter results
 
   Scenario: The Cultist Hunter visits the Serial Killer
     Given the Cultist Hunter hunts the Serial Killer
-    Then the hunter dies visiting the killer
+    Then the hunter dies visiting the killer ("SerialKillerKilledCH")
+
+  Scenario: The Cultist Hunter visits someone already dead
+    Given the Cultist Hunter hunts someone killed earlier tonight
+    Then the hunter is told "HunterVisitDead"
+
+  Scenario: A hunted cultist does not convert anyone
+    Given the Cultist Hunter kills the only Cultist
+    Then nobody is converted tonight

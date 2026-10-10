@@ -93,6 +93,25 @@ pub enum Note {
     /// Told to the Snow Wolf when a Guardian Angel blocks the freeze
     /// (Werewolf.cs:3110).
     GuardBlockedSnowWolf { target: PlayerId },
+    /// Full-mode Thief (Werewolf.cs:4171-4186).
+    ThiefStealFailed { target: PlayerId },
+    ThiefStealDead { target: PlayerId },
+    ThiefFell { target: PlayerId },
+    StealKiller,
+    /// Told to the Thief after a steal (Werewolf.cs:2214).
+    ThiefStoleRole { target: PlayerId },
+    /// Told to the player robbed by a Thief (Werewolf.cs:2261): they
+    /// become the Thief in full mode, a Villager otherwise.
+    ThiefStoleYourRoleThief,
+    ThiefStoleYourRoleVillager,
+    /// Told to the Grave Digger whose trap caught a visitor
+    /// (Werewolf.cs:2394-2412).
+    FellDigger { visitor: PlayerId, by: DiggerVisitor },
+    /// Cultist Hunter (Werewolf.cs:3569-3584).
+    HunterFindCultist { target: PlayerId },
+    CHHuntedYou,
+    HunterFailedToFind { target: PlayerId },
+    HunterVisitDead { target: PlayerId },
 }
 
 /// Which flavour of freeze notice the frozen player gets — the legacy
@@ -111,6 +130,20 @@ pub enum FrozenNotice {
     GraveDigger,
     /// The Arsonist shrugs the freeze off but is still told about it.
     ArsonistNotFrozen,
+    /// A full-mode Thief, who loses tonight's steal.
+    Thief,
+}
+
+/// Who fell into the Grave Digger's trap, which picks the Grave Digger's
+/// notice (Werewolf.cs:2394-2412).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiggerVisitor {
+    Wolf,
+    CultistHunter,
+    Cultist,
+    GuardianAngel,
+    Harlot,
+    Thief,
 }
 
 /// Something announced to the whole group.
@@ -171,9 +204,29 @@ impl Note {
                 FrozenNotice::SerialKiller => "SKFrozen",
                 FrozenNotice::GraveDigger => "GraveDiggerFrozen",
                 FrozenNotice::ArsonistNotFrozen => "ArsonistNotFrozen",
+                FrozenNotice::Thief => "ThiefFrozen",
             },
             Note::SuccessfulFreeze { .. } => "SuccessfulFreeze",
             Note::GuardBlockedSnowWolf { .. } => "GuardBlockedSnowWolf",
+            Note::ThiefStealFailed { .. } => "ThiefStealFailed",
+            Note::ThiefStealDead { .. } => "ThiefStealDead",
+            Note::ThiefFell { .. } => "ThiefFell",
+            Note::StealKiller => "StealKiller",
+            Note::ThiefStoleRole { .. } => "ThiefStoleRole",
+            Note::ThiefStoleYourRoleThief => "ThiefStoleYourRoleThief",
+            Note::ThiefStoleYourRoleVillager => "ThiefStoleYourRoleVillager",
+            Note::FellDigger { by, .. } => match by {
+                DiggerVisitor::Wolf => "WolfFell",
+                DiggerVisitor::CultistHunter => "HunterFellDigger",
+                DiggerVisitor::Cultist => "CultFell",
+                DiggerVisitor::GuardianAngel => "GAFellDigger",
+                DiggerVisitor::Harlot => "HarlotFellDigger",
+                DiggerVisitor::Thief => "ThiefFellDigger",
+            },
+            Note::HunterFindCultist { .. } => "HunterFindCultist",
+            Note::CHHuntedYou => "CHHuntedYou",
+            Note::HunterFailedToFind { .. } => "HunterFailedToFind",
+            Note::HunterVisitDead { .. } => "HunterVisitDead",
         }
     }
 
@@ -190,10 +243,23 @@ impl Note {
             | Note::DetectiveSnoop { target, role } => vec![Player(target), R(role)],
             Note::SorcererOther { target }
             | Note::SuccessfulFreeze { target }
-            | Note::GuardBlockedSnowWolf { target } => vec![Player(target)],
+            | Note::GuardBlockedSnowWolf { target }
+            | Note::ThiefStealFailed { target }
+            | Note::ThiefStealDead { target }
+            | Note::ThiefFell { target }
+            | Note::ThiefStoleRole { target }
+            | Note::HunterFindCultist { target }
+            | Note::HunterFailedToFind { target }
+            | Note::HunterVisitDead { target } => vec![Player(target)],
+            Note::FellDigger { visitor, .. } => vec![Player(visitor)],
             Note::AugurSees { role } => vec![R(role)],
             Note::DetectiveCaught { detective } => vec![Player(detective)],
-            Note::AugurSeesNothing | Note::Frozen(_) => vec![],
+            Note::AugurSeesNothing
+            | Note::Frozen(_)
+            | Note::StealKiller
+            | Note::ThiefStoleYourRoleThief
+            | Note::ThiefStoleYourRoleVillager
+            | Note::CHHuntedYou => vec![],
         }
     }
 }
@@ -262,6 +328,7 @@ pub fn all_message_keys() -> Vec<&'static str> {
         FrozenNotice::SerialKiller,
         FrozenNotice::GraveDigger,
         FrozenNotice::ArsonistNotFrozen,
+        FrozenNotice::Thief,
     ];
     let mut keys: Vec<&'static str> = [
         Note::SeerSees { target: p, role: Role::Wolf },
@@ -273,6 +340,23 @@ pub fn all_message_keys() -> Vec<&'static str> {
         Note::DetectiveCaught { detective: p },
         Note::SuccessfulFreeze { target: p },
         Note::GuardBlockedSnowWolf { target: p },
+        Note::ThiefStealFailed { target: p },
+        Note::ThiefStealDead { target: p },
+        Note::ThiefFell { target: p },
+        Note::StealKiller,
+        Note::ThiefStoleRole { target: p },
+        Note::ThiefStoleYourRoleThief,
+        Note::ThiefStoleYourRoleVillager,
+        Note::FellDigger { visitor: p, by: DiggerVisitor::Wolf },
+        Note::FellDigger { visitor: p, by: DiggerVisitor::CultistHunter },
+        Note::FellDigger { visitor: p, by: DiggerVisitor::Cultist },
+        Note::FellDigger { visitor: p, by: DiggerVisitor::GuardianAngel },
+        Note::FellDigger { visitor: p, by: DiggerVisitor::Harlot },
+        Note::FellDigger { visitor: p, by: DiggerVisitor::Thief },
+        Note::HunterFindCultist { target: p },
+        Note::CHHuntedYou,
+        Note::HunterFailedToFind { target: p },
+        Note::HunterVisitDead { target: p },
     ]
     .iter()
     .chain(notices.iter().map(|&n| Note::Frozen(n)).collect::<Vec<_>>().iter())

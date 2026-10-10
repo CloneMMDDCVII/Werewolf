@@ -300,8 +300,13 @@ pub fn death_locale_key(role: Role, method: KillMethod) -> Option<&'static str> 
             Role::SnowWolf => "SnowFrozeKiller",
             Role::Cultist => "CultConvertKillerPublic",
             Role::Harlot => "HarlotFuckKillerPublic",
+            Role::CultistHunter => "SerialKillerKilledCH",
+            Role::Thief => "ThiefStoleKiller",
             _ => return None,
         }),
+        // A Cultist killed by the Cultist Hunter, hunted or while trying
+        // to convert them (Werewolf.cs:4342-4346).
+        KillMethod::Hunt => Some("HunterKilledCultist"),
         // The Harlot visiting whoever the Serial Killer separately killed
         // that same night — a different player from the SK themself
         // (Werewolf.cs:3893-3897 → `KilledByRole == SerialKiller` +
@@ -468,6 +473,11 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "SerialKillerKilledWolf",
         "SnowFrozeKiller",
         "CultConvertKillerPublic",
+        "SerialKillerKilledCH",
+        "ThiefStoleKiller",
+        "HunterKilledCultist",
+        // The "{name} was {role}" reveal presenters add to a death line.
+        "Was",
         "ApprenticeSeerEaten",
         "DetectiveEaten",
         "DrunkEaten",
@@ -1680,7 +1690,7 @@ pub fn resolve_arsonist_detonation(
 /// percent rather than truncating — closer to the real odds than always
 /// rounding down, and simple enough not to need its own `RngSource`
 /// method just for one formula.
-fn grave_digger_fall_chance_percent(dug_graves: u32, visitor_is_village: bool) -> u32 {
+pub(crate) fn grave_digger_fall_chance_percent(dug_graves: u32, visitor_is_village: bool) -> u32 {
     let chance = 20.0 + (30.0 - 30.0 * 0.5_f64.powi(dug_graves as i32 - 1));
     let chance = if visitor_is_village { chance / 2.0 } else { chance };
     chance.round() as u32

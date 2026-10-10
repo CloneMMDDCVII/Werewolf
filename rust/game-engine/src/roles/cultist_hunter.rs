@@ -1,8 +1,6 @@
 //! Cultist Hunter checks one player overnight, hunting specifically for
-//! Cultists (Werewolf.cs:3559 onward) — same shape as Detective/Fool/
-//! Sorcerer. What information comes back, and the special Werewolf.cs:
-//! 4576-4580 case (killing the last Cultist outright if that's who's
-//! left) are resolution logic this file doesn't attempt.
+//! Cultists (Werewolf.cs:3559 onward). The hunt itself, killing a Cultist
+//! or reporting a miss, is `visits::resolve_hunt`.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

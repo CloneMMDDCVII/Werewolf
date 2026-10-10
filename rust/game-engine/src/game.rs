@@ -7,7 +7,8 @@
 //! isolation.
 
 use crate::freeze::{apply_freeze, ask_freeze};
-use crate::messages::Announcement;
+use crate::messages::{Announcement, Note};
+use crate::visits::{resolve_full_steal, resolve_hunt, VisitScene};
 use crate::rules::GameRules;
 use crate::summary::{is_winner, GameSummary, SummaryEntry};
 use crate::orchestrator::{
@@ -171,8 +172,14 @@ pub async fn run_game_with_rules(
         let night_seconds = rules.night_seconds(round, &alive);
         presenter.narrate(NarrationEvent::Announce(Announcement::NightTime { seconds: night_seconds })).await;
         let freeze = ask_freeze(&alive, frozen_last_night, silver_spread_tonight, presenter).await;
+        if rules.thief_full {
+            // A full-mode Thief may try every night (Werewolf.cs:4166).
+            for p in alive.iter().filter(|p| p.role == Role::Thief) {
+                states.entry(p.id).or_default().primary_used = false;
+            }
+        }
         let (mut tagged_actions, wolf_target) = resolve_night_by_actor(&alive, &mut states, presenter).await;
-        let freeze_outcome = apply_freeze(freeze, &mut tagged_actions, &alive, dug_graves, rng);
+        let freeze_outcome = apply_freeze(freeze, &mut tagged_actions, &alive, dug_graves, rules.thief_full, rng);
         narrate_all(freeze_outcome.events, presenter).await;
         frozen_last_night = freeze_outcome.frozen;
         let frozen_role = freeze_outcome.frozen.and_then(|id| alive.iter().find(|p| p.id == id)).map(|p| p.role);
@@ -193,7 +200,9 @@ pub async fn run_game_with_rules(
                 }
             }
         }
-        apply_thief_steals(&night_actions, &mut alive, &mut states, presenter).await;
+        if !rules.thief_full {
+            apply_thief_steals(&night_actions, &mut alive, &mut states, presenter).await;
+        }
 
         let wolf_eat =
             resolve_wolf_eat_target(wolf_target, &night_actions, &mut alive, &mut states, rng, presenter).await;
@@ -211,8 +220,27 @@ pub async fn run_game_with_rules(
             night_deaths.extend(burn_deaths);
             doused.clear();
         }
+        // The Cultist Hunter goes out before the cult (Werewolf.cs:3556-3591),
+        // so a hunted cultist takes no part in tonight's conversion.
+        let dead_so_far: Vec<PlayerId> = night_deaths.iter().map(|&(id, _)| id).collect();
+        let hunt = resolve_hunt(
+            &VisitScene {
+                alive: &alive,
+                dead_tonight: &dead_so_far,
+                actions: &tagged_actions,
+                frozen: frozen_last_night,
+                dug_graves,
+            },
+            rng,
+        );
+        narrate_all(hunt.events, presenter).await;
+        let hunted: Vec<PlayerId> =
+            hunt.deaths.iter().filter(|&&(_, method)| method == KillMethod::Hunt).map(|&(id, _)| id).collect();
+        night_deaths.extend(hunt.deaths);
+        let cult_actions: Vec<NightAction> =
+            tagged_actions.iter().filter(|(actor, _)| !hunted.contains(actor)).map(|&(_, a)| a).collect();
         let cult_outcome =
-            resolve_cultist_conversion(&night_actions, wolf_target.is_some(), dug_graves, &alive, rng);
+            resolve_cultist_conversion(&cult_actions, wolf_target.is_some(), dug_graves, &alive, rng);
         night_deaths.extend(cult_outcome.deaths);
         if let Some(converted) = cult_outcome.transform {
             if let Some(p) = alive.iter_mut().find(|p| p.id == converted) {
@@ -243,6 +271,26 @@ pub async fn run_game_with_rules(
                 night_deaths.extend(bonus_eat.extra_death);
             }
             wolf_cub_bonus_pending = false;
+        }
+        if rules.thief_full {
+            // The full-mode Thief goes last, once the night's deaths are
+            // known (Werewolf.cs:4132-4189).
+            let dead_so_far: Vec<PlayerId> = night_deaths.iter().map(|&(id, _)| id).collect();
+            let steal = resolve_full_steal(
+                &VisitScene {
+                    alive: &alive,
+                    dead_tonight: &dead_so_far,
+                    actions: &tagged_actions,
+                    frozen: frozen_last_night,
+                    dug_graves,
+                },
+                rng,
+            );
+            narrate_all(steal.events, presenter).await;
+            night_deaths.extend(steal.deaths);
+            if let Some((thief, victim)) = steal.steal {
+                swap_roles(thief, victim, Role::Thief, &mut alive, &mut states, presenter).await;
+            }
         }
         wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
             &night_deaths,
@@ -865,41 +913,42 @@ async fn apply_thief_steals(
     presenter: &mut dyn Presenter,
 ) {
     for action in night_actions {
-        let NightAction::StealRole { thief, target } = action else {
-            continue;
-        };
-        let target_role = alive.iter().find(|p| p.id == *target).map(|p| p.role);
-        let Some(target_role) = target_role else { continue };
-        let thief_role = alive.iter().find(|p| p.id == *thief).map(|p| p.role);
-        let Some(thief_role) = thief_role else { continue };
-
-        presenter
-            .narrate(NarrationEvent::Transform {
-                player: *target,
-                from: target_role,
-                to: Role::Villager,
-            })
-            .await;
-        presenter
-            .narrate(NarrationEvent::Transform {
-                player: *thief,
-                from: thief_role,
-                to: target_role,
-            })
-            .await;
-
-        if let Some(p) = alive.iter_mut().find(|p| p.id == *target) {
-            p.role = Role::Villager;
+        if let NightAction::StealRole { thief, target } = action {
+            swap_roles(*thief, *target, Role::Villager, alive, states, presenter).await;
         }
-        if let Some(p) = alive.iter_mut().find(|p| p.id == *thief) {
-            p.role = target_role;
-        }
-        // The Thief takes over the role's used abilities and bullets too
-        // (Werewolf.cs:2479-2486: `bullet: targetBullet, hasUsedAbility:
-        // targetHasUsedAbility`); the new Villager starts fresh.
-        let taken = states.remove(target).unwrap_or_default();
-        states.insert(*thief, taken);
     }
+}
+
+/// The Thief takes `victim`'s role, and `victim` becomes `victim_becomes`:
+/// a Villager, or the new Thief in full mode (Werewolf.cs:1977, 2212-2264).
+async fn swap_roles(
+    thief: PlayerId,
+    victim: PlayerId,
+    victim_becomes: Role,
+    alive: &mut [AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+) {
+    let Some(target_role) = alive.iter().find(|p| p.id == victim).map(|p| p.role) else { return };
+    let Some(thief_role) = alive.iter().find(|p| p.id == thief).map(|p| p.role) else { return };
+
+    presenter.narrate(NarrationEvent::Transform { player: victim, from: target_role, to: victim_becomes }).await;
+    presenter.narrate(NarrationEvent::Transform { player: thief, from: thief_role, to: target_role }).await;
+    presenter.narrate(NarrationEvent::Private { to: thief, note: Note::ThiefStoleRole { target: victim } }).await;
+    let robbed = if victim_becomes == Role::Thief { Note::ThiefStoleYourRoleThief } else { Note::ThiefStoleYourRoleVillager };
+    presenter.narrate(NarrationEvent::Private { to: victim, note: robbed }).await;
+
+    if let Some(p) = alive.iter_mut().find(|p| p.id == victim) {
+        p.role = victim_becomes;
+    }
+    if let Some(p) = alive.iter_mut().find(|p| p.id == thief) {
+        p.role = target_role;
+    }
+    // The Thief takes over the role's used abilities and bullets too
+    // (Werewolf.cs:2479-2486: `bullet: targetBullet, hasUsedAbility:
+    // targetHasUsedAbility`); the robbed player starts fresh.
+    let taken = states.remove(&victim).unwrap_or_default();
+    states.insert(thief, taken);
 }
 
 /// Applies role transforms. Most are triggered by the current alive

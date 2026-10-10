@@ -5,11 +5,11 @@
 //! waiting on a death — see `NightAction::StealRole`'s doc for why that
 //! earned its own action variant instead of reusing `ChooseRoleModel`.
 //!
-//! `ThiefFull` mode (a per-group setting that lets the Thief keep stealing
-//! every night rather than just once — Werewolf.cs:4164-4189) isn't
-//! modeled here; this file only covers the night-1 steal every game has.
-//! The actual role swap (`game::apply_thief_steal`) is applied by
-//! `run_game`, the same split as every other role-triggered transform.
+//! In `ThiefFull` mode (`GameRules::thief_full`) `run_game` clears
+//! `primary_used` every night so the Thief can try again, and resolves the
+//! steal at the end of the night through `visits::resolve_full_steal`
+//! instead (Werewolf.cs:4164-4189). The swap itself is
+//! `game::swap_roles` in both modes.
 
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

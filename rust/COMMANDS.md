@@ -170,8 +170,8 @@ Mechanics the briefing listed as unported, scoped in
 | Revealed Mayor's vote counts double on every later lynch | ✅ | `orchestrator::tally_lynch` |
 | Hunter domino chains | ✅ | `game::process_deaths_and_hunter_shots` |
 | Gunner bullet count shown and carried over a Thief steal | ✅ | `roles::gunner::bullets_left`, `game::apply_thief_steals` |
-| Thief full mode | ⬜ | `GameRules::thief_full` is read; the nightly steal is next |
-| Cultist Hunter result messages | ⬜ | |
+| Thief full mode: a try every night, 50% to land, never on wolves or Cultists, victim becomes the Thief, frozen Thief blocked, SK/Grave Digger/away Harlot or GA | ✅ | `visits::resolve_full_steal`, `game::swap_roles` |
+| Cultist Hunter kills a hunted Cultist (before the cult converts), reports misses and dead targets, dies at the SK | ✅ | `visits::resolve_hunt` |
 
 Group settings the engine follows, scoped in `features/game-rules.feature`
 (`run_game_with_rules`; `run_game` keeps the legacy defaults):
