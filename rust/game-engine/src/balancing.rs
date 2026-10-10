@@ -288,11 +288,27 @@ pub fn balance(
     burning_overkill: bool,
     rng: &mut dyn RngSource,
 ) -> Result<Vec<Role>, BalanceError> {
+    balance_with_pool(player_count, chaos, disabled_roles, burning_overkill, rng).map(|(roles, _)| roles)
+}
+
+/// `balance`, also returning the candidate pool the roles were dealt from
+/// (GameBalancing.cs:60: `possibleRoles = new List<IRole>(rolesToAssign)`,
+/// taken before the shuffle-and-truncate). The Augur draws the roles
+/// "not in the village" from this pool (Werewolf.cs:4049-4052), so pass it
+/// to `game::run_game_with_role_pool`.
+pub fn balance_with_pool(
+    player_count: usize,
+    chaos: bool,
+    disabled_roles: &[Role],
+    burning_overkill: bool,
+    rng: &mut dyn RngSource,
+) -> Result<(Vec<Role>, Vec<Role>), BalanceError> {
     for _attempt in 0..500 {
         let mut roles_to_assign = candidate_role_pool(rng, player_count, disabled_roles);
         while roles_to_assign.len() < player_count {
             roles_to_assign.push(Role::Villager);
         }
+        let pool = roles_to_assign.clone();
         shuffle(rng, &mut roles_to_assign);
         roles_to_assign.truncate(player_count);
 
@@ -383,7 +399,7 @@ pub fn balance(
         }
 
         if balanced {
-            return Ok(roles_to_assign);
+            return Ok((roles_to_assign, pool));
         }
     }
 

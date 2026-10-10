@@ -1,13 +1,9 @@
 //! Troublemaker's once-per-game day toggle (Werewolf.cs:965-973): force a
 //! second lynch vote today. Same shape as `mayor::Mayor`/
 //! `pacifist::Pacifist` — a yes/no via `DayContext::toggle_choice`, gated
-//! by `RoleState::primary_used`. Unlike Mayor's `Reveal`, Troublemaker's
-//! action *does* interact with another role's here-and-now: it explicitly
-//! cancels a same-day Pacifist veto (Werewolf.cs:971: `_pacifistUsed =
-//! false; // trouble overrides peace`), which `apply_day_results` applies
-//! by dropping `DayAction::Pacify` whenever `DayAction::Trouble` is also
-//! present. The actual "run the whole lynch again" mechanic is not
-//! modeled — see `DayAction::Trouble`'s doc.
+//! by `RoleState::primary_used`. Trouble and a same-day Pacifist veto
+//! cancel each other, and whichever came last wins
+//! (`orchestrator::last_day_veto`); `game::run_game` holds the second vote.
 
 use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
 use shared::{Role, Team};

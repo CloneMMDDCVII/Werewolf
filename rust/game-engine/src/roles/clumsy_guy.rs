@@ -1,13 +1,7 @@
-//! Passive — ClumsyGuy has no night action, and casts a lynch vote the
-//! same as any other Villager-team role (lynch voting is universal, see
-//! `orchestrator::resolve_day`).
-//!
-//! The real quirk (their own lynch vote has a 50% chance of being
-//! redirected to a random player instead of their actual choice,
-//! Werewolf.cs:999-1011) is **not modeled**: it's randomized *vote
-//! tallying* interference, a different category from anything built so
-//! far (the closest relative, Witch/Prince's deterministic overrides,
-//! don't involve RNG). Team is still correct.
+//! Passive — ClumsyGuy has no night action. Their lynch vote has a 50%
+//! chance of being redirected to a random living player
+//! (Werewolf.cs:999-1011); that is vote-tallying interference, so it lives
+//! with the vote in `orchestrator::ask_lynch_vote` rather than here.
 
 use crate::roles::RoleBehavior;
 use shared::{Role, Team};

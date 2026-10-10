@@ -151,3 +151,24 @@ directly against the source, where that reveal clause is nested
 `ShufflePlayerList` anonymized-order variant (plus its Valentine's Day
 love-emoji easter egg) is a cosmetic alternate rendering, not part of
 "what does the list say," and isn't ported.
+
+## Game mechanics (not commands)
+
+Mechanics the briefing listed as unported, scoped in
+`features/finish-game-mechanics.feature`:
+
+| Mechanic | Status | Where |
+|---|---|---|
+| Snow Wolf freeze (same-night block, no repeat target, GA block, Hunter/SK visits) | ✅ | `game_engine::freeze` |
+| Snow Wolf turns Wolf when the last wolf dies | ✅ | `game::apply_transforms` |
+| Seer, Sorcerer, Fool, Oracle readings with legacy disguises | ✅ | `game_engine::reveals::resolve_night_readings` |
+| Augur readings (needs the balancer's pool: `balance_with_pool` + `run_game_with_role_pool`) | ✅ | same |
+| Detective snoops by day, wolves may catch them | ✅ | `reveals::resolve_detective` |
+| Troublemaker's second lynch; Pacifist vs Troublemaker, last one wins | ✅ | `game::run_game`, `orchestrator::last_day_veto` |
+| Lynch tie / no votes announcements (no re-vote: `RandomLynch` is `false`) | ✅ | `orchestrator::LynchResult` |
+| Clumsy Guy vote redirect | ✅ | `orchestrator::ask_lynch_vote` |
+| Revealed Mayor's vote counts double on every later lynch | ✅ | `orchestrator::tally_lynch` |
+| Hunter domino chains | ✅ | `game::process_deaths_and_hunter_shots` |
+| Gunner bullet count shown and carried over a Thief steal | ✅ | `roles::gunner::bullets_left`, `game::apply_thief_steals` |
+| Thief full mode | ⬜ | Needs group config (`ThiefFull` flag) |
+| Cultist Hunter result messages, secret lynch vote display | ⬜ | |

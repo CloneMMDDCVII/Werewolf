@@ -67,7 +67,9 @@ async fn lynching_a_tanner_wins_the_game_for_tanner_end_to_end() {
     let mut presenter = ScriptedDayPresenter { votes };
     let mut states = HashMap::new();
 
-    let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+    let (day_actions, lynch) =
+            resolve_day(&players, &mut states, &mut presenter, &mut game_engine::rng::SeededRngSource::new(0)).await;
+        let lynch_target = lynch.target();
     assert_eq!(lynch_target, Some(tanner));
 
     let deaths = apply_day_results(&day_actions, lynch_target, Some(Role::Tanner), &mut states);

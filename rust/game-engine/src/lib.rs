@@ -1,13 +1,16 @@
 //! Core game engine. Covers the deterministic majority-path win-condition
 //! logic ported from `Werewolf.cs::CheckForWin`/`DoGameEnd` (Werewolf
 //! Node/Werewolf.cs:4479-4636), a proof-of-concept role-behavior structure
-//! (see `roles` module) for fifteen roles, and a dependency-ordered night
+//! (see `roles` module) for every legacy role, and a dependency-ordered night
 //! orchestrator (see `orchestrator` module) that ties them together behind
 //! an abstract `Presenter` trait — this crate never depends on Telegram
 //! (or on `sim`), only on the idea that *something* can answer a question.
 
 pub mod balancing;
+pub mod freeze;
 pub mod game;
+pub mod messages;
+pub mod reveals;
 pub mod orchestrator;
 pub mod player_list;
 pub mod rng;

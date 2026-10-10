@@ -96,10 +96,10 @@ pub enum NightAction {
     /// resolution (does it save them, does the GA risk dying) isn't
     /// modeled here yet.
     Protect { target: PlayerId },
-    /// Detective/Fool investigating a target (Werewolf.cs:2933-2953 for
-    /// Detective, 3985-4000 for Fool). What information comes back —
-    /// and, for Detective, the chance of tipping off the wolves
-    /// (Werewolf.cs:2937) — is resolution logic, not modeled here.
+    /// Fool, Sorcerer, Oracle or Cultist Hunter looking at a target.
+    /// What each learns is resolved by `reveals::resolve_night_readings`
+    /// (Cultist Hunter excepted). The Detective snoops by day instead, see
+    /// `DayAction::Snoop`.
     Investigate { target: PlayerId },
     /// Wild Child's (and Doppelganger's — same shape, different transform
     /// payoff) one-time pick of a "role model" player (Werewolf.cs:1757,
@@ -156,6 +156,11 @@ pub enum NightAction {
     /// `orchestrator::resolve_arsonist_detonation`, which `game::run_game`
     /// calls with this action and the cross-round doused set it keeps.
     Detonate,
+    /// The Snow Wolf going out to freeze a target (Werewolf.cs:3092-3184).
+    /// The freeze itself is resolved by `freeze::apply_freeze`; this
+    /// records that the Snow Wolf left home, which a cult visit checks
+    /// (Werewolf.cs:3688).
+    Freeze { snow_wolf: PlayerId, target: PlayerId },
 }
 
 /// A piece of information about tonight that some role's decision depends
@@ -236,10 +241,8 @@ pub enum DayAction {
     /// (Werewolf.cs:965-973: `_doubleLynch = true`), and explicitly
     /// overriding a Pacifist's veto if both fire the same day
     /// (Werewolf.cs:971: `_pacifistUsed = false; // trouble overrides peace`)
-    /// — that override *is* modeled, in `apply_day_results`, since it's a
-    /// one-line interaction between two actions this proof-of-concept
-    /// already has. The actual "run the whole lynch vote again" mechanic
-    /// is not modeled — this only cancels a same-day `Pacify`.
+    /// — whichever of the two acted last wins (`orchestrator::
+    /// last_day_veto`). `game::run_game` holds the second lynch vote.
     Trouble,
     /// Spumpkin's day detonation (Werewolf.cs:2901-2926): pick a target,
     /// with an RNG chance (40%, Werewolf.cs:2907) of killing both the
@@ -248,6 +251,9 @@ pub enum DayAction {
     /// `spumpkin`'s own id for the mutual-kill, same reasoning `Shoot`
     /// carries `shooter`.
     Detonate { spumpkin: PlayerId, target: PlayerId },
+    /// Detective snooping on a target by day (Werewolf.cs:2933-2953). What
+    /// they learn is sent by `reveals::resolve_detective`.
+    Snoop { detective: PlayerId, target: PlayerId },
 }
 
 /// Same shape as `NightContext`, for the day phase. Kept as its own type

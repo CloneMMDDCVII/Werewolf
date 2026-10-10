@@ -1,11 +1,13 @@
-//! Detective investigates one player overnight and learns their exact role
-//! (Werewolf.cs:2933-2953), unlike Seer, who only learns a team. There's
-//! also a per-night chance the wolves learn a Detective is active
-//! (Werewolf.cs:2937: `Settings.ChanceDetectiveCaught`) — that RNG
-//! side-effect is resolution logic for a future orchestrator, not modeled
-//! in this file, which only covers "is this a valid target to investigate."
+//! Detective investigates one player by day and learns their exact role
+//! (Werewolf.cs:2933-2953), unlike Seer, who only learns a team at night.
+//! The legacy game resolves it at the end of the day phase, before the
+//! lynch, so this is a `day_action`. The per-day chance that the wolves
+//! learn who the Detective is (Werewolf.cs:2937:
+//! `Settings.ChanceDetectiveCaught`) and the result message are sent by
+//! `reveals::resolve_detective`; this file only covers "is this a valid
+//! target to snoop on."
 
-use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};
+use crate::roles::{DayAction, DayContext, RoleBehavior, RoleState};
 use shared::{Role, Team};
 
 pub struct Detective;
@@ -15,10 +17,10 @@ impl RoleBehavior for Detective {
         Role::Detective.team()
     }
 
-    fn night_action(&self, ctx: &NightContext, _state: &mut RoleState) -> Vec<NightAction> {
+    fn day_action(&self, ctx: &DayContext, _state: &mut RoleState) -> Vec<DayAction> {
         match ctx.chosen_target {
             Some(target) if target != ctx.self_id && ctx.alive.contains(&target) => {
-                vec![NightAction::Investigate { target }]
+                vec![DayAction::Snoop { detective: ctx.self_id, target }]
             }
             _ => vec![],
         }
@@ -30,42 +32,27 @@ mod tests {
     use super::*;
     use crate::roles::PlayerId;
 
-    #[test]
-    fn detective_investigates_a_valid_target() {
-        let detective = Detective;
-        let ctx = NightContext {
+    fn ctx(target: PlayerId) -> DayContext<'static> {
+        DayContext {
             alive: &[PlayerId(1), PlayerId(2)],
             self_id: PlayerId(1),
-            chosen_target: Some(PlayerId(2)),
-            heal_target: None,
-            poison_target: None,
-            love_targets: None,
-            wolf_target: None,
+            chosen_target: Some(target),
             toggle_choice: false,
-        };
+        }
+    }
+
+    #[test]
+    fn detective_snoops_on_a_valid_target() {
         let mut state = RoleState::default();
         assert_eq!(
-            detective.night_action(&ctx, &mut state),
-            vec![NightAction::Investigate {
-                target: PlayerId(2)
-            }]
+            Detective.day_action(&ctx(PlayerId(2)), &mut state),
+            vec![DayAction::Snoop { detective: PlayerId(1), target: PlayerId(2) }]
         );
     }
 
     #[test]
-    fn detective_cannot_investigate_themselves() {
-        let detective = Detective;
-        let ctx = NightContext {
-            alive: &[PlayerId(1), PlayerId(2)],
-            self_id: PlayerId(1),
-            chosen_target: Some(PlayerId(1)),
-            heal_target: None,
-            poison_target: None,
-            love_targets: None,
-            wolf_target: None,
-            toggle_choice: false,
-        };
+    fn detective_cannot_snoop_on_themselves() {
         let mut state = RoleState::default();
-        assert_eq!(detective.night_action(&ctx, &mut state), vec![]);
+        assert_eq!(Detective.day_action(&ctx(PlayerId(1)), &mut state), vec![]);
     }
 }

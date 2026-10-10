@@ -27,6 +27,7 @@
 //! topological sort is future work for whenever a second dependency shows
 //! up and two hardcoded levels stop being enough.
 
+use crate::messages::{Announcement, Note};
 use crate::rng::RngSource;
 use crate::roles::{
     behavior_for, DayAction, DayContext, LoversState, NightAction, NightContext, NightFact,
@@ -54,7 +55,9 @@ pub enum Prompt {
     /// Universal — every alive player is asked this, not just one role.
     /// See `resolve_day`.
     LynchVote,
-    GunnerShoot,
+    /// Carries the bullets left, which the legacy text shows
+    /// (`AskShoot`, "{0} bullet(s) remain", Werewolf.cs:5111).
+    GunnerShoot { bullets: u8 },
     BlacksmithSilver,
     CultistHunterInvestigate,
     SorcererInvestigate,
@@ -92,6 +95,10 @@ pub enum Prompt {
     /// that's what the legacy code itself does (`GetLocaleString("AskEat")`
     /// again, not a distinct key).
     WolfCubBonusKill,
+    /// Snow Wolf's nightly freeze target (Werewolf.cs:5273-5277). Asked
+    /// by `freeze::ask_freeze`, not `resolve_night`, because its options
+    /// depend on who was frozen last night.
+    SnowWolfFreeze,
 }
 
 /// Maps a `Prompt` to the real `Languages/English.xml` key the legacy game
@@ -125,7 +132,7 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
         Prompt::WildChildRoleModel => Some("AskRoleModel"),
         Prompt::CupidLink => Some("AskCupid1"),
         Prompt::LynchVote => Some("AskLynch"),
-        Prompt::GunnerShoot => Some("AskShoot"),
+        Prompt::GunnerShoot { .. } => Some("AskShoot"),
         Prompt::CultistConvert => Some("AskConvert"),
         Prompt::MayorReveal => Some("AskMayor"),
         Prompt::PacifistPeace => Some("AskPacifist"),
@@ -137,6 +144,7 @@ pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
         Prompt::HunterFinalShotLynched => Some("HunterLynchedChoice"),
         Prompt::HunterFinalShotKilled => Some("HunterShotChoice"),
         Prompt::WolfCubBonusKill => Some("AskEat"),
+        Prompt::SnowWolfFreeze => Some("AskFreeze"),
         // WitchHeal/WitchPoison belong to a role that isn't in the legacy
         // game at all. BlacksmithSilver and SpumpkinDetonate are
         // menu-driven in Werewolf.cs but have no corresponding key in
@@ -161,7 +169,7 @@ pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::WitchHeal,
     Prompt::WitchPoison,
     Prompt::LynchVote,
-    Prompt::GunnerShoot,
+    Prompt::GunnerShoot { bullets: 2 },
     Prompt::BlacksmithSilver,
     Prompt::CultistHunterInvestigate,
     Prompt::SorcererInvestigate,
@@ -179,6 +187,7 @@ pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::HunterFinalShotLynched,
     Prompt::HunterFinalShotKilled,
     Prompt::WolfCubBonusKill,
+    Prompt::SnowWolfFreeze,
 ];
 
 /// Something that happened, worth narrating, that *isn't* a question —
@@ -213,6 +222,10 @@ pub enum NarrationEvent {
     /// `InsufficientData`, `Unimplemented`) this proof-of-concept
     /// sometimes has to report instead of a clean win.
     GameOver { winner: crate::WinOutcome },
+    /// Something told to one player only — see `messages::Note`.
+    Private { to: PlayerId, note: Note },
+    /// Something told to the whole group — see `messages::Announcement`.
+    Announce(Announcement),
 }
 
 /// Maps a death to the real legacy flavor key, where this proof-of-concept
@@ -380,6 +393,8 @@ pub fn transform_locale_key(from: Role, to: Role) -> Option<&'static str> {
         (Role::Doppelganger, Role::Mason) => Some("DGToMason"),
         (Role::Doppelganger, Role::SnowWolf) => Some("DGToSnowWolf"),
         (Role::Gunner, Role::Villager) => Some("GunnerShotWiseElder"),
+        // Werewolf.cs:4495, sent when the Snow Wolf is the last wolf left.
+        (Role::SnowWolf, Role::Wolf) => Some("SnowWolfTurnWolf"),
         // The cult's recruitment message (Werewolf.cs:2063: `Send
         // (GetLocaleString("CultConvertYou"), p.Id)`) doesn't vary by what
         // the convert used to be - a genuine `(_, Cultist)` wildcard, not
@@ -490,6 +505,7 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "DGToMason",
         "DGToSnowWolf",
         "GunnerShotWiseElder",
+        "SnowWolfTurnWolf",
         "CultConvertYou",
         // game_over_locale_key's non-`None` outputs.
         "VillageWins",
@@ -500,6 +516,15 @@ pub fn all_mapped_locale_keys() -> Vec<&'static str> {
         "ArsonistWins",
         "LoversWin",
     ]);
+    keys.extend(crate::messages::all_message_keys());
+    // Role display names, which notes like `SeerSees` fill in. The four
+    // left out have no English.xml entry (see `Role::locale_key`).
+    keys.extend(
+        shared::ALL_ROLES
+            .iter()
+            .filter(|r| !matches!(r, Role::Spumpkin | Role::Chef | Role::Barkeep | Role::Witch))
+            .map(|r| r.locale_key()),
+    );
     keys.sort_unstable();
     keys.dedup();
     keys
@@ -716,7 +741,10 @@ async fn ask_exact(
 ) -> Option<Vec<PlayerId>> {
     let picked = presenter.ask_targets(player, prompt, options, count).await?;
     let all_distinct = (1..picked.len()).all(|i| !picked[..i].contains(&picked[i]));
-    if picked.len() == count && all_distinct {
+    // An answer outside the options offered (a stale button for a player
+    // who has since died, say) counts as no answer, never as a pick.
+    let all_offered = picked.iter().all(|p| options.contains(p));
+    if picked.len() == count && all_distinct && all_offered {
         Some(picked)
     } else {
         None
@@ -762,7 +790,6 @@ fn one_target_prompt(role: Role) -> Option<Prompt> {
         Role::Seer => Some(Prompt::SeerCheck),
         Role::Harlot => Some(Prompt::HarlotVisit),
         Role::GuardianAngel => Some(Prompt::GuardianAngelProtect),
-        Role::Detective => Some(Prompt::DetectiveInvestigate),
         Role::Fool => Some(Prompt::FoolInvestigate),
         Role::WildChild => Some(Prompt::WildChildRoleModel),
         Role::CultistHunter => Some(Prompt::CultistHunterInvestigate),
@@ -797,8 +824,21 @@ pub async fn resolve_night(
     states: &mut HashMap<PlayerId, RoleState>,
     presenter: &mut dyn Presenter,
 ) -> (Vec<NightAction>, Option<PlayerId>) {
+    let (tagged, wolf_target) = resolve_night_by_actor(players, states, presenter).await;
+    (tagged.into_iter().map(|(_, action)| action).collect(), wolf_target)
+}
+
+/// `resolve_night`, but with each action paired with the player who took
+/// it, so a later step can cancel one player's actions (the Snow Wolf's
+/// freeze, see `freeze::apply_freeze`) without every `NightAction`
+/// variant having to carry its actor.
+pub async fn resolve_night_by_actor(
+    players: &[AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+) -> (Vec<(PlayerId, NightAction)>, Option<PlayerId>) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
-    let mut actions = vec![];
+    let mut actions: Vec<(PlayerId, NightAction)> = vec![];
 
     // --- Stage 1: roles with no dependencies ---
     for player in players {
@@ -823,7 +863,7 @@ pub async fn resolve_night(
                 wolf_target: None,
                 toggle_choice: false,
             };
-            actions.extend(behavior.night_action(&ctx, state));
+            actions.extend(behavior.night_action(&ctx, state).into_iter().map(|a| (player.id, a)));
             continue;
         }
 
@@ -846,13 +886,16 @@ pub async fn resolve_night(
             wolf_target: None,
             toggle_choice,
         };
-        actions.extend(behavior.night_action(&ctx, state));
+        actions.extend(behavior.night_action(&ctx, state).into_iter().map(|a| (player.id, a)));
     }
 
     // Tally the wolves' target: majority vote among EatVote actions, tie
     // or no votes resolves to None. Real tie-breaking rules (if any) are
     // future work — this is enough to unblock stage 2's dependency.
-    let wolf_target = majority_eat_target(&actions);
+    let wolf_target = majority_target(actions.iter().filter_map(|(_, a)| match a {
+        NightAction::EatVote { target } => Some(*target),
+        _ => None,
+    }));
 
     // --- Stage 2: roles depending on a fact produced above ---
     for player in players {
@@ -885,7 +928,7 @@ pub async fn resolve_night(
             wolf_target,
             toggle_choice: false,
         };
-        actions.extend(behavior.night_action(&ctx, state));
+        actions.extend(behavior.night_action(&ctx, state).into_iter().map(|a| (player.id, a)));
     }
 
     (actions, wolf_target)
@@ -912,20 +955,21 @@ fn majority_target(votes: impl Iterator<Item = PlayerId>) -> Option<PlayerId> {
     }
 }
 
-fn majority_eat_target(actions: &[NightAction]) -> Option<PlayerId> {
-    majority_target(actions.iter().filter_map(|a| match a {
-        NightAction::EatVote { target } => Some(*target),
-        _ => None,
-    }))
-}
 
-/// Maps a role to its day-phase question, if it has one. Only Gunner today
-/// (see `gunner` module) — everyone else has no day action, which is the
-/// default `RoleBehavior::day_action` already returns.
-fn one_target_day_prompt(role: Role) -> Option<Prompt> {
+/// Maps a role to its day-phase question, if it has one. Most roles have
+/// no day action, which is the default `RoleBehavior::day_action` already
+/// returns. Takes the player's state because a Gunner with no bullets left
+/// is not asked at all (Werewolf.cs:5102: `if (gunner.Bullet > 0)`).
+fn one_target_day_prompt(role: Role, state: &RoleState) -> Option<Prompt> {
     match role {
-        Role::Gunner => Some(Prompt::GunnerShoot),
+        Role::Gunner => match crate::roles::gunner::bullets_left(state) {
+            0 => None,
+            bullets => Some(Prompt::GunnerShoot { bullets }),
+        },
         Role::Spumpkin => Some(Prompt::SpumpkinDetonate),
+        // The Detective snoops by day, resolved at the end of the day
+        // phase (Werewolf.cs:2933-2953), not at night.
+        Role::Detective => Some(Prompt::DetectiveInvestigate),
         _ => None,
     }
 }
@@ -945,34 +989,121 @@ fn toggle_day_prompt(role: Role) -> Option<Prompt> {
     }
 }
 
+/// How a lynch vote came out (Werewolf.cs:2690-2711). The legacy game
+/// never re-votes on a tie: `Settings.RandomLynch` is hard-coded `false`,
+/// so a tie simply means nobody is lynched today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LynchResult {
+    Lynched(PlayerId),
+    Tie,
+    NoVotes,
+}
+
+impl LynchResult {
+    pub fn target(self) -> Option<PlayerId> {
+        match self {
+            LynchResult::Lynched(target) => Some(target),
+            LynchResult::Tie | LynchResult::NoVotes => None,
+        }
+    }
+
+    /// The group message for a vote that lynched nobody.
+    pub fn announcement(self) -> Option<Announcement> {
+        match self {
+            LynchResult::Lynched(_) => None,
+            LynchResult::Tie => Some(Announcement::LynchTie),
+            LynchResult::NoVotes => Some(Announcement::NoLynchVotes),
+        }
+    }
+}
+
+/// Asks `voter` for their lynch vote. Nobody can vote for themselves
+/// (Werewolf.cs:4959: `x.Id != player.Id`). A Clumsy Guy's vote has a
+/// 50% chance of landing on a random living player other than themselves
+/// instead (Werewolf.cs:999-1011, `ChooseRandomPlayerId(player, false)`),
+/// which may happen to be the player they picked.
+async fn ask_lynch_vote(
+    voter: &AlivePlayer,
+    alive: &[PlayerId],
+    presenter: &mut dyn Presenter,
+    rng: &mut dyn RngSource,
+) -> Option<PlayerId> {
+    let options: Vec<PlayerId> = alive.iter().copied().filter(|&id| id != voter.id).collect();
+    let choice = ask_one(presenter, voter.id, Prompt::LynchVote, &options).await?;
+    if voter.role == Role::ClumsyGuy && !options.is_empty() && rng.chance(50) {
+        return Some(options[rng.pick_index(options.len())]);
+    }
+    Some(choice)
+}
+
+/// Counts votes, with a revealed Mayor's vote counting twice on every
+/// lynch after the reveal (Werewolf.cs:2651: `p.HasUsedAbility`, which
+/// stays set for the rest of the game).
+fn tally_lynch(
+    votes_by_voter: &[(PlayerId, PlayerId)],
+    players: &[AlivePlayer],
+    states: &HashMap<PlayerId, RoleState>,
+) -> LynchResult {
+    if votes_by_voter.is_empty() {
+        return LynchResult::NoVotes;
+    }
+    let revealed_mayor = |voter: PlayerId| {
+        players.iter().any(|p| p.id == voter && p.role == Role::Mayor)
+            && states.get(&voter).is_some_and(|s| s.primary_used)
+    };
+    let votes = votes_by_voter.iter().flat_map(|&(voter, target)| {
+        let weight = if revealed_mayor(voter) { 2 } else { 1 };
+        std::iter::repeat(target).take(weight)
+    });
+    match majority_target(votes) {
+        Some(target) => LynchResult::Lynched(target),
+        None => LynchResult::Tie,
+    }
+}
+
+/// A lynch vote on its own, with no other day actions — the second vote a
+/// Troublemaker forces (Werewolf.cs:2548-2846, the `do ... while
+/// (lynchAttempt < 2)` loop re-runs only the lynch).
+pub async fn resolve_lynch_vote(
+    players: &[AlivePlayer],
+    states: &HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+    rng: &mut dyn RngSource,
+) -> LynchResult {
+    let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
+    let mut votes_by_voter = vec![];
+    for player in players {
+        if let Some(target) = ask_lynch_vote(player, &alive, presenter, rng).await {
+            votes_by_voter.push((player.id, target));
+        }
+    }
+    tally_lynch(&votes_by_voter, players, states)
+}
+
 /// Resolves one full day: every alive player casts a lynch vote (universal
-/// — unlike night actions, this isn't gated by role at all), tallied the
-/// same way the wolves' eat vote is, plus whatever role-specific day
-/// actions apply (currently just Gunner's shot). Like `resolve_night`,
-/// this only resolves *decisions* — see `apply_day_results` for turning
-/// them into deaths.
+/// — unlike night actions, this isn't gated by role at all), plus whatever
+/// role-specific day actions apply. Like `resolve_night`, this only
+/// resolves *decisions* — see `apply_day_results` for turning them into
+/// deaths.
 pub async fn resolve_day(
     players: &[AlivePlayer],
     states: &mut HashMap<PlayerId, RoleState>,
     presenter: &mut dyn Presenter,
-) -> (Vec<DayAction>, Option<PlayerId>) {
+    rng: &mut dyn RngSource,
+) -> (Vec<DayAction>, LynchResult) {
     let alive: Vec<PlayerId> = players.iter().map(|p| p.id).collect();
     let mut day_actions = vec![];
-    // Tracks voter identity, not just the target, so Mayor's own vote can
-    // be found again and doubled below (Werewolf.cs:2649-2652) — a flat
-    // Vec<PlayerId> of targets alone can't answer "which one was Mayor's."
     let mut votes_by_voter: Vec<(PlayerId, PlayerId)> = vec![];
-    let mut mayor_revealed: Option<PlayerId> = None;
 
     for player in players {
-        if let Some(target) = ask_one(presenter, player.id, Prompt::LynchVote, &alive).await {
+        if let Some(target) = ask_lynch_vote(player, &alive, presenter, rng).await {
             votes_by_voter.push((player.id, target));
         }
 
         let behavior = behavior_for(player.role);
         let state = states.entry(player.id).or_default();
 
-        let chosen_target = match one_target_day_prompt(player.role) {
+        let chosen_target = match one_target_day_prompt(player.role, state) {
             Some(prompt) => ask_one(presenter, player.id, prompt, &alive).await,
             None => None,
         };
@@ -987,21 +1118,23 @@ pub async fn resolve_day(
             chosen_target,
             toggle_choice,
         };
-        let actions = behavior.day_action(&ctx, state);
-        if player.role == Role::Mayor && actions.contains(&DayAction::Reveal) {
-            mayor_revealed = Some(player.id);
-        }
-        day_actions.extend(actions);
+        day_actions.extend(behavior.day_action(&ctx, state));
     }
 
-    let mut all_votes: Vec<PlayerId> = votes_by_voter.iter().map(|&(_, target)| target).collect();
-    if let Some(mayor_id) = mayor_revealed {
-        if let Some(&(_, target)) = votes_by_voter.iter().find(|&&(voter, _)| voter == mayor_id) {
-            all_votes.push(target); // counts twice, once revealed
-        }
-    }
-    let lynch_target = majority_target(all_votes.into_iter());
-    (day_actions, lynch_target)
+    (day_actions, tally_lynch(&votes_by_voter, players, states))
+}
+
+/// Whichever of Pacify and Trouble was taken last today, if either. Each
+/// cancels the other in the legacy callbacks, so the later one wins:
+/// peace clears `_doubleLynch` (Werewolf.cs:917) and trouble clears
+/// `_pacifistUsed` (Werewolf.cs:971). `day_actions` is in the order the
+/// players acted.
+pub fn last_day_veto(day_actions: &[DayAction]) -> Option<DayAction> {
+    day_actions
+        .iter()
+        .rev()
+        .find(|a| matches!(a, DayAction::Pacify | DayAction::Trouble))
+        .copied()
 }
 
 /// Turns resolved day decisions into actual deaths — the day-phase twin of
@@ -1009,7 +1142,8 @@ pub async fn resolve_day(
 /// `apply_night_results` where only Witch's heal can cancel a death:
 ///
 /// - Pacifist's `Pacify` action vetoes the *entire* day's lynch
-///   (Werewolf.cs:913-925) — checked first, since it overrides everything.
+///   (Werewolf.cs:913-925) — checked first, since it overrides everything,
+///   unless a Troublemaker acted after it (see `last_day_veto`).
 /// - Prince's first lynch is survived, not fatal (Werewolf.cs:2745-2751:
 ///   `!lynched.HasUsedAbility`). This needs `lynch_target_role` (who the
 ///   target actually is) and `states` (to check/spend the one-time
@@ -1028,10 +1162,7 @@ pub fn apply_day_results(
 ) -> Vec<(PlayerId, KillMethod)> {
     let mut deaths = vec![];
 
-    // "Trouble overrides peace" (Werewolf.cs:971): a same-day Troublemaker
-    // veto cancels a Pacifist's veto, so Trouble wins if both fire.
-    let troubled = day_actions.iter().any(|a| matches!(a, DayAction::Trouble));
-    let pacified = !troubled && day_actions.iter().any(|a| matches!(a, DayAction::Pacify));
+    let pacified = last_day_veto(day_actions) == Some(DayAction::Pacify);
 
     if !pacified {
         if let Some(target) = lynch_target {
@@ -1052,7 +1183,8 @@ pub fn apply_day_results(
             | DayAction::Reveal
             | DayAction::Pacify
             | DayAction::Trouble
-            | DayAction::Detonate { .. } => {}
+            | DayAction::Detonate { .. }
+            | DayAction::Snoop { .. } => {}
         }
     }
 
@@ -1130,6 +1262,64 @@ mod apply_day_results_tests {
             &mut states,
         );
         assert_eq!(deaths, vec![(target, KillMethod::Lynch)]);
+    }
+
+    fn pair(a: u64, b: u64) -> (PlayerId, PlayerId) {
+        (PlayerId(a), PlayerId(b))
+    }
+
+    /// Werewolf.cs:2651: the Mayor's vote keeps counting twice on every
+    /// lynch after the reveal, not just the day of it.
+    #[test]
+    fn a_revealed_mayor_counts_twice_on_later_days() {
+        let players = vec![
+            AlivePlayer { id: PlayerId(1), role: Role::Mayor },
+            AlivePlayer { id: PlayerId(2), role: Role::Villager },
+            AlivePlayer { id: PlayerId(3), role: Role::Villager },
+        ];
+        let mut states = HashMap::new();
+        let votes = [pair(1, 2), pair(2, 3)];
+        assert_eq!(tally_lynch(&votes, &players, &states), LynchResult::Tie);
+        states.insert(PlayerId(1), RoleState { primary_used: true, ..Default::default() });
+        assert_eq!(tally_lynch(&votes, &players, &states), LynchResult::Lynched(PlayerId(2)));
+        assert_eq!(tally_lynch(&[], &players, &states), LynchResult::NoVotes);
+    }
+
+    struct VoteFor(PlayerId);
+
+    #[async_trait(?Send)]
+    impl Presenter for VoteFor {
+        async fn ask_targets(&mut self, _: PlayerId, _: Prompt, _: &[PlayerId], _: usize) -> Option<Vec<PlayerId>> {
+            Some(vec![self.0])
+        }
+    }
+
+    /// Werewolf.cs:999-1011: half the time the Clumsy Guy's vote lands on
+    /// a random living player other than themselves.
+    #[tokio::test]
+    async fn a_clumsy_guys_vote_can_go_astray() {
+        let clumsy = AlivePlayer { id: PlayerId(1), role: Role::ClumsyGuy };
+        let alive = [PlayerId(1), PlayerId(2), PlayerId(3)];
+        let mut rng = crate::rng::ScriptedRngSource::new().with_chance(true).with_index(1);
+        assert_eq!(ask_lynch_vote(&clumsy, &alive, &mut VoteFor(PlayerId(2)), &mut rng).await, Some(PlayerId(3)));
+        let mut rng = crate::rng::ScriptedRngSource::new().with_chance(false);
+        assert_eq!(ask_lynch_vote(&clumsy, &alive, &mut VoteFor(PlayerId(2)), &mut rng).await, Some(PlayerId(2)));
+    }
+
+    /// Werewolf.cs:917 ("peace overrides trouble"): a Pacifist acting
+    /// after the Troublemaker still cancels the lynch.
+    #[test]
+    fn pacify_after_trouble_cancels_the_lynch() {
+        let target = PlayerId(1);
+        let mut states = HashMap::new();
+        let deaths = apply_day_results(
+            &[DayAction::Trouble, DayAction::Pacify],
+            Some(target),
+            Some(Role::Villager),
+            &mut states,
+        );
+        assert!(deaths.is_empty());
+        assert_eq!(last_day_veto(&[DayAction::Trouble, DayAction::Pacify]), Some(DayAction::Pacify));
     }
 }
 
@@ -1249,10 +1439,10 @@ pub fn apply_night_results(
 /// is excluded here entirely, unconditionally — no question is asked at
 /// all for that death method, not just a different prompt.
 ///
-/// Also doesn't model "Domino" chaining (a Hunter's shot landing on
-/// *another* Hunter, who would get their own final shot in turn,
-/// Werewolf.cs:5480-5481) — this only asks each already-dead Hunter from
-/// the triggering batch once, not recursively.
+/// Asks each dead Hunter in this batch once. "Domino" chains (a Hunter's
+/// shot landing on *another* Hunter, Werewolf.cs:5480-5481) are handled by
+/// `game::process_deaths_and_hunter_shots` calling this again on the
+/// shots' own deaths.
 pub async fn resolve_hunter_shots(
     new_deaths: &[(PlayerId, KillMethod)],
     died_with_roles: &[(PlayerId, Role)],
@@ -1657,11 +1847,9 @@ fn cult_conversion_chance_percent(role: Role) -> u32 {
 ///   `wolf_target.is_some()`).
 /// - **Snow Wolf** target: the real check is whether *that specific
 ///   player* went out freezing someone (Werewolf.cs:3687:
-///   `target.Choice != -1 && != 0`), not the main wolf vote — but
-///   `snow_wolf::SnowWolf`'s freeze ability isn't modeled at all (see
-///   that file's doc), so a Snow Wolf here is always "stayed home,"
-///   always killing the newbie. Consistent with the rest of this crate
-///   treating an unmodeled ability as simply never exercised.
+///   `target.Choice != -1 && != 0`), not the main wolf vote — a
+///   `NightAction::Freeze` in `night_actions` means the house was empty;
+///   otherwise the Snow Wolf was home and kills the newbie.
 /// - Everything else: `cult_conversion_chance_percent(target_role)`.
 pub fn resolve_cultist_conversion(
     night_actions: &[NightAction],
@@ -1726,6 +1914,8 @@ pub fn resolve_cultist_conversion(
                 CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitWolf)] }
             }
         }
+        // An empty house if the Snow Wolf went freezing (Werewolf.cs:3688).
+        Role::SnowWolf if night_actions.iter().any(|a| matches!(a, NightAction::Freeze { .. })) => no_outcome,
         Role::SnowWolf => CultConversionOutcome { transform: None, deaths: vec![(newbie, KillMethod::VisitWolf)] },
         _ => {
             if rng.chance(cult_conversion_chance_percent(target_role)) {
@@ -2171,11 +2361,20 @@ mod cultist_conversion_tests {
     }
 
     #[test]
-    fn visiting_a_snow_wolf_always_kills_the_newbie_since_freeze_isnt_modeled() {
+    fn visiting_a_snow_wolf_who_stayed_home_kills_the_newbie() {
         let mut rng = ScriptedRngSource::new(); // panics if consulted
         // even with wolves_went_eating true, SnowWolf isn't part of that vote
         let outcome = resolve_cultist_conversion(&vote(PlayerId(6)), true, 0, &roster(), &mut rng);
         assert_eq!(outcome, CultConversionOutcome { transform: None, deaths: vec![(PlayerId(1), KillMethod::VisitWolf)] });
+    }
+
+    #[test]
+    fn a_snow_wolf_out_freezing_leaves_an_empty_house() {
+        let mut rng = ScriptedRngSource::new(); // panics if consulted
+        let mut actions = vote(PlayerId(6));
+        actions.push(NightAction::Freeze { snow_wolf: PlayerId(6), target: PlayerId(2) });
+        let outcome = resolve_cultist_conversion(&actions, true, 0, &roster(), &mut rng);
+        assert_eq!(outcome, CultConversionOutcome::default());
     }
 
     #[test]
@@ -2602,7 +2801,7 @@ mod day_tests {
             }
             match prompt {
                 Prompt::LynchVote => self.lynch_votes.get(&player).copied().map(|t| vec![t]),
-                Prompt::GunnerShoot => self.gunner_shot.map(|t| vec![t]),
+                Prompt::GunnerShoot { .. } => self.gunner_shot.map(|t| vec![t]),
                 _ => None,
             }
         }
@@ -2642,7 +2841,8 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, Some(target));
 
         let mut states2 = HashMap::new();
@@ -2686,7 +2886,8 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, None);
         let mut states2 = HashMap::new();
         assert_eq!(
@@ -2724,7 +2925,8 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (day_actions, lynch) = resolve_day(&players, &mut states, &mut presenter).await;
+        let (day_actions, lynch) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let lynch = lynch.target();
         assert_eq!(lynch, Some(lynch_target));
         assert!(day_actions.iter().any(|a| matches!(a, DayAction::Shoot { target, .. } if *target == shot_target)));
 
@@ -2780,7 +2982,8 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let lynch_target = lynch_target.target();
         assert_eq!(
             lynch_target,
             Some(mayors_pick),
@@ -2825,7 +3028,8 @@ mod day_tests {
         };
         let mut states = HashMap::new();
 
-        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        let (_day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter, &mut crate::rng::ScriptedRngSource::new()).await;
+        let lynch_target = lynch_target.target();
         assert_eq!(lynch_target, None);
     }
 }

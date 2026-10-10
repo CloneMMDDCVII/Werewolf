@@ -6,14 +6,17 @@
 //! `fixture_day_replay.rs`) checked a single night or a single day in
 //! isolation.
 
+use crate::freeze::{apply_freeze, ask_freeze};
+use crate::messages::Announcement;
 use crate::orchestrator::{
-    apply_day_results, apply_night_results, resolve_arsonist_detonation, resolve_chemistry,
+    apply_day_results, apply_night_results, last_day_veto, resolve_arsonist_detonation, resolve_chemistry,
     resolve_cultist_conversion, resolve_day, resolve_grave_digger_falls, resolve_harlot_visit_deaths,
-    resolve_hunter_shots, resolve_lover_deaths, resolve_night, resolve_spumpkin_detonation,
-    resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
+    resolve_hunter_shots, resolve_lover_deaths, resolve_lynch_vote, resolve_night_by_actor,
+    resolve_spumpkin_detonation, resolve_wolf_cub_bonus_kill, AlivePlayer, NarrationEvent, Presenter,
 };
+use crate::reveals::{resolve_detective, resolve_night_readings, AugurMemory};
 use crate::rng::RngSource;
-use crate::roles::{DayAction, LoversState, NightAction, PlayerId, RoleState};
+use crate::roles::{behavior_for, DayAction, LoversState, NightAction, PlayerId, RoleState};
 use crate::{evaluate_winner_with_kills, is_wolf_muscle, KillEvent, PlayerState, WinOutcome};
 use shared::{KillMethod, Role, Team};
 use std::collections::{HashMap, HashSet};
@@ -46,6 +49,26 @@ pub struct GameOutcome {
 /// from an actual "no winner yet."
 pub async fn run_game(
     players: &[AlivePlayer],
+    presenter: &mut dyn Presenter,
+    rng: &mut dyn RngSource,
+    max_rounds: u32,
+) -> GameOutcome {
+    let pool = default_role_pool();
+    run_game_with_role_pool(players, &pool, presenter, rng, max_rounds).await
+}
+
+/// Every role that can currently be dealt, once each. Stands in for the
+/// balancer's pool when a caller has none (fixtures, tests); a real game
+/// should pass the pool from `balancing::balance_with_pool`.
+fn default_role_pool() -> Vec<Role> {
+    shared::ALL_ROLES.iter().copied().filter(|&r| behavior_for(r).is_available()).collect()
+}
+
+/// `run_game`, with the pool of roles the game was dealt from, which the
+/// Augur draws on (see `balancing::balance_with_pool`).
+pub async fn run_game_with_role_pool(
+    players: &[AlivePlayer],
+    role_pool: &[Role],
     presenter: &mut dyn Presenter,
     rng: &mut dyn RngSource,
     max_rounds: u32,
@@ -96,40 +119,44 @@ pub async fn run_game(
     // never shrink, so this needs no separate bookkeeping beyond the one
     // cursor.
     let mut deaths_counted_for_graves: usize = 0;
+    // Whoever the Snow Wolf froze last night, who can't be frozen again
+    // tonight (Werewolf.cs:5276).
+    let mut frozen_last_night: Option<PlayerId> = None;
+    let mut augur = AugurMemory::default();
 
     for round in 1..=max_rounds {
         apply_pending_alpha_bites(&bitten_pending, &mut alive, presenter).await;
         bitten_pending.clear();
 
-        if presenter.game_was_killed() {
-            presenter.narrate(NarrationEvent::GameOver { winner: WinOutcome::Killed }).await;
-            return GameOutcome {
-                winner: WinOutcome::Killed,
-                rounds_played: round,
-                deaths,
-            };
-        }
-
-        apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
-        if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
-            presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
-            return GameOutcome {
-                winner: outcome,
-                rounds_played: round,
-                deaths,
-            };
+        if let Some(outcome) =
+            check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+        {
+            return outcome;
         }
 
         // Werewolf.cs:5295-5296 excludes Flee/Idle deaths from the count -
         // Flee is reachable now (see apply_fled_players), so this filter
         // is doing real work, not just kept for later.
-        let dug_graves = deaths[deaths_counted_for_graves..]
+        let mut dug_graves = deaths[deaths_counted_for_graves..]
             .iter()
             .filter(|&&(_, method)| method != KillMethod::Flee && method != KillMethod::Idle)
             .count() as u32;
         deaths_counted_for_graves = deaths.len();
 
-        let (night_actions, wolf_target) = resolve_night(&alive, &mut states, presenter).await;
+        let start_of_night = alive.clone();
+        let freeze = ask_freeze(&alive, frozen_last_night, silver_spread_tonight, presenter).await;
+        let (mut tagged_actions, wolf_target) = resolve_night_by_actor(&alive, &mut states, presenter).await;
+        let freeze_outcome = apply_freeze(freeze, &mut tagged_actions, &alive, dug_graves, rng);
+        narrate_all(freeze_outcome.events, presenter).await;
+        frozen_last_night = freeze_outcome.frozen;
+        let frozen_role = freeze_outcome.frozen.and_then(|id| alive.iter().find(|p| p.id == id)).map(|p| p.role);
+        if frozen_role == Some(Role::GraveDigger) {
+            dug_graves = 0; // tonight's graves were never dug (Werewolf.cs:3163-3168)
+        }
+        if let Some((snow_wolf, target)) = freeze {
+            tagged_actions.push((snow_wolf, NightAction::Freeze { snow_wolf, target }));
+        }
+        let night_actions: Vec<NightAction> = tagged_actions.iter().map(|&(_, a)| a).collect();
         for action in &night_actions {
             if let NightAction::LinkLovers { a, b } = action {
                 lovers.link(*a, *b);
@@ -140,7 +167,7 @@ pub async fn run_game(
                 }
             }
         }
-        apply_thief_steals(&night_actions, &mut alive, presenter).await;
+        apply_thief_steals(&night_actions, &mut alive, &mut states, presenter).await;
 
         let wolf_eat =
             resolve_wolf_eat_target(wolf_target, &night_actions, &mut alive, &mut states, rng, presenter).await;
@@ -148,7 +175,8 @@ pub async fn run_game(
             bitten_pending.push(bitten);
         }
 
-        let mut night_deaths = apply_night_results(&night_actions, wolf_eat.effective_target, silver_spread_tonight);
+        let mut night_deaths = freeze_outcome.deaths;
+        night_deaths.extend(apply_night_results(&night_actions, wolf_eat.effective_target, silver_spread_tonight));
         night_deaths.extend(wolf_eat.extra_death);
         night_deaths.extend(resolve_harlot_visit_deaths(&night_actions, wolf_target, &alive));
         night_deaths.extend(resolve_grave_digger_falls(&night_actions, dug_graves, &alive, rng));
@@ -190,64 +218,99 @@ pub async fn run_game(
             }
             wolf_cub_bonus_pending = false;
         }
-        let (night_deaths, night_died_with_roles) =
-            process_deaths(&night_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
-        wolf_cub_bonus_pending |= night_died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
-        let night_shots = resolve_hunter_shots(&night_deaths, &night_died_with_roles, &alive, presenter).await;
-        let (_, night_shot_roles) =
-            process_deaths(&night_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
-        wolf_cub_bonus_pending |= night_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
+        wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
+            &night_deaths,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            presenter,
+        )
+        .await;
 
-        if presenter.game_was_killed() {
-            presenter.narrate(NarrationEvent::GameOver { winner: WinOutcome::Killed }).await;
-            return GameOutcome {
-                winner: WinOutcome::Killed,
-                rounds_played: round,
-                deaths,
-            };
+        let readings = resolve_night_readings(
+            &tagged_actions,
+            &start_of_night,
+            &alive,
+            freeze_outcome.frozen,
+            role_pool,
+            &mut augur,
+            rng,
+        );
+        narrate_all(readings, presenter).await;
+
+        if let Some(outcome) =
+            check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+        {
+            return outcome;
         }
 
-        apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
-        if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
-            presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
-            return GameOutcome {
-                winner: outcome,
-                rounds_played: round,
-                deaths,
-            };
+        let (day_actions, lynch) = resolve_day(&alive, &mut states, presenter, rng).await;
+        let veto = last_day_veto(&day_actions);
+        if veto == Some(DayAction::Trouble) {
+            if let Some(troublemaker) = alive.iter().find(|p| p.role == Role::Troublemaker) {
+                let announcement = Announcement::TroublemakerDoubleLynch { troublemaker: troublemaker.id };
+                presenter.narrate(NarrationEvent::Announce(announcement)).await;
+            }
         }
-
-        let (day_actions, lynch_target) = resolve_day(&alive, &mut states, presenter).await;
-        let lynch_target_role = lynch_target.and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
+        let lynch_target_role = lynch.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
         demote_gunner_if_shot_a_wise_elder(&day_actions, &mut alive, presenter).await;
         silver_spread_tonight = day_actions.iter().any(|a| matches!(a, DayAction::SpreadSilver));
-        let mut day_deaths = apply_day_results(&day_actions, lynch_target, lynch_target_role, &mut states);
+        let mut day_deaths = apply_day_results(&day_actions, lynch.target(), lynch_target_role, &mut states);
         day_deaths.extend(resolve_spumpkin_detonation(&day_actions, rng));
-        let (day_deaths, day_died_with_roles) =
-            process_deaths(&day_deaths, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
-        wolf_cub_bonus_pending |= day_died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
-        let day_shots = resolve_hunter_shots(&day_deaths, &day_died_with_roles, &alive, presenter).await;
-        let (_, day_shot_roles) =
-            process_deaths(&day_shots, &mut alive, &states, &lovers, &mut kills, &mut deaths, presenter).await;
-        wolf_cub_bonus_pending |= day_shot_roles.iter().any(|&(_, role)| role == Role::WolfCub);
+        let shot_today: Vec<PlayerId> =
+            day_deaths.iter().filter(|&&(_, m)| m != KillMethod::Lynch).map(|&(id, _)| id).collect();
+        let snoops = resolve_detective(&day_actions, &alive, &shot_today, rng);
+        narrate_all(snoops, presenter).await;
+        if veto != Some(DayAction::Pacify) {
+            if let Some(announcement) = lynch.announcement() {
+                presenter.narrate(NarrationEvent::Announce(announcement)).await;
+            }
+        }
+        wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
+            &day_deaths,
+            &mut alive,
+            &states,
+            &lovers,
+            &mut kills,
+            &mut deaths,
+            presenter,
+        )
+        .await;
 
-        if presenter.game_was_killed() {
-            presenter.narrate(NarrationEvent::GameOver { winner: WinOutcome::Killed }).await;
-            return GameOutcome {
-                winner: WinOutcome::Killed,
-                rounds_played: round,
-                deaths,
-            };
+        if let Some(outcome) =
+            check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+        {
+            return outcome;
         }
 
-        apply_fled_players(presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await;
-        if let Some(outcome) = resolved_winner(&alive, &kills, &lovers) {
-            presenter.narrate(NarrationEvent::GameOver { winner: outcome.clone() }).await;
-            return GameOutcome {
-                winner: outcome,
-                rounds_played: round,
-                deaths,
-            };
+        // The Troublemaker's second lynch: the whole vote again, with no
+        // other day actions (Werewolf.cs:2548-2846).
+        if veto == Some(DayAction::Trouble) {
+            presenter.narrate(NarrationEvent::Announce(Announcement::TroubleDoubleLynchNow)).await;
+            let second = resolve_lynch_vote(&alive, &states, presenter, rng).await;
+            let second_role = second.target().and_then(|t| alive.iter().find(|p| p.id == t).map(|p| p.role));
+            let second_deaths = apply_day_results(&[], second.target(), second_role, &mut states);
+            if let Some(announcement) = second.announcement() {
+                presenter.narrate(NarrationEvent::Announce(announcement)).await;
+            }
+            wolf_cub_bonus_pending |= process_deaths_and_hunter_shots(
+                &second_deaths,
+                &mut alive,
+                &states,
+                &lovers,
+                &mut kills,
+                &mut deaths,
+                presenter,
+            )
+            .await;
+
+            if let Some(outcome) =
+                check_for_game_end(round, presenter, &mut alive, &states, &lovers, &mut kills, &mut deaths).await
+            {
+                return outcome;
+            }
         }
 
         presenter.advance_round();
@@ -262,6 +325,56 @@ pub async fn run_game(
         rounds_played: max_rounds,
         deaths,
     }
+}
+
+/// The checkpoint `run_game` runs after every phase: an admin ending the
+/// game (`/killgame`), then any flees, then the win check. `Some` means
+/// the game is over and has already been narrated as such.
+async fn check_for_game_end(
+    round: u32,
+    presenter: &mut dyn Presenter,
+    alive: &mut Vec<AlivePlayer>,
+    states: &HashMap<PlayerId, RoleState>,
+    lovers: &LoversState,
+    kills: &mut Vec<KillEvent>,
+    deaths: &mut Vec<(PlayerId, KillMethod)>,
+) -> Option<GameOutcome> {
+    let winner = if presenter.game_was_killed() {
+        WinOutcome::Killed
+    } else {
+        apply_fled_players(presenter, alive, states, lovers, kills, deaths).await;
+        resolved_winner(alive, kills, lovers)?
+    };
+    presenter.narrate(NarrationEvent::GameOver { winner: winner.clone() }).await;
+    Some(GameOutcome {
+        winner,
+        rounds_played: round,
+        deaths: deaths.clone(),
+    })
+}
+
+/// Processes a batch of deaths, then every Hunter final shot they
+/// trigger, repeatedly: a Hunter shot by a Hunter gets a final shot of
+/// their own, and so on down the chain (Werewolf.cs:5480-5481, the
+/// "Domino" case). Returns whether a Wolf Cub died anywhere in the chain.
+async fn process_deaths_and_hunter_shots(
+    new_deaths: &[(PlayerId, KillMethod)],
+    alive: &mut Vec<AlivePlayer>,
+    states: &HashMap<PlayerId, RoleState>,
+    lovers: &LoversState,
+    kills: &mut Vec<KillEvent>,
+    deaths: &mut Vec<(PlayerId, KillMethod)>,
+    presenter: &mut dyn Presenter,
+) -> bool {
+    let mut wolf_cub_died = false;
+    let mut batch = new_deaths.to_vec();
+    while !batch.is_empty() {
+        let (processed, died_with_roles) =
+            process_deaths(&batch, alive, states, lovers, kills, deaths, presenter).await;
+        wolf_cub_died |= died_with_roles.iter().any(|&(_, role)| role == Role::WolfCub);
+        batch = resolve_hunter_shots(&processed, &died_with_roles, alive, presenter).await;
+    }
+    wolf_cub_died
 }
 
 /// Records a batch of deaths into both the win-check kill history and the
@@ -667,6 +780,7 @@ async fn apply_pending_alpha_bites(
 async fn apply_thief_steals(
     night_actions: &[NightAction],
     alive: &mut [AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
     presenter: &mut dyn Presenter,
 ) {
     for action in night_actions {
@@ -699,6 +813,11 @@ async fn apply_thief_steals(
         if let Some(p) = alive.iter_mut().find(|p| p.id == *thief) {
             p.role = target_role;
         }
+        // The Thief takes over the role's used abilities and bullets too
+        // (Werewolf.cs:2479-2486: `bullet: targetBullet, hasUsedAbility:
+        // targetHasUsedAbility`); the new Villager starts fresh.
+        let taken = states.remove(target).unwrap_or_default();
+        states.insert(*thief, taken);
     }
 }
 
@@ -711,6 +830,8 @@ async fn apply_thief_steals(
 /// needs to know more than "did my role model die" — it needs *what they
 /// were*, hence `just_died`.
 ///
+/// - Snow Wolf turns Wolf once no other wolf remains alive
+///   (Werewolf.cs:4485-4496).
 /// - Traitor turns Wolf once no wolf-muscle role remains alive
 ///   (Werewolf.cs:4499-4512).
 /// - Apprentice Seer turns Seer once no Seer remains alive
@@ -737,12 +858,27 @@ fn apply_transforms(
     just_died: &[(PlayerId, Role)],
 ) -> Vec<NarrationEvent> {
     let any_wolf_muscle = alive.iter().any(|p| is_wolf_muscle(p.role));
+    // The legacy `WolfRoles` (Werewolf.cs:48), which leave out the Snow Wolf.
+    let any_eating_wolf = alive
+        .iter()
+        .any(|p| matches!(p.role, Role::Wolf | Role::AlphaWolf | Role::WolfCub | Role::Lycan));
     let any_seer = alive.iter().any(|p| p.role == Role::Seer);
     let alive_ids: Vec<PlayerId> = alive.iter().map(|p| p.id).collect();
     let mut events = vec![];
 
     for player in alive.iter_mut() {
         match player.role {
+            // The last wolf standing stops freezing and starts eating
+            // (Werewolf.cs:4485-4496). Checked before the Traitor, who
+            // only turns when no Snow Wolf is left either.
+            Role::SnowWolf if !any_eating_wolf => {
+                events.push(NarrationEvent::Transform {
+                    player: player.id,
+                    from: player.role,
+                    to: Role::Wolf,
+                });
+                player.role = Role::Wolf;
+            }
             Role::Traitor if !any_wolf_muscle => {
                 events.push(NarrationEvent::Transform {
                     player: player.id,

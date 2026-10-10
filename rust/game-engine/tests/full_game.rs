@@ -225,7 +225,7 @@ async fn a_lynched_hunter_takes_someone_down_with_them() {
 struct CupidScriptPresenter {
     link: (PlayerId, PlayerId),
     wolf_eats: Vec<PlayerId>, // one entry consumed per night, in order
-    lynches: Vec<PlayerId>,   // one entry consumed per day, in order
+    lynches: Vec<PlayerId>,   // one entry per day, in order
     night: usize,
     day: usize,
 }
@@ -246,13 +246,16 @@ impl Presenter for CupidScriptPresenter {
                 self.night += 1;
                 target.map(|t| vec![t])
             }
-            Prompt::LynchVote if count == 1 => {
-                let target = self.lynches.get(self.day).copied();
-                self.day += 1;
-                target.map(|t| vec![t])
-            }
+            // Every voter gets the day's target. The wolf's own vote for
+            // itself is refused (nobody can vote for themselves), so the
+            // two lovers' votes carry it.
+            Prompt::LynchVote if count == 1 => self.lynches.get(self.day).copied().map(|t| vec![t]),
             _ => None,
         }
+    }
+
+    fn advance_round(&mut self) {
+        self.day += 1;
     }
 }
 
@@ -365,7 +368,7 @@ async fn shooting_the_wise_elder_still_kills_them_but_demotes_the_gunner() {
                 return None;
             }
             match prompt {
-                Prompt::GunnerShoot if player == self.gunner => Some(vec![self.wise_elder]),
+                Prompt::GunnerShoot { .. } if player == self.gunner => Some(vec![self.wise_elder]),
                 _ => None,
             }
         }

@@ -169,6 +169,65 @@ impl Role {
         })
     }
 
+    /// The `Languages/English.xml` key for this role's display name — what
+    /// the legacy `GetDescription(role)` looks up (Werewolf.cs:1448-1451:
+    /// `GetLocaleString(en.ToString())`), i.e. the C# enum name verbatim.
+    /// Only Doppelgänger differs from the Rust identifier. Spumpkin's name
+    /// lives in `SpecialStrings.cs` rather than English.xml, and Chef,
+    /// Barkeep and Witch have no legacy entry at all, so a presenter needs
+    /// a fallback for those four.
+    pub fn locale_key(self) -> &'static str {
+        use Role::*;
+        match self {
+            Villager => "Villager",
+            Drunk => "Drunk",
+            Harlot => "Harlot",
+            Seer => "Seer",
+            Traitor => "Traitor",
+            GuardianAngel => "GuardianAngel",
+            Detective => "Detective",
+            Wolf => "Wolf",
+            Cursed => "Cursed",
+            Gunner => "Gunner",
+            Tanner => "Tanner",
+            Fool => "Fool",
+            WildChild => "WildChild",
+            Beholder => "Beholder",
+            ApprenticeSeer => "ApprenticeSeer",
+            Cultist => "Cultist",
+            CultistHunter => "CultistHunter",
+            Mason => "Mason",
+            Doppelganger => "Doppelgänger",
+            Cupid => "Cupid",
+            Hunter => "Hunter",
+            SerialKiller => "SerialKiller",
+            Sorcerer => "Sorcerer",
+            AlphaWolf => "AlphaWolf",
+            WolfCub => "WolfCub",
+            Blacksmith => "Blacksmith",
+            ClumsyGuy => "ClumsyGuy",
+            Mayor => "Mayor",
+            Prince => "Prince",
+            Lycan => "Lycan",
+            Pacifist => "Pacifist",
+            WiseElder => "WiseElder",
+            Oracle => "Oracle",
+            Sandman => "Sandman",
+            WolfMan => "WolfMan",
+            Thief => "Thief",
+            Troublemaker => "Troublemaker",
+            Chemist => "Chemist",
+            SnowWolf => "SnowWolf",
+            GraveDigger => "GraveDigger",
+            Augur => "Augur",
+            Arsonist => "Arsonist",
+            Spumpkin => "Spumpkin",
+            Chef => "Chef",
+            Barkeep => "Barkeep",
+            Witch => "Witch",
+        }
+    }
+
     /// Mirrors `Werewolf.cs::SetTeam` (Werewolf Node/Werewolf.cs:1546-1610).
     /// Chef/Barkeep (beta-only roles) verified against GreyWolfDev/Werewolf@beta.
     pub fn team(self) -> Team {

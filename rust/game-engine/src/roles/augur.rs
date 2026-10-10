@@ -1,12 +1,10 @@
 //! Augur has no choice to make at all (Werewolf.cs:4044-4060): every night
 //! they're automatically told one role that is *not* in the game (picked
-//! at random from roles not yet seen and not held by any surviving
-//! player), or told nothing if every role has already been revealed to
-//! them. There's no target, no toggle — nothing for a `NightContext` to
-//! carry — so this role is passive from `RoleBehavior`'s perspective; the
-//! actual "which role to reveal" bookkeeping (`augur.SawRoles`) is
-//! presentation logic for a future orchestrator, not a decision this file
-//! could validate even in principle.
+//! at random from the game's role pool, among roles not yet shown and not
+//! held by any surviving player), or told nothing new once every such role
+//! has been shown. There's no target and no toggle, so this role is
+//! passive from `RoleBehavior`'s perspective; the reading and the
+//! `SawRoles` memory live in `reveals::resolve_night_readings`.
 
 use crate::roles::RoleBehavior;
 use shared::{Role, Team};

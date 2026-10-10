@@ -50,7 +50,9 @@ async fn resolve_day_reproduces_the_historical_day1_lynch() {
 
         let mut presenter = FixturePresenter::new(game, 1);
         let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
-        let (day_actions, lynch_target) = resolve_day(&players, &mut states, &mut presenter).await;
+        let (day_actions, lynch) =
+            resolve_day(&players, &mut states, &mut presenter, &mut game_engine::rng::SeededRngSource::new(0)).await;
+        let lynch_target = lynch.target();
 
         assert_eq!(
             lynch_target,

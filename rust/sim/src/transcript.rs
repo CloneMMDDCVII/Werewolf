@@ -22,6 +22,7 @@ use game_engine::orchestrator::{
     death_locale_key, game_over_locale_key, prompt_locale_key, transform_locale_key, NarrationEvent,
     Presenter, Prompt,
 };
+use game_engine::messages::MessageArg;
 use game_engine::roles::PlayerId;
 use i18n::LanguagePack;
 use std::collections::HashMap;
@@ -63,7 +64,8 @@ fn transform_fallback_template() -> &'static str {
 /// asks it (see `orchestrator::one_target_day_prompt`/`toggle_day_prompt`).
 fn phase_label(prompt: Prompt) -> &'static str {
     match prompt {
-        Prompt::GunnerShoot
+        Prompt::GunnerShoot { .. }
+        | Prompt::DetectiveInvestigate
         | Prompt::BlacksmithSilver
         | Prompt::SpumpkinDetonate
         | Prompt::MayorReveal
@@ -121,6 +123,25 @@ impl<'a> TranscriptPresenter<'a> {
             None => prompt_fallback_text(prompt).to_string(),
         };
         strip_unfilled_placeholders(&raw)
+    }
+
+    /// Fills a `Note`/`Announcement` template: players by name, roles by
+    /// their display name (falling back to the enum name for the few roles
+    /// with no English.xml entry, see `Role::locale_key`).
+    fn render_message(&self, key: &str, args: &[MessageArg]) -> String {
+        let mut text = self.pack.get(key).map(str::to_string).unwrap_or_else(|| format!("({key})"));
+        for (i, arg) in args.iter().enumerate() {
+            let value = match *arg {
+                MessageArg::Player(id) => self.name(id),
+                MessageArg::Role(role) => self
+                    .pack
+                    .get(role.locale_key())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("{role:?}")),
+            };
+            text = text.replace(&format!("{{{i}}}"), &value);
+        }
+        strip_unfilled_placeholders(&text)
     }
 
     pub fn push_line(&mut self, line: impl Into<String>) {
@@ -251,6 +272,14 @@ impl<'a> Presenter for TranscriptPresenter<'a> {
                 let line = template.replace("{0}", &name);
                 self.lines
                     .push(format!("{} ({from:?} -> {to:?})", strip_unfilled_placeholders(&line)));
+            }
+            NarrationEvent::Private { to, note } => {
+                let text = self.render_message(note.locale_key(), &note.args());
+                self.lines.push(format!("(to {}) {text}", self.name(to)));
+            }
+            NarrationEvent::Announce(announcement) => {
+                let text = self.render_message(announcement.locale_key(), &announcement.args());
+                self.lines.push(text);
             }
             NarrationEvent::GameOver { winner } => {
                 let template = match game_over_locale_key(&winner) {

@@ -23,6 +23,14 @@ use shared::{Role, Team};
 
 pub struct Gunner;
 
+/// Bullets a Gunner has left (Werewolf.cs:1938: `bullet: 2`). Derived from
+/// the two "spent" flags, so a Thief who steals a Gunner and inherits
+/// their `RoleState` (Werewolf.cs:2479-2486 passes `bullet: targetBullet`)
+/// keeps the same count.
+pub fn bullets_left(state: &RoleState) -> u8 {
+    2 - state.primary_used as u8 - state.secondary_used as u8
+}
+
 impl RoleBehavior for Gunner {
     fn team(&self) -> Team {
         Role::Gunner.team()
@@ -87,6 +95,7 @@ mod tests {
             }]
         );
         assert!(state.primary_used && state.secondary_used);
+        assert_eq!(bullets_left(&state), 0);
     }
 
     #[test]
