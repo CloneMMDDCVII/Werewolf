@@ -237,13 +237,18 @@ async fn backup_sqlite(conn: &mut sqlx::AnyConnection, file: &Path, version: i64
     if backup.exists() {
         std::fs::remove_file(&backup).map_err(|e| DbError::Backup(e.to_string()))?;
     }
-    let target = backup.to_string_lossy().replace('\'', "''");
     // The path is ours (the configured file plus a suffix), quotes escaped.
-    sqlx::query(sqlx::AssertSqlSafe(format!("VACUUM INTO '{target}'")))
+    sqlx::query(sqlx::AssertSqlSafe(vacuum_into(&backup)))
         .execute(&mut *conn)
         .await
         .map_err(|e| DbError::Backup(e.to_string()))?;
     Ok(())
+}
+
+/// `VACUUM INTO` takes no bind parameter, so the path goes in as an SQL
+/// string literal with its single quotes doubled.
+fn vacuum_into(target: &Path) -> String {
+    format!("VACUUM INTO '{}'", target.to_string_lossy().replace('\'', "''"))
 }
 
 /// The scripts above contain no semicolons inside literals, so a plain
@@ -366,5 +371,27 @@ mod tests {
         run_list(&store, Some(&file), NEW).await.unwrap();
         run_list(&store, Some(&file), NEW).await.unwrap();
         assert_eq!(store.schema_version().await.unwrap(), 2);
+    }
+
+    #[test]
+    fn the_backup_path_is_quoted_as_an_sql_literal() {
+        assert_eq!(
+            vacuum_into(Path::new("/srv/o'brien/werewolf.db.bak-1")),
+            "VACUUM INTO '/srv/o''brien/werewolf.db.bak-1'"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_database_under_a_path_with_a_quote_is_backed_up() {
+        let dir = temp_db().with_file_name("o'brien");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("werewolf.db");
+        let store = open_raw(&file).await;
+        run_list(&store, Some(&file), OLD).await.unwrap();
+        store.close().await;
+
+        let store = open_raw(&file).await;
+        run_list(&store, Some(&file), NEW).await.unwrap();
+        assert!(PathBuf::from(format!("{}.bak-1", file.display())).exists());
     }
 }
