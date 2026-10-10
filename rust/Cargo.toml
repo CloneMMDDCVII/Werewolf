@@ -21,3 +21,4 @@ quick-xml = { version = "0.36", features = ["serialize"] }
 sysinfo = "0.32"
 async-trait = "0.1"
 rand = "0.8"
+sqlx = { version = "0.9", default-features = false, features = ["any", "sqlite-bundled", "postgres", "runtime-tokio", "tls-rustls-ring-webpki"] }

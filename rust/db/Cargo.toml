@@ -5,3 +5,10 @@ edition.workspace = true
 
 [dependencies]
 shared = { path = "../shared" }
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+sim = { path = "../sim" }

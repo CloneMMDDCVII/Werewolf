@@ -13,6 +13,23 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      # The db crate's tests run every storage scenario against SQLite and,
+      # when WEREWOLF_TEST_POSTGRES_URL is set, against this server too.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wolf
+          POSTGRES_PASSWORD: wolf
+          POSTGRES_DB: werewolf_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wolf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      WEREWOLF_TEST_POSTGRES_URL: postgres://wolf:wolf@localhost:5432/werewolf_test
     defaults:
       run:
         working-directory: rust
