@@ -120,7 +120,7 @@ pub enum NightAction {
     /// Wild Child's (and Doppelganger's — same shape, different transform
     /// payoff) one-time pick of a "role model" player (Werewolf.cs:1757,
     /// 1909 for Wild Child; 1927-1938 for Doppelganger). If that player
-    /// dies, `game::apply_transforms` turns the picker into a Wolf (Wild
+    /// dies, `transforms::apply_transforms` turns the picker into a Wolf (Wild
     /// Child) or a copy of the dead player's role (Doppelganger).
     ChooseRoleModel {
         target: PlayerId,
@@ -287,7 +287,7 @@ pub struct DayContext<'a> {
 /// one-shot-ability role doesn't need a struct change, just a doc comment
 /// explaining what its flag means. Same idea for `remembered_player`: e.g.
 /// Wild Child's chosen role model, checked each round by
-/// `game::apply_transforms` to see if that player has died.
+/// `transforms::apply_transforms` to see if that player has died.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RoleState {
     pub primary_used: bool,

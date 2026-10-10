@@ -2,8 +2,8 @@
 //! When the role model dies, the Doppelganger takes their role.
 //!
 //! Resolved in:
-//! - [`game::pick_missing_role_models`](crate::game::pick_missing_role_models): a random model when none was chosen;
-//! - [`game::apply_transforms`](crate::game::apply_transforms): copying the dead model's role.
+//! - [`transforms::pick_missing_role_models`](crate::transforms::pick_missing_role_models): a random model when none was chosen;
+//! - [`transforms::apply_transforms`](crate::transforms::apply_transforms): copying the dead model's role.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

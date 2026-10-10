@@ -28,6 +28,7 @@ pub mod role_info;
 pub mod roles;
 pub mod rules;
 pub mod summary;
+pub mod transforms;
 
 pub use game::{run_game, run_game_with_role_pool, run_game_with_rules, GameOutcome};
 

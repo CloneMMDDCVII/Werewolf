@@ -2,8 +2,8 @@
 //! and turns Wolf when the role model dies.
 //!
 //! Resolved in:
-//! - [`game::pick_missing_role_models`](crate::game::pick_missing_role_models): a random model when none was chosen;
-//! - [`game::apply_transforms`](crate::game::apply_transforms): the transform.
+//! - [`transforms::pick_missing_role_models`](crate::transforms::pick_missing_role_models): a random model when none was chosen;
+//! - [`transforms::apply_transforms`](crate::transforms::apply_transforms): the transform.
 
 use crate::roles::definition::*;
 use crate::roles::{NightAction, NightContext, RoleBehavior, RoleState};

@@ -5,7 +5,7 @@
 //!
 //! Resolved in:
 //! - [`freeze::freeze_question`](crate::freeze::freeze_question) and [`freeze::apply_freeze`](crate::freeze::apply_freeze): the freeze;
-//! - [`game::apply_transforms`](crate::game::apply_transforms): the transform.
+//! - [`transforms::apply_transforms`](crate::transforms::apply_transforms): the transform.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

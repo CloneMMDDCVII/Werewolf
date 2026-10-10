@@ -2,7 +2,7 @@
 //! (Werewolf.cs:4053).
 //!
 //! Resolved in:
-//! - [`game::apply_transforms`](crate::game::apply_transforms): the promotion, checked every round.
+//! - [`transforms::apply_transforms`](crate::transforms::apply_transforms): the promotion, checked every round.
 
 use crate::roles::definition::*;
 use crate::roles::RoleBehavior;

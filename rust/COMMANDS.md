@@ -162,7 +162,7 @@ Mechanics the briefing listed as unported, scoped in
 | Mechanic | Status | Where |
 |---|---|---|
 | Snow Wolf freeze (same-night block, no repeat target, GA block, Hunter/SK visits) | ✅ | `game_engine::freeze` |
-| Snow Wolf turns Wolf when the last wolf dies | ✅ | `game::apply_transforms` |
+| Snow Wolf turns Wolf when the last wolf dies | ✅ | `transforms::apply_transforms` |
 | Seer, Sorcerer, Fool, Oracle readings with legacy disguises, read mid-night after the Harlot (a reader killed earlier learns nothing) | ✅ | `game_engine::reveals::resolve_night_readings`, called from `night::Night::seers` |
 | Augur readings (needs the balancer's pool: `balance_with_pool` + `run_game_with_role_pool`) | ✅ | same |
 | Detective snoops by day, wolves may catch them | ✅ | `reveals::resolve_detective` |
