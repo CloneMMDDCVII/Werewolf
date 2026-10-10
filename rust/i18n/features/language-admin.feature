@@ -31,11 +31,14 @@ Feature: Checking a language file against English.xml
     Given a file whose <language> has no variant
     Then it has the fatal error "Variant is missing" under "*Language Node*"
 
-  Scenario: Base and variant must fit Telegram's 64-byte callback data
-    # not tested: superseded, admin buttons now carry short ids so long names are allowed (long_names_are_fine_now_that_buttons_carry_ids, admin_buttons_round_trip_and_stay_short)
-    Given "setlang|-1001049529775|<base>|<variant>|v" is over 64 UTF-8 bytes
-    Then it has the fatal error "Base and variant are too long. (*38 utf8 byte max*)"
-    And the same for "preferred|-1001049529775|<file name>|toggle": "Filename is too long. (*32 utf8 byte max*)"
+  Scenario: Long base, variant and file names are allowed
+    # covered by: long_names_are_fine_now_that_buttons_carry_ids, admin_buttons_round_trip_and_stay_short
+    Given a language file whose base, variant or file name is long
+    Then it has no length error, because the admin buttons carry short ids
+    And every button's callback data still fits Telegram's 64 bytes
+    # Legacy failed these as "Base and variant are too long. (*38 utf8 byte max*)"
+    # and "Filename is too long. (*32 utf8 byte max*)", because its buttons
+    # carried the names themselves.
 
   Scenario: A string English has but the file lacks
     # covered by: missing_strings_skip_deprecated_ones
