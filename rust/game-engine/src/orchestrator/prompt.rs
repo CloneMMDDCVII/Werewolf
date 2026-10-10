@@ -70,61 +70,61 @@ pub enum Prompt {
     SnowWolfFreeze,
 }
 
-/// Maps a `Prompt` to the real `Languages/English.xml` key the legacy game
-/// used for that exact menu, where one exists. Colocated with `Prompt`
-/// itself (not left to whichever `Presenter` happens to need it first)
-/// because "what does this identifier mean, in the legacy game's own
-/// words" is a fact about the identifier, not a presentation choice — a
-/// real Telegram presenter and a text-transcript presenter should both
-/// read it from here rather than each maintaining their own copy that can
-/// silently drift out of sync with each other. `None` means there's no
-/// exact legacy key (a new role not in the original game, or a menu the
-/// legacy game words differently) — callers decide
-/// their own fallback wording, that part **is** a presentation choice.
-///
-/// Verified directly against `Languages/English.xml` and Werewolf.cs's
-/// `SendNightActions`/`SendDayActions` switches,. Fool, Sorcerer and Oracle
-/// reuse the Seer's `AskSee` (Werewolf.cs:5174-5178).
-pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
-    match prompt {
-        Prompt::WolfEat => Some("AskEat"),
-        Prompt::SerialKillerKill => Some("AskKill"),
-        Prompt::SeerCheck | Prompt::FoolInvestigate | Prompt::SorcererInvestigate | Prompt::OracleInvestigate => {
-            Some("AskSee")
+impl Prompt {
+    /// The `Languages/English.xml` key the legacy game used for this menu,
+    /// or `None` when there is none (a role the legacy game doesn't have,
+    /// or a menu whose key English.xml lacks); the presenter then picks its
+    /// own wording. Every presenter reads the key from here, so a new
+    /// variant gets its key in the same edit.
+    ///
+    /// Checked against `Languages/English.xml` and Werewolf.cs's
+    /// `SendNightActions`/`SendDayActions` switches. Fool, Sorcerer and
+    /// Oracle reuse the Seer's `AskSee` (Werewolf.cs:5174-5178).
+    pub const fn locale_key(self) -> Option<&'static str> {
+        match self {
+            Prompt::WolfEat => Some("AskEat"),
+            Prompt::SerialKillerKill => Some("AskKill"),
+            Prompt::SeerCheck | Prompt::FoolInvestigate | Prompt::SorcererInvestigate | Prompt::OracleInvestigate => {
+                Some("AskSee")
+            }
+            Prompt::HarlotVisit => Some("AskVisit"),
+            Prompt::GuardianAngelProtect => Some("AskGuard"),
+            Prompt::DetectiveInvestigate => Some("AskDetect"),
+            Prompt::CultistHunterInvestigate => Some("AskHunt"),
+            Prompt::WildChildRoleModel => Some("AskRoleModel"),
+            Prompt::DoppelgangerRoleModel => Some("AskDoppelganger"),
+            Prompt::CupidLink => Some("AskCupid1"),
+            Prompt::LynchVote => Some("AskLynch"),
+            Prompt::GunnerShoot { .. } => Some("AskShoot"),
+            Prompt::CultistConvert => Some("AskConvert"),
+            Prompt::MayorReveal => Some("AskMayor"),
+            Prompt::PacifistPeace => Some("AskPacifist"),
+            Prompt::SandmanSleep => Some("AskSandman"),
+            Prompt::ThiefSteal => Some("AskThief"),
+            Prompt::ChemistBrew => Some("AskChemist"),
+            Prompt::ArsonistDouse | Prompt::ArsonistSpark => Some("AskArsonist"),
+            Prompt::TroublemakerTrouble => Some("AskTroublemaker"),
+            Prompt::HunterFinalShotLynched => Some("HunterLynchedChoice"),
+            Prompt::HunterFinalShotKilled => Some("HunterShotChoice"),
+            Prompt::WolfCubBonusKill => Some("AskEat"),
+            Prompt::SnowWolfFreeze => Some("AskFreeze"),
+            Prompt::BlacksmithSilver => Some("SpreadDust"),
+            // WitchHeal/WitchPoison belong to a role that isn't in the legacy
+            // game at all. SpumpkinDetonate's menu uses `AskDetonate`
+            // (Werewolf.cs:5128), which English.xml doesn't have.
+            Prompt::WitchHeal | Prompt::WitchPoison | Prompt::SpumpkinDetonate => None,
         }
-        Prompt::HarlotVisit => Some("AskVisit"),
-        Prompt::GuardianAngelProtect => Some("AskGuard"),
-        Prompt::DetectiveInvestigate => Some("AskDetect"),
-        Prompt::CultistHunterInvestigate => Some("AskHunt"),
-        Prompt::WildChildRoleModel => Some("AskRoleModel"),
-        Prompt::DoppelgangerRoleModel => Some("AskDoppelganger"),
-        Prompt::CupidLink => Some("AskCupid1"),
-        Prompt::LynchVote => Some("AskLynch"),
-        Prompt::GunnerShoot { .. } => Some("AskShoot"),
-        Prompt::CultistConvert => Some("AskConvert"),
-        Prompt::MayorReveal => Some("AskMayor"),
-        Prompt::PacifistPeace => Some("AskPacifist"),
-        Prompt::SandmanSleep => Some("AskSandman"),
-        Prompt::ThiefSteal => Some("AskThief"),
-        Prompt::ChemistBrew => Some("AskChemist"),
-        Prompt::ArsonistDouse | Prompt::ArsonistSpark => Some("AskArsonist"),
-        Prompt::TroublemakerTrouble => Some("AskTroublemaker"),
-        Prompt::HunterFinalShotLynched => Some("HunterLynchedChoice"),
-        Prompt::HunterFinalShotKilled => Some("HunterShotChoice"),
-        Prompt::WolfCubBonusKill => Some("AskEat"),
-        Prompt::SnowWolfFreeze => Some("AskFreeze"),
-        Prompt::BlacksmithSilver => Some("SpreadDust"),
-        // WitchHeal/WitchPoison belong to a role that isn't in the legacy
-        // game at all. SpumpkinDetonate's menu uses `AskDetonate`
-        // (Werewolf.cs:5128), which English.xml doesn't have.
-        Prompt::WitchHeal | Prompt::WitchPoison | Prompt::SpumpkinDetonate => None,
     }
 }
 
-/// Every `Prompt` variant, in one place, so both the completeness test
-/// (`sim/tests/locale_coverage.rs`) and anything else that needs "all of
-/// them" (a future exhaustive UI, say) can iterate without re-deriving the
-/// list by hand and risking it drifting from the enum above.
+/// [`Prompt::locale_key`], as a function.
+pub fn prompt_locale_key(prompt: Prompt) -> Option<&'static str> {
+    prompt.locale_key()
+}
+
+/// Every `Prompt` variant, for `sim/tests/locale_coverage.rs` and anything
+/// else that iterates them. A new variant goes here as well as in
+/// [`Prompt::locale_key`]; the compiler only enforces the latter.
 pub const ALL_PROMPTS: &[Prompt] = &[
     Prompt::WolfEat,
     Prompt::SerialKillerKill,

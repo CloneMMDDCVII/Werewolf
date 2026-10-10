@@ -1,7 +1,7 @@
 //! The legacy locale keys for deaths and game endings, and the list of
 //! every key the engine can produce.
 
-use super::{prompt_locale_key, ALL_PROMPTS};
+use super::ALL_PROMPTS;
 use crate::roles::def;
 use shared::{KillMethod, Role, Team};
 
@@ -134,7 +134,7 @@ pub fn game_over_message(outcome: &crate::WinOutcome, several_wolves: bool) -> O
     Some(crate::messages::Message::new(key, vec![]))
 }
 
-/// Every distinct locale key `prompt_locale_key`/`death_locale_key` can
+/// Every distinct locale key `Prompt::locale_key`/`death_locale_key` can
 /// currently produce, in one place — the input to the locale-coverage
 /// completeness check (`sim/tests/locale_coverage.rs`), which measures
 /// "how much of English.xml does this port actually reach" as a real
@@ -146,7 +146,7 @@ pub fn game_over_message(outcome: &crate::WinOutcome, several_wolves: bool) -> O
 /// hand-kept in sync rather than derived — small enough today that a
 /// missed update would be obvious in the coverage number itself.
 pub fn all_mapped_locale_keys() -> Vec<&'static str> {
-    let mut keys: Vec<&'static str> = ALL_PROMPTS.iter().filter_map(|&p| prompt_locale_key(p)).collect();
+    let mut keys: Vec<&'static str> = ALL_PROMPTS.iter().filter_map(|p| p.locale_key()).collect();
     keys.extend([
         // death_locale_key's non-`None` outputs.
         "LynchKill",
