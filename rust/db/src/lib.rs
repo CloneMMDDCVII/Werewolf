@@ -151,6 +151,14 @@ impl Store {
         migrations::current_version(self).await
     }
 
+    /// One trivial round trip (`SELECT 1`), for health checks. Waits for a
+    /// free connection like any query, so callers wanting a bound wrap it
+    /// in a timeout.
+    pub async fn ping(&self) -> DbResult<()> {
+        sqlx::query("SELECT 1").execute(&self.pool).await?;
+        Ok(())
+    }
+
     pub async fn close(&self) {
         self.pool.close().await;
     }

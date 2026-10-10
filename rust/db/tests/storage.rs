@@ -50,6 +50,18 @@ where
     }
 }
 
+// --- Health -----------------------------------------------------------
+
+#[tokio::test]
+async fn ping_answers_while_open_and_fails_once_closed() {
+    both(|store| async move {
+        store.ping().await.unwrap();
+        store.close().await;
+        assert!(store.ping().await.is_err());
+    })
+    .await;
+}
+
 // --- Group settings ---------------------------------------------------
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
