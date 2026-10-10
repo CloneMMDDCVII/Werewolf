@@ -51,7 +51,7 @@ fn user(id: i64) -> User {
 
 impl Bot {
     async fn new(max_games: usize) -> Bot {
-        Self::with_store(max_games, Store::in_memory().await.unwrap()).await
+        Self::with_store(max_games, memory_store().await).await
     }
 
     async fn with_store(max_games: usize, store: Store) -> Bot {
@@ -59,10 +59,11 @@ impl Bot {
     }
 
     async fn with_seed(seed: u64) -> Bot {
-        Self::build(10, Store::in_memory().await.unwrap(), seed).await
+        Self::build(10, memory_store().await, seed).await
     }
 
     async fn build(max_games: usize, store: Store, seed: u64) -> Bot {
+        STORES.with(|s| s.borrow_mut().push(store.clone()));
         let languages = languages_dir();
         let tg = Arc::new(FakeTelegram::default());
         tg.make_admin(GROUP, ADMIN);
@@ -208,21 +209,42 @@ async fn tick(secs: u64) {
 /// enough that hours of game time pass in seconds.
 const HEARTBEAT: Duration = Duration::from_millis(20);
 
+/// An in-memory store, opened with the clock running: opening it waits on
+/// SQLite's thread, and on a paused clock the pool's acquire timeout could
+/// fire before SQLite has answered.
+async fn memory_store() -> Store {
+    tokio::time::resume();
+    let store = Store::in_memory().await.unwrap();
+    tokio::time::pause();
+    store
+}
+
+thread_local! {
+    /// Every store a test on this thread opened, for `local!`'s heartbeat.
+    static STORES: std::cell::RefCell<Vec<Store>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// Runs a test body on a `LocalSet` with tokio's clock paused, the way
 /// `LocalSpawner` needs.
 ///
 /// SQLite runs on its own thread, which the paused clock can't see: while
 /// the runtime waits on it, tokio thinks everything is asleep and jumps
-/// the clock to the next timer (a game deadline, or the pool's acquire
-/// timeout). A timer that is always `HEARTBEAT` away keeps those jumps
-/// small.
+/// the clock to the next timer, so a slow query on a busy machine could
+/// let a game deadline pass. The heartbeat keeps the runtime awake, and
+/// time still, while any store has a query in flight; otherwise it is a
+/// timer `HEARTBEAT` away, which keeps the clock's jumps small.
 macro_rules! local {
     ($body:expr) => {
         tokio::task::LocalSet::new()
             .run_until(async {
                 let heartbeat = tokio::task::spawn_local(async {
                     loop {
-                        tokio::time::sleep(HEARTBEAT).await;
+                        if STORES.with(|s| s.borrow().iter().any(Store::is_busy)) {
+                            std::thread::sleep(Duration::from_micros(200));
+                            tokio::task::yield_now().await;
+                        } else {
+                            tokio::time::sleep(HEARTBEAT).await;
+                        }
                     }
                 });
                 let out = $body.await;
@@ -616,7 +638,7 @@ async fn a_game_that_panics_frees_its_group_and_says_why() {
 #[tokio::test(start_paused = true)]
 async fn games_cut_off_by_a_crash_are_announced_on_restart() {
     local!(async {
-        let store = Store::in_memory().await.unwrap();
+        let store = memory_store().await;
         {
             let bot = Bot::with_store(10, store.clone()).await;
             bot.start_game(1..=5).await;
@@ -635,7 +657,7 @@ async fn games_cut_off_by_a_crash_are_announced_on_restart() {
 #[tokio::test(start_paused = true)]
 async fn an_unreachable_database_is_asked_twice_for_interrupted_games() {
     local!(async {
-        let store = Store::in_memory().await.unwrap();
+        let store = memory_store().await;
         let bot = Bot::with_store(10, store.clone()).await;
         store.close().await;
         let before = tokio::time::Instant::now();

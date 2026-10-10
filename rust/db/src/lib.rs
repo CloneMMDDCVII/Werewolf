@@ -151,6 +151,13 @@ impl Store {
         migrations::current_version(self).await
     }
 
+    /// Whether a query holds a connection right now. Tests on tokio's
+    /// paused clock use it to keep time still while SQLite works on its
+    /// own thread.
+    pub fn is_busy(&self) -> bool {
+        self.pool.size() as usize > self.pool.num_idle()
+    }
+
     /// One trivial round trip (`SELECT 1`), for health checks. Waits for a
     /// free connection like any query, so callers wanting a bound wrap it
     /// in a timeout.
