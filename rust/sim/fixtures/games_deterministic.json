@@ -1,0 +1,5828 @@
+{
+  "games": [
+    {
+      "game_id": 29024184,
+      "game_mode": "Normal",
+      "group_name": "Group-901350266",
+      "group_telegram_id": 901350266,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "2B2B",
+          "killer_telegram_id": 107678763,
+          "timestamp": "2026-07-01T06:46:55.967",
+          "victim_name": "2B2A",
+          "victim_telegram_id": 107678762
+        },
+        {
+          "day": 1,
+          "kill_method": "Shoot",
+          "killer_name": "977A",
+          "killer_telegram_id": 107706490,
+          "timestamp": "2026-07-01T06:48:57.157",
+          "victim_name": "E5E9",
+          "victim_telegram_id": 107661033
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "977A",
+          "killer_telegram_id": 107706490,
+          "timestamp": "2026-07-01T06:49:30.847",
+          "victim_name": "324A",
+          "victim_telegram_id": 107680586
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "2B2B",
+          "killer_telegram_id": 107678763,
+          "timestamp": "2026-07-01T06:49:30.847",
+          "victim_name": "324A",
+          "victim_telegram_id": 107680586
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "2B2B",
+          "killer_telegram_id": 107678763,
+          "timestamp": "2026-07-01T06:49:37.370",
+          "victim_name": "977A",
+          "victim_telegram_id": 107706490
+        }
+      ],
+      "players": [
+        {
+          "name": "E5E9",
+          "role": "Tanner",
+          "survived": false,
+          "telegram_id": 107661033,
+          "won": false
+        },
+        {
+          "name": "2B2A",
+          "role": "Fool",
+          "survived": false,
+          "telegram_id": 107678762,
+          "won": false
+        },
+        {
+          "name": "2B2B",
+          "role": "WolfCub",
+          "survived": true,
+          "telegram_id": 107678763,
+          "won": true
+        },
+        {
+          "name": "324A",
+          "role": "Oracle",
+          "survived": false,
+          "telegram_id": 107680586,
+          "won": false
+        },
+        {
+          "name": "977A",
+          "role": "Gunner",
+          "survived": false,
+          "telegram_id": 107706490,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:49:37.370",
+      "time_started": "2026-07-01T06:45:20.667",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024181,
+      "game_mode": "Chaos",
+      "group_name": "Group-901352371",
+      "group_telegram_id": 901352371,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "4128",
+          "killer_telegram_id": 107684392,
+          "timestamp": "2026-07-01T06:44:42.260",
+          "victim_name": "831E",
+          "victim_telegram_id": 107701278
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "4128",
+          "killer_telegram_id": 107684392,
+          "timestamp": "2026-07-01T06:48:26.573",
+          "victim_name": "8EB8",
+          "victim_telegram_id": 107311032
+        },
+        {
+          "day": 2,
+          "kill_method": "Chemistry",
+          "killer_name": "EBEE",
+          "killer_telegram_id": 107072750,
+          "timestamp": "2026-07-01T06:48:26.587",
+          "victim_name": "EBEE",
+          "victim_telegram_id": 107072750
+        }
+      ],
+      "players": [
+        {
+          "name": "EBEE",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107072750,
+          "won": false
+        },
+        {
+          "name": "84DE",
+          "role": "Mason",
+          "survived": true,
+          "telegram_id": 107242974,
+          "won": false
+        },
+        {
+          "name": "8EB8",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107311032,
+          "won": false
+        },
+        {
+          "name": "4128",
+          "role": "AlphaWolf",
+          "survived": true,
+          "telegram_id": 107684392,
+          "won": true
+        },
+        {
+          "name": "831E",
+          "role": "Blacksmith",
+          "survived": false,
+          "telegram_id": 107701278,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:48:26.603",
+      "time_started": "2026-07-01T06:44:33.817",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024174,
+      "game_mode": "Normal",
+      "group_name": "Group-901257883",
+      "group_telegram_id": 901257883,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "7D41",
+          "killer_telegram_id": 107699777,
+          "timestamp": "2026-07-01T06:41:37.353",
+          "victim_name": "80AD",
+          "victim_telegram_id": 107700653
+        },
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "846A",
+          "killer_telegram_id": 107701610,
+          "timestamp": "2026-07-01T06:41:37.353",
+          "victim_name": "2B35",
+          "victim_telegram_id": 107678773
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "0D0E",
+          "killer_telegram_id": 107671054,
+          "timestamp": "2026-07-01T06:43:38.713",
+          "victim_name": "846A",
+          "victim_telegram_id": 107701610
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9DDF",
+          "killer_telegram_id": 107314911,
+          "timestamp": "2026-07-01T06:43:38.720",
+          "victim_name": "846A",
+          "victim_telegram_id": 107701610
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "E9DD",
+          "killer_telegram_id": 107662045,
+          "timestamp": "2026-07-01T06:43:38.723",
+          "victim_name": "846A",
+          "victim_telegram_id": 107701610
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "3B65",
+          "killer_telegram_id": 107682917,
+          "timestamp": "2026-07-01T06:43:38.727",
+          "victim_name": "846A",
+          "victim_telegram_id": 107701610
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "7D41",
+          "killer_telegram_id": 107699777,
+          "timestamp": "2026-07-01T06:44:36.907",
+          "victim_name": "0D0E",
+          "victim_telegram_id": 107671054
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "E9DD",
+          "killer_telegram_id": 107662045,
+          "timestamp": "2026-07-01T06:46:38.210",
+          "victim_name": "7D41",
+          "victim_telegram_id": 107699777
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "3B65",
+          "killer_telegram_id": 107682917,
+          "timestamp": "2026-07-01T06:46:38.210",
+          "victim_name": "7D41",
+          "victim_telegram_id": 107699777
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "9DDF",
+          "killer_telegram_id": 107314911,
+          "timestamp": "2026-07-01T06:46:38.210",
+          "victim_name": "7D41",
+          "victim_telegram_id": 107699777
+        }
+      ],
+      "players": [
+        {
+          "name": "9DDF",
+          "role": "Cursed",
+          "survived": true,
+          "telegram_id": 107314911,
+          "won": true
+        },
+        {
+          "name": "E9DD",
+          "role": "GuardianAngel",
+          "survived": true,
+          "telegram_id": 107662045,
+          "won": true
+        },
+        {
+          "name": "0D0E",
+          "role": "Seer",
+          "survived": false,
+          "telegram_id": 107671054,
+          "won": true
+        },
+        {
+          "name": "2B35",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107678773,
+          "won": true
+        },
+        {
+          "name": "3B65",
+          "role": "ApprenticeSeer",
+          "survived": true,
+          "telegram_id": 107682917,
+          "won": true
+        },
+        {
+          "name": "7D41",
+          "role": "Lycan",
+          "survived": false,
+          "telegram_id": 107699777,
+          "won": false
+        },
+        {
+          "name": "80AD",
+          "role": "Prince",
+          "survived": false,
+          "telegram_id": 107700653,
+          "won": true
+        },
+        {
+          "name": "846A",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107701610,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:46:38.210",
+      "time_started": "2026-07-01T06:40:44.230",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024169,
+      "game_mode": "Normal",
+      "group_name": "Group-901355339",
+      "group_telegram_id": 901355339,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "61EA",
+          "killer_telegram_id": 107627242,
+          "timestamp": "2026-07-01T06:36:01.733",
+          "victim_name": "92DA",
+          "victim_telegram_id": 107639770
+        },
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "6230",
+          "killer_telegram_id": 107627312,
+          "timestamp": "2026-07-01T06:36:01.740",
+          "victim_name": "61EA",
+          "victim_telegram_id": 107627242
+        },
+        {
+          "day": 2,
+          "kill_method": "SerialKilled",
+          "killer_name": "6230",
+          "killer_telegram_id": 107627312,
+          "timestamp": "2026-07-01T06:38:27.857",
+          "victim_name": "81F6",
+          "victim_telegram_id": 107700982
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "6540",
+          "killer_telegram_id": 107693632,
+          "timestamp": "2026-07-01T06:42:03.393",
+          "victim_name": "83A0",
+          "victim_telegram_id": 107504800
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "90CB",
+          "killer_telegram_id": 107704779,
+          "timestamp": "2026-07-01T06:42:03.393",
+          "victim_name": "83A0",
+          "victim_telegram_id": 107504800
+        },
+        {
+          "day": 3,
+          "kill_method": "SerialKilled",
+          "killer_name": "6230",
+          "killer_telegram_id": 107627312,
+          "timestamp": "2026-07-01T06:43:01.200",
+          "victim_name": "90CB",
+          "victim_telegram_id": 107704779
+        },
+        {
+          "day": 3,
+          "kill_method": "Idle",
+          "killer_name": "DC8E",
+          "killer_telegram_id": 107658638,
+          "timestamp": "2026-07-01T06:46:34.300",
+          "victim_name": "DC8E",
+          "victim_telegram_id": 107658638
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "6540",
+          "killer_telegram_id": 107693632,
+          "timestamp": "2026-07-01T06:46:34.343",
+          "victim_name": "57F2",
+          "victim_telegram_id": 107690226
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "6230",
+          "killer_telegram_id": 107627312,
+          "timestamp": "2026-07-01T06:46:34.390",
+          "victim_name": "57F2",
+          "victim_telegram_id": 107690226
+        },
+        {
+          "day": 3,
+          "kill_method": "SerialKilled",
+          "killer_name": "6230",
+          "killer_telegram_id": 107627312,
+          "timestamp": "2026-07-01T06:46:34.890",
+          "victim_name": "6540",
+          "victim_telegram_id": 107693632
+        }
+      ],
+      "players": [
+        {
+          "name": "83A0",
+          "role": "Oracle",
+          "survived": false,
+          "telegram_id": 107504800,
+          "won": false
+        },
+        {
+          "name": "61EA",
+          "role": "AlphaWolf",
+          "survived": false,
+          "telegram_id": 107627242,
+          "won": false
+        },
+        {
+          "name": "6230",
+          "role": "SerialKiller",
+          "survived": true,
+          "telegram_id": 107627312,
+          "won": true
+        },
+        {
+          "name": "92DA",
+          "role": "Gunner",
+          "survived": false,
+          "telegram_id": 107639770,
+          "won": false
+        },
+        {
+          "name": "DC8E",
+          "role": "Detective",
+          "survived": false,
+          "telegram_id": 107658638,
+          "won": false
+        },
+        {
+          "name": "57F2",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107690226,
+          "won": false
+        },
+        {
+          "name": "6540",
+          "role": "Pacifist",
+          "survived": false,
+          "telegram_id": 107693632,
+          "won": false
+        },
+        {
+          "name": "81F6",
+          "role": "Blacksmith",
+          "survived": false,
+          "telegram_id": 107700982,
+          "won": false
+        },
+        {
+          "name": "90CB",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107704779,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:46:34.837",
+      "time_started": "2026-07-01T06:35:04.233",
+      "winner": "SerialKiller"
+    },
+    {
+      "game_id": 29024161,
+      "game_mode": "Normal",
+      "group_name": "Group-901344288",
+      "group_telegram_id": 901344288,
+      "kills": [
+        {
+          "day": 2,
+          "kill_method": "Chemistry",
+          "killer_name": "3A50",
+          "killer_telegram_id": 107617104,
+          "timestamp": "2026-07-01T06:35:22.877",
+          "victim_name": "2725",
+          "victim_telegram_id": 107612197
+        },
+        {
+          "day": 3,
+          "kill_method": "Burn",
+          "killer_name": "272D",
+          "killer_telegram_id": 107612205,
+          "timestamp": "2026-07-01T06:38:35.723",
+          "victim_name": "2721",
+          "victim_telegram_id": 107612193
+        },
+        {
+          "day": 3,
+          "kill_method": "Burn",
+          "killer_name": "272D",
+          "killer_telegram_id": 107612205,
+          "timestamp": "2026-07-01T06:38:35.737",
+          "victim_name": "3A50",
+          "victim_telegram_id": 107617104
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "272D",
+          "killer_telegram_id": 107612205,
+          "timestamp": "2026-07-01T06:45:46.090",
+          "victim_name": "69DC",
+          "victim_telegram_id": 107694812
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "2E71",
+          "killer_telegram_id": 107614065,
+          "timestamp": "2026-07-01T06:45:46.090",
+          "victim_name": "69DC",
+          "victim_telegram_id": 107694812
+        }
+      ],
+      "players": [
+        {
+          "name": "2721",
+          "role": "WiseElder",
+          "survived": false,
+          "telegram_id": 107612193,
+          "won": false
+        },
+        {
+          "name": "2725",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107612197,
+          "won": false
+        },
+        {
+          "name": "272D",
+          "role": "Arsonist",
+          "survived": true,
+          "telegram_id": 107612205,
+          "won": false
+        },
+        {
+          "name": "2A26",
+          "role": "Drunk",
+          "survived": true,
+          "telegram_id": 107612966,
+          "won": false
+        },
+        {
+          "name": "2E71",
+          "role": "Cupid",
+          "survived": true,
+          "telegram_id": 107614065,
+          "won": false
+        },
+        {
+          "name": "3A50",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107617104,
+          "won": false
+        },
+        {
+          "name": "69DC",
+          "role": "Tanner",
+          "survived": false,
+          "telegram_id": 107694812,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:45:46.090",
+      "time_started": "2026-07-01T06:31:16.593",
+      "winner": "Tanner"
+    },
+    {
+      "game_id": 29024162,
+      "game_mode": "Normal",
+      "group_name": "Group-901345682",
+      "group_telegram_id": 901345682,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "04A9",
+          "killer_telegram_id": 107275689,
+          "timestamp": "2026-07-01T06:32:43.703",
+          "victim_name": "8B75",
+          "victim_telegram_id": 107703413
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "04A9",
+          "killer_telegram_id": 107275689,
+          "timestamp": "2026-07-01T06:36:17.580",
+          "victim_name": "9C48",
+          "victim_telegram_id": 107707720
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "A5A1",
+          "killer_telegram_id": 107316897,
+          "timestamp": "2026-07-01T06:36:17.833",
+          "victim_name": "9C48",
+          "victim_telegram_id": 107707720
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "3FB2",
+          "killer_telegram_id": 107225266,
+          "timestamp": "2026-07-01T06:36:18.167",
+          "victim_name": "9C48",
+          "victim_telegram_id": 107707720
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "CFF2",
+          "killer_telegram_id": 107393266,
+          "timestamp": "2026-07-01T06:36:18.377",
+          "victim_name": "9C48",
+          "victim_telegram_id": 107707720
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "3435",
+          "killer_telegram_id": 106566965,
+          "timestamp": "2026-07-01T06:36:18.387",
+          "victim_name": "9C48",
+          "victim_telegram_id": 107707720
+        },
+        {
+          "day": 2,
+          "kill_method": "Burn",
+          "killer_name": "3435",
+          "killer_telegram_id": 106566965,
+          "timestamp": "2026-07-01T06:37:51.437",
+          "victim_name": "04A9",
+          "victim_telegram_id": 107275689
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "A5A1",
+          "killer_telegram_id": 107316897,
+          "timestamp": "2026-07-01T06:41:24.737",
+          "victim_name": "3FB2",
+          "victim_telegram_id": 107225266
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "CFF2",
+          "killer_telegram_id": 107393266,
+          "timestamp": "2026-07-01T06:41:24.737",
+          "victim_name": "3FB2",
+          "victim_telegram_id": 107225266
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "A5A1",
+          "killer_telegram_id": 107316897,
+          "timestamp": "2026-07-01T06:45:10.733",
+          "victim_name": "3435",
+          "victim_telegram_id": 106566965
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "CFF2",
+          "killer_telegram_id": 107393266,
+          "timestamp": "2026-07-01T06:45:10.737",
+          "victim_name": "3435",
+          "victim_telegram_id": 106566965
+        }
+      ],
+      "players": [
+        {
+          "name": "3435",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 106566965,
+          "won": false
+        },
+        {
+          "name": "3FB2",
+          "role": "Seer",
+          "survived": false,
+          "telegram_id": 107225266,
+          "won": true
+        },
+        {
+          "name": "04A9",
+          "role": "AlphaWolf",
+          "survived": false,
+          "telegram_id": 107275689,
+          "won": false
+        },
+        {
+          "name": "A5A1",
+          "role": "Mason",
+          "survived": true,
+          "telegram_id": 107316897,
+          "won": true
+        },
+        {
+          "name": "CFF2",
+          "role": "GraveDigger",
+          "survived": true,
+          "telegram_id": 107393266,
+          "won": true
+        },
+        {
+          "name": "8B75",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107703413,
+          "won": true
+        },
+        {
+          "name": "9C48",
+          "role": "Gunner",
+          "survived": false,
+          "telegram_id": 107707720,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:45:10.737",
+      "time_started": "2026-07-01T06:31:36.733",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024168,
+      "game_mode": "Normal",
+      "group_name": "Group-901354957",
+      "group_telegram_id": 901354957,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "6579",
+          "killer_telegram_id": 107693689,
+          "timestamp": "2026-07-01T06:36:10.297",
+          "victim_name": "0CA5",
+          "victim_telegram_id": 107081125
+        },
+        {
+          "day": 2,
+          "kill_method": "SerialKilled",
+          "killer_name": "6579",
+          "killer_telegram_id": 107693689,
+          "timestamp": "2026-07-01T06:41:09.713",
+          "victim_name": "8110",
+          "victim_telegram_id": 107700752
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "5A63",
+          "killer_telegram_id": 107690851,
+          "timestamp": "2026-07-01T06:43:49.760",
+          "victim_name": "6579",
+          "victim_telegram_id": 107693689
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "5155",
+          "killer_telegram_id": 107688533,
+          "timestamp": "2026-07-01T06:43:49.763",
+          "victim_name": "6579",
+          "victim_telegram_id": 107693689
+        }
+      ],
+      "players": [
+        {
+          "name": "0CA5",
+          "role": "Fool",
+          "survived": false,
+          "telegram_id": 107081125,
+          "won": true
+        },
+        {
+          "name": "5155",
+          "role": "Gunner",
+          "survived": true,
+          "telegram_id": 107688533,
+          "won": true
+        },
+        {
+          "name": "5A63",
+          "role": "Oracle",
+          "survived": true,
+          "telegram_id": 107690851,
+          "won": true
+        },
+        {
+          "name": "6579",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107693689,
+          "won": false
+        },
+        {
+          "name": "8110",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107700752,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:43:49.763",
+      "time_started": "2026-07-01T06:34:36.643",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024173,
+      "game_mode": "Chaos",
+      "group_name": "Group-901352371",
+      "group_telegram_id": 901352371,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "EBEE",
+          "killer_telegram_id": 107072750,
+          "timestamp": "2026-07-01T06:38:46.050",
+          "victim_name": "8EB8",
+          "victim_telegram_id": 107311032
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "84DE",
+          "killer_telegram_id": 107242974,
+          "timestamp": "2026-07-01T06:42:49.043",
+          "victim_name": "EBEE",
+          "victim_telegram_id": 107072750
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "4128",
+          "killer_telegram_id": 107684392,
+          "timestamp": "2026-07-01T06:42:49.043",
+          "victim_name": "EBEE",
+          "victim_telegram_id": 107072750
+        }
+      ],
+      "players": [
+        {
+          "name": "EBEE",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107072750,
+          "won": false
+        },
+        {
+          "name": "84DE",
+          "role": "GuardianAngel",
+          "survived": true,
+          "telegram_id": 107242974,
+          "won": true
+        },
+        {
+          "name": "8EB8",
+          "role": "Beholder",
+          "survived": false,
+          "telegram_id": 107311032,
+          "won": true
+        },
+        {
+          "name": "624B",
+          "role": "Fool",
+          "survived": true,
+          "telegram_id": 107627339,
+          "won": true
+        },
+        {
+          "name": "4128",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 107684392,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:42:49.060",
+      "time_started": "2026-07-01T06:37:12.323",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024172,
+      "game_mode": "Chaos",
+      "group_name": "Group-901328534",
+      "group_telegram_id": 901328534,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "676B",
+          "killer_telegram_id": 106580075,
+          "timestamp": "2026-07-01T06:37:38.753",
+          "victim_name": "DDC8",
+          "victim_telegram_id": 107331272
+        },
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "31B4",
+          "killer_telegram_id": 107680436,
+          "timestamp": "2026-07-01T06:37:38.773",
+          "victim_name": "5AFA",
+          "victim_telegram_id": 107691002
+        },
+        {
+          "day": 1,
+          "kill_method": "Shoot",
+          "killer_name": "02F6",
+          "killer_telegram_id": 107602934,
+          "timestamp": "2026-07-01T06:39:10.260",
+          "victim_name": "31B4",
+          "victim_telegram_id": 107680436
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "B170",
+          "killer_telegram_id": 106599024,
+          "timestamp": "2026-07-01T06:40:42.633",
+          "victim_name": "79EF",
+          "victim_telegram_id": 107567855
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "02F6",
+          "killer_telegram_id": 107602934,
+          "timestamp": "2026-07-01T06:40:42.667",
+          "victim_name": "79EF",
+          "victim_telegram_id": 107567855
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "676B",
+          "killer_telegram_id": 106580075,
+          "timestamp": "2026-07-01T06:41:01.667",
+          "victim_name": "704D",
+          "victim_telegram_id": 107499853
+        },
+        {
+          "day": 2,
+          "kill_method": "Shoot",
+          "killer_name": "02F6",
+          "killer_telegram_id": 107602934,
+          "timestamp": "2026-07-01T06:42:32.933",
+          "victim_name": "676B",
+          "victim_telegram_id": 106580075
+        }
+      ],
+      "players": [
+        {
+          "name": "2C19",
+          "role": "Augur",
+          "survived": true,
+          "telegram_id": 103550233,
+          "won": true
+        },
+        {
+          "name": "676B",
+          "role": "WolfCub",
+          "survived": false,
+          "telegram_id": 106580075,
+          "won": false
+        },
+        {
+          "name": "B170",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 106599024,
+          "won": true
+        },
+        {
+          "name": "DDC8",
+          "role": "GraveDigger",
+          "survived": false,
+          "telegram_id": 107331272,
+          "won": true
+        },
+        {
+          "name": "704D",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 107499853,
+          "won": true
+        },
+        {
+          "name": "79EF",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107567855,
+          "won": true
+        },
+        {
+          "name": "02F6",
+          "role": "Gunner",
+          "survived": true,
+          "telegram_id": 107602934,
+          "won": true
+        },
+        {
+          "name": "31B4",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107680436,
+          "won": false
+        },
+        {
+          "name": "5AFA",
+          "role": "WiseElder",
+          "survived": false,
+          "telegram_id": 107691002,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:42:32.963",
+      "time_started": "2026-07-01T06:36:46.247",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024170,
+      "game_mode": "Chaos",
+      "group_name": "Group-901355063",
+      "group_telegram_id": 901355063,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "VisitKiller",
+          "killer_name": "B45F",
+          "killer_telegram_id": 106337631,
+          "timestamp": "2026-07-01T06:37:09.587",
+          "victim_name": "690E",
+          "victim_telegram_id": 107104782
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "0AA3",
+          "killer_telegram_id": 103017379,
+          "timestamp": "2026-07-01T06:41:13.817",
+          "victim_name": "B45F",
+          "victim_telegram_id": 106337631
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "69B8",
+          "killer_telegram_id": 106842808,
+          "timestamp": "2026-07-01T06:41:13.847",
+          "victim_name": "B45F",
+          "victim_telegram_id": 106337631
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "64E8",
+          "killer_telegram_id": 107693544,
+          "timestamp": "2026-07-01T06:41:13.847",
+          "victim_name": "B45F",
+          "victim_telegram_id": 106337631
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9BA8",
+          "killer_telegram_id": 107707560,
+          "timestamp": "2026-07-01T06:41:13.847",
+          "victim_name": "B45F",
+          "victim_telegram_id": 106337631
+        }
+      ],
+      "players": [
+        {
+          "name": "0AA3",
+          "role": "Sandman",
+          "survived": true,
+          "telegram_id": 103017379,
+          "won": true
+        },
+        {
+          "name": "B45F",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 106337631,
+          "won": false
+        },
+        {
+          "name": "69B8",
+          "role": "Beholder",
+          "survived": true,
+          "telegram_id": 106842808,
+          "won": true
+        },
+        {
+          "name": "690E",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107104782,
+          "won": false
+        },
+        {
+          "name": "C4AA",
+          "role": "WiseElder",
+          "survived": true,
+          "telegram_id": 107128234,
+          "won": true
+        },
+        {
+          "name": "B8C6",
+          "role": "WolfMan",
+          "survived": true,
+          "telegram_id": 107256262,
+          "won": true
+        },
+        {
+          "name": "64E8",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 107693544,
+          "won": true
+        },
+        {
+          "name": "9BA8",
+          "role": "Augur",
+          "survived": true,
+          "telegram_id": 107707560,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:41:13.847",
+      "time_started": "2026-07-01T06:35:22.283",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024151,
+      "game_mode": "Normal",
+      "group_name": "Group-901335097",
+      "group_telegram_id": 901335097,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:28:28.433",
+          "victim_name": "559A",
+          "victim_telegram_id": 107689626
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:35:00.177",
+          "victim_name": "4340",
+          "victim_telegram_id": 107684928
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "7947",
+          "killer_telegram_id": 107698759,
+          "timestamp": "2026-07-01T06:35:00.193",
+          "victim_name": "4340",
+          "victim_telegram_id": 107684928
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "9B82",
+          "killer_telegram_id": 107707522,
+          "timestamp": "2026-07-01T06:35:00.197",
+          "victim_name": "4340",
+          "victim_telegram_id": 107684928
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:35:19.143",
+          "victim_name": "7CC4",
+          "victim_telegram_id": 107699652
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:38:01.757",
+          "victim_name": "9B8A",
+          "victim_telegram_id": 107707530
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "7947",
+          "killer_telegram_id": 107698759,
+          "timestamp": "2026-07-01T06:38:01.760",
+          "victim_name": "9B8A",
+          "victim_telegram_id": 107707530
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "9B82",
+          "killer_telegram_id": 107707522,
+          "timestamp": "2026-07-01T06:38:01.760",
+          "victim_name": "9B8A",
+          "victim_telegram_id": 107707530
+        },
+        {
+          "day": 4,
+          "kill_method": "Eat",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:38:08.097",
+          "victim_name": "9B82",
+          "victim_telegram_id": 107707522
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "5248",
+          "killer_telegram_id": 107688776,
+          "timestamp": "2026-07-01T06:40:56.463",
+          "victim_name": "4B40",
+          "victim_telegram_id": 107686976
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "7947",
+          "killer_telegram_id": 107698759,
+          "timestamp": "2026-07-01T06:40:56.463",
+          "victim_name": "4B40",
+          "victim_telegram_id": 107686976
+        }
+      ],
+      "players": [
+        {
+          "name": "4340",
+          "role": "Beholder",
+          "survived": false,
+          "telegram_id": 107684928,
+          "won": true
+        },
+        {
+          "name": "4B40",
+          "role": "WolfCub",
+          "survived": false,
+          "telegram_id": 107686976,
+          "won": false
+        },
+        {
+          "name": "5248",
+          "role": "Sandman",
+          "survived": true,
+          "telegram_id": 107688776,
+          "won": true
+        },
+        {
+          "name": "559A",
+          "role": "ClumsyGuy",
+          "survived": false,
+          "telegram_id": 107689626,
+          "won": true
+        },
+        {
+          "name": "7947",
+          "role": "Mayor",
+          "survived": true,
+          "telegram_id": 107698759,
+          "won": true
+        },
+        {
+          "name": "7CC4",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107699652,
+          "won": true
+        },
+        {
+          "name": "9B82",
+          "role": "Prince",
+          "survived": false,
+          "telegram_id": 107707522,
+          "won": true
+        },
+        {
+          "name": "9B8A",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107707530,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:40:56.463",
+      "time_started": "2026-07-01T06:27:44.477",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024166,
+      "game_mode": "Chaos",
+      "group_name": "Group-901356647",
+      "group_telegram_id": 901356647,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "7B2A",
+          "killer_telegram_id": 107699242,
+          "timestamp": "2026-07-01T06:35:08.607",
+          "victim_name": "75F9",
+          "victim_telegram_id": 107173625
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "F6C4",
+          "killer_telegram_id": 107403204,
+          "timestamp": "2026-07-01T06:37:19.733",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9B88",
+          "killer_telegram_id": 107576456,
+          "timestamp": "2026-07-01T06:37:19.743",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "CC8A",
+          "killer_telegram_id": 107654538,
+          "timestamp": "2026-07-01T06:37:19.743",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "5CB5",
+          "killer_telegram_id": 107691445,
+          "timestamp": "2026-07-01T06:37:19.743",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "7B2A",
+          "killer_telegram_id": 107699242,
+          "timestamp": "2026-07-01T06:37:19.743",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        },
+        {
+          "day": 1,
+          "kill_method": "LoverDied",
+          "killer_name": "9C3F",
+          "killer_telegram_id": 107707711,
+          "timestamp": "2026-07-01T06:37:19.757",
+          "victim_name": "4D1C",
+          "victim_telegram_id": 107687452
+        },
+        {
+          "day": 2,
+          "kill_method": "SerialKilled",
+          "killer_name": "7B2A",
+          "killer_telegram_id": 107699242,
+          "timestamp": "2026-07-01T06:37:44.780",
+          "victim_name": "9B88",
+          "victim_telegram_id": 107576456
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "F6C4",
+          "killer_telegram_id": 107403204,
+          "timestamp": "2026-07-01T06:40:11.277",
+          "victim_name": "CC8A",
+          "victim_telegram_id": 107654538
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "7B2A",
+          "killer_telegram_id": 107699242,
+          "timestamp": "2026-07-01T06:40:11.280",
+          "victim_name": "CC8A",
+          "victim_telegram_id": 107654538
+        },
+        {
+          "day": 2,
+          "kill_method": "HunterShot",
+          "killer_name": "CC8A",
+          "killer_telegram_id": 107654538,
+          "timestamp": "2026-07-01T06:40:21.530",
+          "victim_name": "F6C4",
+          "victim_telegram_id": 107403204
+        },
+        {
+          "day": 2,
+          "kill_method": "SerialKilled",
+          "killer_name": "7B2A",
+          "killer_telegram_id": 107699242,
+          "timestamp": "2026-07-01T06:40:21.547",
+          "victim_name": "5CB5",
+          "victim_telegram_id": 107691445
+        }
+      ],
+      "players": [
+        {
+          "name": "75F9",
+          "role": "GraveDigger",
+          "survived": false,
+          "telegram_id": 107173625,
+          "won": false
+        },
+        {
+          "name": "F6C4",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107403204,
+          "won": false
+        },
+        {
+          "name": "9B88",
+          "role": "Tanner",
+          "survived": false,
+          "telegram_id": 107576456,
+          "won": false
+        },
+        {
+          "name": "CC8A",
+          "role": "Hunter",
+          "survived": false,
+          "telegram_id": 107654538,
+          "won": false
+        },
+        {
+          "name": "4D1C",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107687452,
+          "won": false
+        },
+        {
+          "name": "5CB5",
+          "role": "Cupid",
+          "survived": false,
+          "telegram_id": 107691445,
+          "won": false
+        },
+        {
+          "name": "7B2A",
+          "role": "SerialKiller",
+          "survived": true,
+          "telegram_id": 107699242,
+          "won": true
+        },
+        {
+          "name": "9C3F",
+          "role": "WiseElder",
+          "survived": false,
+          "telegram_id": 107707711,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:40:21.530",
+      "time_started": "2026-07-01T06:34:07.667",
+      "winner": "SerialKiller"
+    },
+    {
+      "game_id": 29024137,
+      "game_mode": "Normal",
+      "group_name": "Group-901356860",
+      "group_telegram_id": 901356860,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "7282",
+          "killer_telegram_id": 107631490,
+          "timestamp": "2026-07-01T06:25:42.423",
+          "victim_name": "D5A9",
+          "victim_telegram_id": 107591337
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9BAE",
+          "killer_telegram_id": 107707566,
+          "timestamp": "2026-07-01T06:25:42.423",
+          "victim_name": "D5A9",
+          "victim_telegram_id": 107591337
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9BC1",
+          "killer_telegram_id": 107707585,
+          "timestamp": "2026-07-01T06:25:42.423",
+          "victim_name": "D5A9",
+          "victim_telegram_id": 107591337
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9C0F",
+          "killer_telegram_id": 107707663,
+          "timestamp": "2026-07-01T06:25:42.423",
+          "victim_name": "D5A9",
+          "victim_telegram_id": 107591337
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "7282",
+          "killer_telegram_id": 107631490,
+          "timestamp": "2026-07-01T06:32:22.137",
+          "victim_name": "9C0F",
+          "victim_telegram_id": 107707663
+        },
+        {
+          "day": 3,
+          "kill_method": "Idle",
+          "killer_name": "7282",
+          "killer_telegram_id": 107631490,
+          "timestamp": "2026-07-01T06:35:56.297",
+          "victim_name": "7282",
+          "victim_telegram_id": 107631490
+        }
+      ],
+      "players": [
+        {
+          "name": "783D",
+          "role": "Detective",
+          "survived": true,
+          "telegram_id": 107239741,
+          "won": true
+        },
+        {
+          "name": "CB20",
+          "role": "Tanner",
+          "survived": true,
+          "telegram_id": 107523104,
+          "won": false
+        },
+        {
+          "name": "D5A9",
+          "role": "Cursed",
+          "survived": false,
+          "telegram_id": 107591337,
+          "won": true
+        },
+        {
+          "name": "7282",
+          "role": "WolfCub",
+          "survived": false,
+          "telegram_id": 107631490,
+          "won": false
+        },
+        {
+          "name": "747A",
+          "role": "Mason",
+          "survived": true,
+          "telegram_id": 107631994,
+          "won": true
+        },
+        {
+          "name": "9BAE",
+          "role": "Blacksmith",
+          "survived": true,
+          "telegram_id": 107707566,
+          "won": true
+        },
+        {
+          "name": "9BC1",
+          "role": "Villager",
+          "survived": true,
+          "telegram_id": 107707585,
+          "won": true
+        },
+        {
+          "name": "9BC4",
+          "role": "ClumsyGuy",
+          "survived": true,
+          "telegram_id": 107707588,
+          "won": true
+        },
+        {
+          "name": "9C0F",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107707663,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:35:56.297",
+      "time_started": "2026-07-01T06:20:31.510",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024157,
+      "game_mode": "Chaos",
+      "group_name": "Group-900000001",
+      "group_telegram_id": 900000001,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "F365",
+          "killer_telegram_id": 107533413,
+          "timestamp": "2026-07-01T06:31:15.743",
+          "victim_name": "E803",
+          "victim_telegram_id": 107661571
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "23F9",
+          "killer_telegram_id": 107152633,
+          "timestamp": "2026-07-01T06:33:48.400",
+          "victim_name": "381C",
+          "victim_telegram_id": 101062940
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "F365",
+          "killer_telegram_id": 107533413,
+          "timestamp": "2026-07-01T06:33:48.590",
+          "victim_name": "381C",
+          "victim_telegram_id": 101062940
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "F365",
+          "killer_telegram_id": 107533413,
+          "timestamp": "2026-07-01T06:34:09.937",
+          "victim_name": "7628",
+          "victim_telegram_id": 100095784
+        }
+      ],
+      "players": [
+        {
+          "name": "7628",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 100095784,
+          "won": false
+        },
+        {
+          "name": "381C",
+          "role": "GraveDigger",
+          "survived": false,
+          "telegram_id": 101062940,
+          "won": false
+        },
+        {
+          "name": "23F9",
+          "role": "Fool",
+          "survived": true,
+          "telegram_id": 107152633,
+          "won": false
+        },
+        {
+          "name": "F365",
+          "role": "Lycan",
+          "survived": true,
+          "telegram_id": 107533413,
+          "won": true
+        },
+        {
+          "name": "E803",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 107661571,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:34:10.113",
+      "time_started": "2026-07-01T06:30:10.340",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024145,
+      "game_mode": "Normal",
+      "group_name": "Group-901328399",
+      "group_telegram_id": 901328399,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "402A",
+          "killer_telegram_id": 107487530,
+          "timestamp": "2026-07-01T06:24:53.217",
+          "victim_name": "8569",
+          "victim_telegram_id": 107701865
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "402A",
+          "killer_telegram_id": 107487530,
+          "timestamp": "2026-07-01T06:28:07.957",
+          "victim_name": "4295",
+          "victim_telegram_id": 107488149
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "3A9B",
+          "killer_telegram_id": 107551643,
+          "timestamp": "2026-07-01T06:28:07.957",
+          "victim_name": "4295",
+          "victim_telegram_id": 107488149
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "8799",
+          "killer_telegram_id": 107702425,
+          "timestamp": "2026-07-01T06:28:07.957",
+          "victim_name": "4295",
+          "victim_telegram_id": 107488149
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "402A",
+          "killer_telegram_id": 107487530,
+          "timestamp": "2026-07-01T06:28:47.463",
+          "victim_name": "3A9B",
+          "victim_telegram_id": 107551643
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "8799",
+          "killer_telegram_id": 107702425,
+          "timestamp": "2026-07-01T06:32:01.987",
+          "victim_name": "402A",
+          "victim_telegram_id": 107487530
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "8928",
+          "killer_telegram_id": 107702824,
+          "timestamp": "2026-07-01T06:32:01.987",
+          "victim_name": "402A",
+          "victim_telegram_id": 107487530
+        },
+        {
+          "day": 2,
+          "kill_method": "LoverDied",
+          "killer_name": "402A",
+          "killer_telegram_id": 107487530,
+          "timestamp": "2026-07-01T06:32:02.003",
+          "victim_name": "8799",
+          "victim_telegram_id": 107702425
+        }
+      ],
+      "players": [
+        {
+          "name": "402A",
+          "role": "WolfCub",
+          "survived": false,
+          "telegram_id": 107487530,
+          "won": true
+        },
+        {
+          "name": "4295",
+          "role": "Fool",
+          "survived": false,
+          "telegram_id": 107488149,
+          "won": true
+        },
+        {
+          "name": "3A9B",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107551643,
+          "won": true
+        },
+        {
+          "name": "8569",
+          "role": "Cupid",
+          "survived": false,
+          "telegram_id": 107701865,
+          "won": true
+        },
+        {
+          "name": "8799",
+          "role": "Beholder",
+          "survived": false,
+          "telegram_id": 107702425,
+          "won": true
+        },
+        {
+          "name": "8928",
+          "role": "Prince",
+          "survived": true,
+          "telegram_id": 107702824,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:32:02.003",
+      "time_started": "2026-07-01T06:24:37.237",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024125,
+      "game_mode": "Chaos",
+      "group_name": "Group-901328534",
+      "group_telegram_id": 901328534,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Shoot",
+          "killer_name": "D2B1",
+          "killer_telegram_id": 107590577,
+          "timestamp": "2026-07-01T06:19:18.067",
+          "victim_name": "CEE8",
+          "victim_telegram_id": 105885672
+        },
+        {
+          "day": 1,
+          "kill_method": "HunterShot",
+          "killer_name": "CEE8",
+          "killer_telegram_id": 105885672,
+          "timestamp": "2026-07-01T06:19:31.330",
+          "victim_name": "D2B1",
+          "victim_telegram_id": 107590577
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "704D",
+          "killer_telegram_id": 107499853,
+          "timestamp": "2026-07-01T06:21:08.327",
+          "victim_name": "676B",
+          "victim_telegram_id": 106580075
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "DDC8",
+          "killer_telegram_id": 107331272,
+          "timestamp": "2026-07-01T06:21:08.373",
+          "victim_name": "676B",
+          "victim_telegram_id": 106580075
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "7232",
+          "killer_telegram_id": 107696946,
+          "timestamp": "2026-07-01T06:21:08.390",
+          "victim_name": "676B",
+          "victim_telegram_id": 106580075
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "5BB5",
+          "killer_telegram_id": 106052789,
+          "timestamp": "2026-07-01T06:21:08.403",
+          "victim_name": "676B",
+          "victim_telegram_id": 106580075
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "02F6",
+          "killer_telegram_id": 107602934,
+          "timestamp": "2026-07-01T06:21:08.403",
+          "victim_name": "676B",
+          "victim_telegram_id": 106580075
+        },
+        {
+          "day": 2,
+          "kill_method": "Idle",
+          "killer_name": "A11E",
+          "killer_telegram_id": 107119134,
+          "timestamp": "2026-07-01T06:26:02.357",
+          "victim_name": "A11E",
+          "victim_telegram_id": 107119134
+        },
+        {
+          "day": 2,
+          "kill_method": "Idle",
+          "killer_name": "B170",
+          "killer_telegram_id": 106599024,
+          "timestamp": "2026-07-01T06:26:02.467",
+          "victim_name": "B170",
+          "victim_telegram_id": 106599024
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "704D",
+          "killer_telegram_id": 107499853,
+          "timestamp": "2026-07-01T06:26:02.517",
+          "victim_name": "072C",
+          "victim_telegram_id": 107538476
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "DDC8",
+          "killer_telegram_id": 107331272,
+          "timestamp": "2026-07-01T06:26:02.560",
+          "victim_name": "072C",
+          "victim_telegram_id": 107538476
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "0BFB",
+          "killer_telegram_id": 107605243,
+          "timestamp": "2026-07-01T06:26:02.577",
+          "victim_name": "072C",
+          "victim_telegram_id": 107538476
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "7232",
+          "killer_telegram_id": 107696946,
+          "timestamp": "2026-07-01T06:26:02.577",
+          "victim_name": "072C",
+          "victim_telegram_id": 107538476
+        },
+        {
+          "day": 3,
+          "kill_method": "Hunt",
+          "killer_name": "0BFB",
+          "killer_telegram_id": 107605243,
+          "timestamp": "2026-07-01T06:27:37.217",
+          "victim_name": "79EF",
+          "victim_telegram_id": 107567855
+        },
+        {
+          "day": 3,
+          "kill_method": "Chemistry",
+          "killer_name": "704D",
+          "killer_telegram_id": 107499853,
+          "timestamp": "2026-07-01T06:27:37.260",
+          "victim_name": "7232",
+          "victim_telegram_id": 107696946
+        },
+        {
+          "day": 3,
+          "kill_method": "Idle",
+          "killer_name": "5BB5",
+          "killer_telegram_id": 106052789,
+          "timestamp": "2026-07-01T06:30:41.080",
+          "victim_name": "5BB5",
+          "victim_telegram_id": 106052789
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "704D",
+          "killer_telegram_id": 107499853,
+          "timestamp": "2026-07-01T06:30:41.127",
+          "victim_name": "02F6",
+          "victim_telegram_id": 107602934
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "0BFB",
+          "killer_telegram_id": 107605243,
+          "timestamp": "2026-07-01T06:30:41.143",
+          "victim_name": "02F6",
+          "victim_telegram_id": 107602934
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "DDC8",
+          "killer_telegram_id": 107331272,
+          "timestamp": "2026-07-01T06:30:41.143",
+          "victim_name": "02F6",
+          "victim_telegram_id": 107602934
+        },
+        {
+          "day": 3,
+          "kill_method": "LoverDied",
+          "killer_name": "02F6",
+          "killer_telegram_id": 107602934,
+          "timestamp": "2026-07-01T06:30:41.157",
+          "victim_name": "DDC8",
+          "victim_telegram_id": 107331272
+        }
+      ],
+      "players": [
+        {
+          "name": "CEE8",
+          "role": "Hunter",
+          "survived": false,
+          "telegram_id": 105885672,
+          "won": true
+        },
+        {
+          "name": "5BB5",
+          "role": "Lycan",
+          "survived": false,
+          "telegram_id": 106052789,
+          "won": false
+        },
+        {
+          "name": "676B",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 106580075,
+          "won": false
+        },
+        {
+          "name": "B170",
+          "role": "GraveDigger",
+          "survived": false,
+          "telegram_id": 106599024,
+          "won": true
+        },
+        {
+          "name": "A11E",
+          "role": "Blacksmith",
+          "survived": false,
+          "telegram_id": 107119134,
+          "won": true
+        },
+        {
+          "name": "DDC8",
+          "role": "Pacifist",
+          "survived": false,
+          "telegram_id": 107331272,
+          "won": true
+        },
+        {
+          "name": "704D",
+          "role": "Chemist",
+          "survived": true,
+          "telegram_id": 107499853,
+          "won": true
+        },
+        {
+          "name": "072C",
+          "role": "Cultist",
+          "survived": false,
+          "telegram_id": 107538476,
+          "won": false
+        },
+        {
+          "name": "79EF",
+          "role": "Cupid",
+          "survived": false,
+          "telegram_id": 107567855,
+          "won": false
+        },
+        {
+          "name": "D2B1",
+          "role": "Gunner",
+          "survived": false,
+          "telegram_id": 107590577,
+          "won": true
+        },
+        {
+          "name": "02F6",
+          "role": "Troublemaker",
+          "survived": false,
+          "telegram_id": 107602934,
+          "won": true
+        },
+        {
+          "name": "0BFB",
+          "role": "CultistHunter",
+          "survived": true,
+          "telegram_id": 107605243,
+          "won": true
+        },
+        {
+          "name": "7232",
+          "role": "Cultist",
+          "survived": false,
+          "telegram_id": 107696946,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:30:41.173",
+      "time_started": "2026-07-01T06:15:36.047",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024121,
+      "game_mode": "Normal",
+      "group_name": "Group-900438828",
+      "group_telegram_id": 900438828,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "D78F",
+          "killer_telegram_id": 107657359,
+          "timestamp": "2026-07-01T06:14:59.007",
+          "victim_name": "B044",
+          "victim_telegram_id": 107647300
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "D78F",
+          "killer_telegram_id": 107657359,
+          "timestamp": "2026-07-01T06:19:09.713",
+          "victim_name": "8F98",
+          "victim_telegram_id": 107704472
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "8FAD",
+          "killer_telegram_id": 107704493,
+          "timestamp": "2026-07-01T06:22:13.730",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T06:22:13.737",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "5387",
+          "killer_telegram_id": 106247303,
+          "timestamp": "2026-07-01T06:22:13.750",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "1FDE",
+          "killer_telegram_id": 107151582,
+          "timestamp": "2026-07-01T06:22:13.750",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "0C70",
+          "killer_telegram_id": 107670896,
+          "timestamp": "2026-07-01T06:22:13.750",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "55B0",
+          "killer_telegram_id": 107689648,
+          "timestamp": "2026-07-01T06:22:13.750",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "8B78",
+          "killer_telegram_id": 107703416,
+          "timestamp": "2026-07-01T06:22:13.750",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "D78F",
+          "killer_telegram_id": 107657359,
+          "timestamp": "2026-07-01T06:22:33.023",
+          "victim_name": "0C70",
+          "victim_telegram_id": 107670896
+        },
+        {
+          "day": 3,
+          "kill_method": "Idle",
+          "killer_name": "D78F",
+          "killer_telegram_id": 107657359,
+          "timestamp": "2026-07-01T06:25:36.407",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T06:25:36.423",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "55B0",
+          "killer_telegram_id": 107689648,
+          "timestamp": "2026-07-01T06:25:36.423",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "1FDE",
+          "killer_telegram_id": 107151582,
+          "timestamp": "2026-07-01T06:25:36.423",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "5387",
+          "killer_telegram_id": 106247303,
+          "timestamp": "2026-07-01T06:25:36.423",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "8B78",
+          "killer_telegram_id": 107703416,
+          "timestamp": "2026-07-01T06:25:36.423",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "8FAD",
+          "killer_telegram_id": 107704493,
+          "timestamp": "2026-07-01T06:25:36.423",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 4,
+          "kill_method": "Burn",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T06:26:07.577",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 4,
+          "kill_method": "Burn",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T06:26:07.590",
+          "victim_name": "1FDE",
+          "victim_telegram_id": 107151582
+        },
+        {
+          "day": 4,
+          "kill_method": "Burn",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T06:26:07.607",
+          "victim_name": "5387",
+          "victim_telegram_id": 106247303
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "55B0",
+          "killer_telegram_id": 107689648,
+          "timestamp": "2026-07-01T06:28:43.997",
+          "victim_name": "369B",
+          "victim_telegram_id": 100210587
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "8B78",
+          "killer_telegram_id": 107703416,
+          "timestamp": "2026-07-01T06:28:44.027",
+          "victim_name": "369B",
+          "victim_telegram_id": 100210587
+        }
+      ],
+      "players": [
+        {
+          "name": "369B",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 100210587,
+          "won": false
+        },
+        {
+          "name": "5387",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 106247303,
+          "won": true
+        },
+        {
+          "name": "1FDE",
+          "role": "CultistHunter",
+          "survived": false,
+          "telegram_id": 107151582,
+          "won": true
+        },
+        {
+          "name": "B044",
+          "role": "ApprenticeSeer",
+          "survived": false,
+          "telegram_id": 107647300,
+          "won": true
+        },
+        {
+          "name": "D78F",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107657359,
+          "won": false
+        },
+        {
+          "name": "0C70",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107670896,
+          "won": true
+        },
+        {
+          "name": "1266",
+          "role": "Cultist",
+          "survived": false,
+          "telegram_id": 107672422,
+          "won": false
+        },
+        {
+          "name": "55B0",
+          "role": "Pacifist",
+          "survived": true,
+          "telegram_id": 107689648,
+          "won": true
+        },
+        {
+          "name": "8B78",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 107703416,
+          "won": true
+        },
+        {
+          "name": "8F98",
+          "role": "Mayor",
+          "survived": false,
+          "telegram_id": 107704472,
+          "won": true
+        },
+        {
+          "name": "8FAD",
+          "role": "Troublemaker",
+          "survived": false,
+          "telegram_id": 107704493,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:28:44.027",
+      "time_started": "2026-07-01T06:13:37.250",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024141,
+      "game_mode": "Chaos",
+      "group_name": "Group-901354667",
+      "group_telegram_id": 901354667,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "932F",
+          "killer_telegram_id": 107312175,
+          "timestamp": "2026-07-01T06:23:15.753",
+          "victim_name": "26BB",
+          "victim_telegram_id": 106432443
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "7A67",
+          "killer_telegram_id": 107502439,
+          "timestamp": "2026-07-01T06:26:19.133",
+          "victim_name": "68D1",
+          "victim_telegram_id": 105990609
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "932F",
+          "killer_telegram_id": 107312175,
+          "timestamp": "2026-07-01T06:26:19.323",
+          "victim_name": "68D1",
+          "victim_telegram_id": 105990609
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "CBB6",
+          "killer_telegram_id": 106802358,
+          "timestamp": "2026-07-01T06:26:19.387",
+          "victim_name": "68D1",
+          "victim_telegram_id": 105990609
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "932F",
+          "killer_telegram_id": 107312175,
+          "timestamp": "2026-07-01T06:26:42.993",
+          "victim_name": "CBB6",
+          "victim_telegram_id": 106802358
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "932F",
+          "killer_telegram_id": 107312175,
+          "timestamp": "2026-07-01T06:28:42.413",
+          "victim_name": "7A67",
+          "victim_telegram_id": 107502439
+        }
+      ],
+      "players": [
+        {
+          "name": "68D1",
+          "role": "Augur",
+          "survived": false,
+          "telegram_id": 105990609,
+          "won": false
+        },
+        {
+          "name": "26BB",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 106432443,
+          "won": false
+        },
+        {
+          "name": "CBB6",
+          "role": "Mayor",
+          "survived": false,
+          "telegram_id": 106802358,
+          "won": false
+        },
+        {
+          "name": "932F",
+          "role": "Wolf",
+          "survived": true,
+          "telegram_id": 107312175,
+          "won": true
+        },
+        {
+          "name": "6099",
+          "role": "Drunk",
+          "survived": true,
+          "telegram_id": 107364761,
+          "won": false
+        },
+        {
+          "name": "7A67",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107502439,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:28:42.460",
+      "time_started": "2026-07-01T06:23:04.173",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024128,
+      "game_mode": "Chaos",
+      "group_name": "Group-901354643",
+      "group_telegram_id": 901354643,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "610C",
+          "killer_telegram_id": 107692556,
+          "timestamp": "2026-07-01T06:18:26.663",
+          "victim_name": "5035",
+          "victim_telegram_id": 107688245
+        },
+        {
+          "day": 2,
+          "kill_method": "Idle",
+          "killer_name": "5346",
+          "killer_telegram_id": 107689030,
+          "timestamp": "2026-07-01T06:27:09.733",
+          "victim_name": "5346",
+          "victim_telegram_id": 107689030
+        },
+        {
+          "day": 2,
+          "kill_method": "Idle",
+          "killer_name": "5855",
+          "killer_telegram_id": 107690325,
+          "timestamp": "2026-07-01T06:27:09.737",
+          "victim_name": "5855",
+          "victim_telegram_id": 107690325
+        },
+        {
+          "day": 2,
+          "kill_method": "Idle",
+          "killer_name": "687D",
+          "killer_telegram_id": 107694461,
+          "timestamp": "2026-07-01T06:27:09.753",
+          "victim_name": "687D",
+          "victim_telegram_id": 107694461
+        },
+        {
+          "day": 3,
+          "kill_method": "SerialKilled",
+          "killer_name": "610C",
+          "killer_telegram_id": 107692556,
+          "timestamp": "2026-07-01T06:27:44.267",
+          "victim_name": "4CDA",
+          "victim_telegram_id": 107687386
+        },
+        {
+          "day": 3,
+          "kill_method": "SerialKilled",
+          "killer_name": "610C",
+          "killer_telegram_id": 107692556,
+          "timestamp": "2026-07-01T06:27:44.277",
+          "victim_name": "5A01",
+          "victim_telegram_id": 107690753
+        }
+      ],
+      "players": [
+        {
+          "name": "4CDA",
+          "role": "Blacksmith",
+          "survived": false,
+          "telegram_id": 107687386,
+          "won": false
+        },
+        {
+          "name": "5035",
+          "role": "Drunk",
+          "survived": false,
+          "telegram_id": 107688245,
+          "won": false
+        },
+        {
+          "name": "5346",
+          "role": "Oracle",
+          "survived": false,
+          "telegram_id": 107689030,
+          "won": false
+        },
+        {
+          "name": "5855",
+          "role": "Prince",
+          "survived": false,
+          "telegram_id": 107690325,
+          "won": false
+        },
+        {
+          "name": "5A01",
+          "role": "Tanner",
+          "survived": false,
+          "telegram_id": 107690753,
+          "won": false
+        },
+        {
+          "name": "610C",
+          "role": "SerialKiller",
+          "survived": true,
+          "telegram_id": 107692556,
+          "won": true
+        },
+        {
+          "name": "687D",
+          "role": "Fool",
+          "survived": false,
+          "telegram_id": 107694461,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:27:44.270",
+      "time_started": "2026-07-01T06:16:51.430",
+      "winner": "SerialKiller"
+    },
+    {
+      "game_id": 29024144,
+      "game_mode": "Normal",
+      "group_name": "Group-901342877",
+      "group_telegram_id": 901342877,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "91A5",
+          "killer_telegram_id": 107704997,
+          "timestamp": "2026-07-01T06:24:06.177",
+          "victim_name": "82D3",
+          "victim_telegram_id": 107701203
+        },
+        {
+          "day": 1,
+          "kill_method": "Shoot",
+          "killer_name": "C660",
+          "killer_telegram_id": 106669920,
+          "timestamp": "2026-07-01T06:26:07.513",
+          "victim_name": "8654",
+          "victim_telegram_id": 107243348
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "6EDB",
+          "killer_telegram_id": 107630555,
+          "timestamp": "2026-07-01T06:27:40.970",
+          "victim_name": "9C45",
+          "victim_telegram_id": 107707717
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "95A1",
+          "killer_telegram_id": 107706017,
+          "timestamp": "2026-07-01T06:27:40.970",
+          "victim_name": "9C45",
+          "victim_telegram_id": 107707717
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "91A5",
+          "killer_telegram_id": 107704997,
+          "timestamp": "2026-07-01T06:27:40.970",
+          "victim_name": "9C45",
+          "victim_telegram_id": 107707717
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "5850",
+          "killer_telegram_id": 107690320,
+          "timestamp": "2026-07-01T06:27:40.987",
+          "victim_name": "9C45",
+          "victim_telegram_id": 107707717
+        }
+      ],
+      "players": [
+        {
+          "name": "C660",
+          "role": "Gunner",
+          "survived": true,
+          "telegram_id": 106669920,
+          "won": false
+        },
+        {
+          "name": "8654",
+          "role": "Prince",
+          "survived": false,
+          "telegram_id": 107243348,
+          "won": false
+        },
+        {
+          "name": "67AC",
+          "role": "Detective",
+          "survived": true,
+          "telegram_id": 107628716,
+          "won": false
+        },
+        {
+          "name": "6EDB",
+          "role": "Villager",
+          "survived": true,
+          "telegram_id": 107630555,
+          "won": false
+        },
+        {
+          "name": "5850",
+          "role": "WiseElder",
+          "survived": true,
+          "telegram_id": 107690320,
+          "won": false
+        },
+        {
+          "name": "82D3",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107701203,
+          "won": false
+        },
+        {
+          "name": "91A5",
+          "role": "SerialKiller",
+          "survived": true,
+          "telegram_id": 107704997,
+          "won": false
+        },
+        {
+          "name": "95A1",
+          "role": "Cursed",
+          "survived": true,
+          "telegram_id": 107706017,
+          "won": false
+        },
+        {
+          "name": "9C45",
+          "role": "Tanner",
+          "survived": false,
+          "telegram_id": 107707717,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:27:40.987",
+      "time_started": "2026-07-01T06:23:49.247",
+      "winner": "Tanner"
+    },
+    {
+      "game_id": 29024143,
+      "game_mode": "Chaos",
+      "group_name": "Group-901069341",
+      "group_telegram_id": 901069341,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "5665",
+          "killer_telegram_id": 107624293,
+          "timestamp": "2026-07-01T06:24:04.373",
+          "victim_name": "BF4F",
+          "victim_telegram_id": 107651151
+        },
+        {
+          "day": 1,
+          "kill_method": "Flee",
+          "killer_name": "7585",
+          "killer_telegram_id": 107697797,
+          "timestamp": "2026-07-01T06:24:56.400",
+          "victim_name": "7585",
+          "victim_telegram_id": 107697797
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "69BD",
+          "killer_telegram_id": 107629245,
+          "timestamp": "2026-07-01T06:26:40.760",
+          "victim_name": "5665",
+          "victim_telegram_id": 107624293
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "651D",
+          "killer_telegram_id": 107628061,
+          "timestamp": "2026-07-01T06:26:40.777",
+          "victim_name": "5665",
+          "victim_telegram_id": 107624293
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "4FEF",
+          "killer_telegram_id": 107622639,
+          "timestamp": "2026-07-01T06:26:40.793",
+          "victim_name": "5665",
+          "victim_telegram_id": 107624293
+        }
+      ],
+      "players": [
+        {
+          "name": "4FEF",
+          "role": "WiseElder",
+          "survived": true,
+          "telegram_id": 107622639,
+          "won": true
+        },
+        {
+          "name": "5665",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107624293,
+          "won": false
+        },
+        {
+          "name": "651D",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 107628061,
+          "won": true
+        },
+        {
+          "name": "69BD",
+          "role": "Cursed",
+          "survived": true,
+          "telegram_id": 107629245,
+          "won": true
+        },
+        {
+          "name": "BF4F",
+          "role": "ClumsyGuy",
+          "survived": false,
+          "telegram_id": 107651151,
+          "won": true
+        },
+        {
+          "name": "7585",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107697797,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:26:40.793",
+      "time_started": "2026-07-01T06:23:43.097",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024126,
+      "game_mode": "Normal",
+      "group_name": "Group-901356740",
+      "group_telegram_id": 901356740,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9885",
+          "killer_telegram_id": 107706757,
+          "timestamp": "2026-07-01T06:21:54.827",
+          "victim_name": "9C3E",
+          "victim_telegram_id": 107707710
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9C3B",
+          "killer_telegram_id": 107707707,
+          "timestamp": "2026-07-01T06:21:54.830",
+          "victim_name": "9C3E",
+          "victim_telegram_id": 107707710
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9864",
+          "killer_telegram_id": 107706724,
+          "timestamp": "2026-07-01T06:21:54.833",
+          "victim_name": "9C3E",
+          "victim_telegram_id": 107707710
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "3FC1",
+          "killer_telegram_id": 107618497,
+          "timestamp": "2026-07-01T06:21:54.837",
+          "victim_name": "9C3E",
+          "victim_telegram_id": 107707710
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "36BA",
+          "killer_telegram_id": 107616186,
+          "timestamp": "2026-07-01T06:21:54.840",
+          "victim_name": "9C3E",
+          "victim_telegram_id": 107707710
+        },
+        {
+          "day": 1,
+          "kill_method": "LoverDied",
+          "killer_name": "9C3E",
+          "killer_telegram_id": 107707710,
+          "timestamp": "2026-07-01T06:21:54.847",
+          "victim_name": "9C3C",
+          "victim_telegram_id": 107707708
+        },
+        {
+          "day": 2,
+          "kill_method": "Chemistry",
+          "killer_name": "9C2F",
+          "killer_telegram_id": 107707695,
+          "timestamp": "2026-07-01T06:23:27.323",
+          "victim_name": "9C2F",
+          "victim_telegram_id": 107707695
+        },
+        {
+          "day": 2,
+          "kill_method": "Shoot",
+          "killer_name": "9885",
+          "killer_telegram_id": 107706757,
+          "timestamp": "2026-07-01T06:25:29.440",
+          "victim_name": "9864",
+          "victim_telegram_id": 107706724
+        }
+      ],
+      "players": [
+        {
+          "name": "36BA",
+          "role": "Mayor",
+          "survived": true,
+          "telegram_id": 107616186,
+          "won": true
+        },
+        {
+          "name": "3FC1",
+          "role": "Sorcerer",
+          "survived": true,
+          "telegram_id": 107618497,
+          "won": false
+        },
+        {
+          "name": "9864",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 107706724,
+          "won": false
+        },
+        {
+          "name": "9873",
+          "role": "Prince",
+          "survived": true,
+          "telegram_id": 107706739,
+          "won": true
+        },
+        {
+          "name": "9885",
+          "role": "Gunner",
+          "survived": true,
+          "telegram_id": 107706757,
+          "won": true
+        },
+        {
+          "name": "9C2F",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107707695,
+          "won": true
+        },
+        {
+          "name": "9C3B",
+          "role": "WiseElder",
+          "survived": true,
+          "telegram_id": 107707707,
+          "won": true
+        },
+        {
+          "name": "9C3C",
+          "role": "WolfCub",
+          "survived": false,
+          "telegram_id": 107707708,
+          "won": true
+        },
+        {
+          "name": "9C3E",
+          "role": "Cupid",
+          "survived": false,
+          "telegram_id": 107707710,
+          "won": true
+        },
+        {
+          "name": "9C41",
+          "role": "Beholder",
+          "survived": true,
+          "telegram_id": 107707713,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:25:29.440",
+      "time_started": "2026-07-01T06:16:09.463",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024124,
+      "game_mode": "Normal",
+      "group_name": "Group-901340655",
+      "group_telegram_id": 901340655,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "9C37",
+          "killer_telegram_id": 107707703,
+          "timestamp": "2026-07-01T06:16:31.307",
+          "victim_name": "9C38",
+          "victim_telegram_id": 107707704
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "9C37",
+          "killer_telegram_id": 107707703,
+          "timestamp": "2026-07-01T06:21:39.747",
+          "victim_name": "B459",
+          "victim_telegram_id": 107517273
+        },
+        {
+          "day": 2,
+          "kill_method": "Idle",
+          "killer_name": "F6A9",
+          "killer_telegram_id": 106944425,
+          "timestamp": "2026-07-01T06:25:13.747",
+          "victim_name": "F6A9",
+          "victim_telegram_id": 106944425
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "DF31",
+          "killer_telegram_id": 107462705,
+          "timestamp": "2026-07-01T06:25:13.747",
+          "victim_name": "9C37",
+          "victim_telegram_id": 107707703
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "2A2F",
+          "killer_telegram_id": 107481903,
+          "timestamp": "2026-07-01T06:25:13.747",
+          "victim_name": "9C37",
+          "victim_telegram_id": 107707703
+        }
+      ],
+      "players": [
+        {
+          "name": "1A2A",
+          "role": "Hunter",
+          "survived": true,
+          "telegram_id": 106887978,
+          "won": true
+        },
+        {
+          "name": "F6A9",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 106944425,
+          "won": false
+        },
+        {
+          "name": "DF31",
+          "role": "Detective",
+          "survived": true,
+          "telegram_id": 107462705,
+          "won": true
+        },
+        {
+          "name": "2A2F",
+          "role": "Beholder",
+          "survived": true,
+          "telegram_id": 107481903,
+          "won": true
+        },
+        {
+          "name": "B459",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 107517273,
+          "won": true
+        },
+        {
+          "name": "9C37",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107707703,
+          "won": false
+        },
+        {
+          "name": "9C38",
+          "role": "Fool",
+          "survived": false,
+          "telegram_id": 107707704,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:25:13.760",
+      "time_started": "2026-07-01T06:14:56.243",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024134,
+      "game_mode": "Normal",
+      "group_name": "Group-901354243",
+      "group_telegram_id": 901354243,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "857D",
+          "killer_telegram_id": 107701885,
+          "timestamp": "2026-07-01T06:19:47.307",
+          "victim_name": "BF7D",
+          "victim_telegram_id": 106864765
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9C24",
+          "killer_telegram_id": 107707684,
+          "timestamp": "2026-07-01T06:23:22.720",
+          "victim_name": "4E38",
+          "victim_telegram_id": 107687736
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "83FC",
+          "killer_telegram_id": 107701500,
+          "timestamp": "2026-07-01T06:23:22.727",
+          "victim_name": "4E38",
+          "victim_telegram_id": 107687736
+        },
+        {
+          "day": 1,
+          "kill_method": "HunterShot",
+          "killer_name": "4E38",
+          "killer_telegram_id": 107687736,
+          "timestamp": "2026-07-01T06:23:41.157",
+          "victim_name": "83FC",
+          "victim_telegram_id": 107701500
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "857D",
+          "killer_telegram_id": 107701885,
+          "timestamp": "2026-07-01T06:23:54.113",
+          "victim_name": "6FA4",
+          "victim_telegram_id": 107696292
+        }
+      ],
+      "players": [
+        {
+          "name": "BF7D",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 106864765,
+          "won": false
+        },
+        {
+          "name": "4E38",
+          "role": "Hunter",
+          "survived": false,
+          "telegram_id": 107687736,
+          "won": false
+        },
+        {
+          "name": "6FA4",
+          "role": "Seer",
+          "survived": false,
+          "telegram_id": 107696292,
+          "won": false
+        },
+        {
+          "name": "83FC",
+          "role": "Sorcerer",
+          "survived": false,
+          "telegram_id": 107701500,
+          "won": true
+        },
+        {
+          "name": "857D",
+          "role": "WolfCub",
+          "survived": true,
+          "telegram_id": 107701885,
+          "won": true
+        },
+        {
+          "name": "9C24",
+          "role": "Mason",
+          "survived": true,
+          "telegram_id": 107707684,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:23:54.113",
+      "time_started": "2026-07-01T06:18:45.283",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024130,
+      "game_mode": "Normal",
+      "group_name": "Group-901335097",
+      "group_telegram_id": 901335097,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "5248",
+          "killer_telegram_id": 107688776,
+          "timestamp": "2026-07-01T06:19:01.290",
+          "victim_name": "7947",
+          "victim_telegram_id": 107698759
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "5248",
+          "killer_telegram_id": 107688776,
+          "timestamp": "2026-07-01T06:22:36.243",
+          "victim_name": "559A",
+          "victim_telegram_id": 107689626
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9B82",
+          "killer_telegram_id": 107707522,
+          "timestamp": "2026-07-01T06:22:36.253",
+          "victim_name": "559A",
+          "victim_telegram_id": 107689626
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "7CC4",
+          "killer_telegram_id": 107699652,
+          "timestamp": "2026-07-01T06:22:36.263",
+          "victim_name": "559A",
+          "victim_telegram_id": 107689626
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:22:36.267",
+          "victim_name": "559A",
+          "victim_telegram_id": 107689626
+        },
+        {
+          "day": 1,
+          "kill_method": "HunterShot",
+          "killer_name": "559A",
+          "killer_telegram_id": 107689626,
+          "timestamp": "2026-07-01T06:22:42.707",
+          "victim_name": "9B82",
+          "victim_telegram_id": 107707522
+        },
+        {
+          "day": 1,
+          "kill_method": "LoverDied",
+          "killer_name": "9B82",
+          "killer_telegram_id": 107707522,
+          "timestamp": "2026-07-01T06:22:42.717",
+          "victim_name": "4B40",
+          "victim_telegram_id": 107686976
+        },
+        {
+          "day": 2,
+          "kill_method": "VisitWolf",
+          "killer_name": "5248",
+          "killer_telegram_id": 107688776,
+          "timestamp": "2026-07-01T06:23:43.727",
+          "victim_name": "4340",
+          "victim_telegram_id": 107684928
+        }
+      ],
+      "players": [
+        {
+          "name": "4340",
+          "role": "Harlot",
+          "survived": false,
+          "telegram_id": 107684928,
+          "won": false
+        },
+        {
+          "name": "4B40",
+          "role": "Sorcerer",
+          "survived": false,
+          "telegram_id": 107686976,
+          "won": true
+        },
+        {
+          "name": "5248",
+          "role": "Wolf",
+          "survived": true,
+          "telegram_id": 107688776,
+          "won": true
+        },
+        {
+          "name": "559A",
+          "role": "Hunter",
+          "survived": false,
+          "telegram_id": 107689626,
+          "won": false
+        },
+        {
+          "name": "7947",
+          "role": "Troublemaker",
+          "survived": false,
+          "telegram_id": 107698759,
+          "won": false
+        },
+        {
+          "name": "7CC4",
+          "role": "Cupid",
+          "survived": true,
+          "telegram_id": 107699652,
+          "won": false
+        },
+        {
+          "name": "9B82",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 107707522,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:23:43.733",
+      "time_started": "2026-07-01T06:16:55.787",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024123,
+      "game_mode": "Chaos",
+      "group_name": "Group-901356647",
+      "group_telegram_id": 901356647,
+      "kills": [
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "2718",
+          "killer_telegram_id": 107612184,
+          "timestamp": "2026-07-01T06:19:49.197",
+          "victim_name": "58CB",
+          "victim_telegram_id": 107624907
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "9B88",
+          "killer_telegram_id": 107576456,
+          "timestamp": "2026-07-01T06:19:49.527",
+          "victim_name": "58CB",
+          "victim_telegram_id": 107624907
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "F6C4",
+          "killer_telegram_id": 107403204,
+          "timestamp": "2026-07-01T06:19:49.807",
+          "victim_name": "58CB",
+          "victim_telegram_id": 107624907
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "75F9",
+          "killer_telegram_id": 107173625,
+          "timestamp": "2026-07-01T06:19:49.890",
+          "victim_name": "58CB",
+          "victim_telegram_id": 107624907
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "9B88",
+          "killer_telegram_id": 107576456,
+          "timestamp": "2026-07-01T06:22:40.260",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "F6C4",
+          "killer_telegram_id": 107403204,
+          "timestamp": "2026-07-01T06:22:40.267",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "75F9",
+          "killer_telegram_id": 107173625,
+          "timestamp": "2026-07-01T06:22:40.270",
+          "victim_name": "9C3F",
+          "victim_telegram_id": 107707711
+        }
+      ],
+      "players": [
+        {
+          "name": "75F9",
+          "role": "Drunk",
+          "survived": true,
+          "telegram_id": 107173625,
+          "won": true
+        },
+        {
+          "name": "F6C4",
+          "role": "GuardianAngel",
+          "survived": true,
+          "telegram_id": 107403204,
+          "won": true
+        },
+        {
+          "name": "9B88",
+          "role": "Sandman",
+          "survived": true,
+          "telegram_id": 107576456,
+          "won": true
+        },
+        {
+          "name": "2718",
+          "role": "Pacifist",
+          "survived": true,
+          "telegram_id": 107612184,
+          "won": true
+        },
+        {
+          "name": "58CB",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107624907,
+          "won": false
+        },
+        {
+          "name": "9C3F",
+          "role": "Lycan",
+          "survived": false,
+          "telegram_id": 107707711,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:22:40.277",
+      "time_started": "2026-07-01T06:14:37.080",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024135,
+      "game_mode": "Normal",
+      "group_name": "Group-901173168",
+      "group_telegram_id": 901173168,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "1D51",
+          "killer_telegram_id": 107675217,
+          "timestamp": "2026-07-01T06:19:24.463",
+          "victim_name": "48C7",
+          "victim_telegram_id": 107162055
+        },
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "6C4B",
+          "killer_telegram_id": 107564363,
+          "timestamp": "2026-07-01T06:19:24.493",
+          "victim_name": "F22F",
+          "victim_telegram_id": 107533103
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "CD8B",
+          "killer_telegram_id": 107589259,
+          "timestamp": "2026-07-01T06:21:25.653",
+          "victim_name": "1004",
+          "victim_telegram_id": 106950916
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "1D51",
+          "killer_telegram_id": 107675217,
+          "timestamp": "2026-07-01T06:21:25.700",
+          "victim_name": "1004",
+          "victim_telegram_id": 106950916
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "6C4B",
+          "killer_telegram_id": 107564363,
+          "timestamp": "2026-07-01T06:21:25.707",
+          "victim_name": "1004",
+          "victim_telegram_id": 106950916
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "CD8B",
+          "killer_telegram_id": 107589259,
+          "timestamp": "2026-07-01T06:21:53.850",
+          "victim_name": "1D51",
+          "victim_telegram_id": 107675217
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "6C4B",
+          "killer_telegram_id": 107564363,
+          "timestamp": "2026-07-01T06:21:54.183",
+          "victim_name": "1D51",
+          "victim_telegram_id": 107675217
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "1004",
+          "killer_telegram_id": 106950916,
+          "timestamp": "2026-07-01T06:21:54.343",
+          "victim_name": "1D51",
+          "victim_telegram_id": 107675217
+        },
+        {
+          "day": 2,
+          "kill_method": "Flee",
+          "killer_name": "6C4B",
+          "killer_telegram_id": 107564363,
+          "timestamp": "2026-07-01T06:21:55.417",
+          "victim_name": "6C4B",
+          "victim_telegram_id": 107564363
+        }
+      ],
+      "players": [
+        {
+          "name": "1004",
+          "role": "Troublemaker",
+          "survived": false,
+          "telegram_id": 106950916,
+          "won": true
+        },
+        {
+          "name": "48C7",
+          "role": "GraveDigger",
+          "survived": false,
+          "telegram_id": 107162055,
+          "won": true
+        },
+        {
+          "name": "F22F",
+          "role": "Blacksmith",
+          "survived": false,
+          "telegram_id": 107533103,
+          "won": true
+        },
+        {
+          "name": "FFCA",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 107536586,
+          "won": true
+        },
+        {
+          "name": "6C4B",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107564363,
+          "won": false
+        },
+        {
+          "name": "CD8B",
+          "role": "Prince",
+          "survived": true,
+          "telegram_id": 107589259,
+          "won": true
+        },
+        {
+          "name": "1D51",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107675217,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:21:55.417",
+      "time_started": "2026-07-01T06:18:59.707",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024127,
+      "game_mode": "Normal",
+      "group_name": "Group-901342877",
+      "group_telegram_id": 901342877,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "VisitKiller",
+          "killer_name": "82D3",
+          "killer_telegram_id": 107701203,
+          "timestamp": "2026-07-01T06:17:26.777",
+          "victim_name": "91A0",
+          "victim_telegram_id": 107573920
+        },
+        {
+          "day": 1,
+          "kill_method": "VisitKiller",
+          "killer_name": "82D3",
+          "killer_telegram_id": 107701203,
+          "timestamp": "2026-07-01T06:17:26.780",
+          "victim_name": "67AC",
+          "victim_telegram_id": 107628716
+        },
+        {
+          "day": 1,
+          "kill_method": "Shoot",
+          "killer_name": "6EDB",
+          "killer_telegram_id": 107630555,
+          "timestamp": "2026-07-01T06:19:28.097",
+          "victim_name": "82D3",
+          "victim_telegram_id": 107701203
+        }
+      ],
+      "players": [
+        {
+          "name": "8654",
+          "role": "GuardianAngel",
+          "survived": true,
+          "telegram_id": 107243348,
+          "won": true
+        },
+        {
+          "name": "91A0",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107573920,
+          "won": false
+        },
+        {
+          "name": "67AC",
+          "role": "Harlot",
+          "survived": false,
+          "telegram_id": 107628716,
+          "won": true
+        },
+        {
+          "name": "6EDB",
+          "role": "Gunner",
+          "survived": true,
+          "telegram_id": 107630555,
+          "won": true
+        },
+        {
+          "name": "5850",
+          "role": "Blacksmith",
+          "survived": true,
+          "telegram_id": 107690320,
+          "won": true
+        },
+        {
+          "name": "82D3",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107701203,
+          "won": false
+        },
+        {
+          "name": "95A1",
+          "role": "Beholder",
+          "survived": true,
+          "telegram_id": 107706017,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:19:28.113",
+      "time_started": "2026-07-01T06:16:09.557",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024095,
+      "game_mode": "Chaos",
+      "group_name": "Group-901355988",
+      "group_telegram_id": 901355988,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Hunt",
+          "killer_name": "E251",
+          "killer_telegram_id": 106152785,
+          "timestamp": "2026-07-01T06:01:26.867",
+          "victim_name": "A0BB",
+          "victim_telegram_id": 107250107
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "E251",
+          "killer_telegram_id": 106152785,
+          "timestamp": "2026-07-01T06:04:32.460",
+          "victim_name": "47C4",
+          "victim_telegram_id": 106637508
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "DCDE",
+          "killer_telegram_id": 106479070,
+          "timestamp": "2026-07-01T06:04:32.727",
+          "victim_name": "47C4",
+          "victim_telegram_id": 106637508
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "4246",
+          "killer_telegram_id": 107291462,
+          "timestamp": "2026-07-01T06:04:32.810",
+          "victim_name": "47C4",
+          "victim_telegram_id": 106637508
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "987B",
+          "killer_telegram_id": 107379067,
+          "timestamp": "2026-07-01T06:04:32.810",
+          "victim_name": "47C4",
+          "victim_telegram_id": 106637508
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "5F05",
+          "killer_telegram_id": 104218629,
+          "timestamp": "2026-07-01T06:04:32.810",
+          "victim_name": "47C4",
+          "victim_telegram_id": 106637508
+        },
+        {
+          "day": 2,
+          "kill_method": "Burn",
+          "killer_name": "5F05",
+          "killer_telegram_id": 104218629,
+          "timestamp": "2026-07-01T06:05:12.607",
+          "victim_name": "DCDE",
+          "victim_telegram_id": 106479070
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "E251",
+          "killer_telegram_id": 106152785,
+          "timestamp": "2026-07-01T06:08:16.433",
+          "victim_name": "987B",
+          "victim_telegram_id": 107379067
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "20F6",
+          "killer_telegram_id": 102040054,
+          "timestamp": "2026-07-01T06:08:16.450",
+          "victim_name": "987B",
+          "victim_telegram_id": 107379067
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "5F05",
+          "killer_telegram_id": 104218629,
+          "timestamp": "2026-07-01T06:08:16.450",
+          "victim_name": "987B",
+          "victim_telegram_id": 107379067
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "221B",
+          "killer_telegram_id": 107610907,
+          "timestamp": "2026-07-01T06:08:16.450",
+          "victim_name": "987B",
+          "victim_telegram_id": 107379067
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "60C0",
+          "killer_telegram_id": 106971584,
+          "timestamp": "2026-07-01T06:08:16.450",
+          "victim_name": "987B",
+          "victim_telegram_id": 107379067
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "8B5F",
+          "killer_telegram_id": 107703391,
+          "timestamp": "2026-07-01T06:08:16.450",
+          "victim_name": "987B",
+          "victim_telegram_id": 107379067
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "E251",
+          "killer_telegram_id": 106152785,
+          "timestamp": "2026-07-01T06:12:23.397",
+          "victim_name": "60C0",
+          "victim_telegram_id": 106971584
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "8B5F",
+          "killer_telegram_id": 107703391,
+          "timestamp": "2026-07-01T06:12:23.407",
+          "victim_name": "60C0",
+          "victim_telegram_id": 106971584
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "221B",
+          "killer_telegram_id": 107610907,
+          "timestamp": "2026-07-01T06:12:23.407",
+          "victim_name": "60C0",
+          "victim_telegram_id": 106971584
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "5F05",
+          "killer_telegram_id": 104218629,
+          "timestamp": "2026-07-01T06:12:23.423",
+          "victim_name": "60C0",
+          "victim_telegram_id": 106971584
+        },
+        {
+          "day": 4,
+          "kill_method": "Burn",
+          "killer_name": "5F05",
+          "killer_telegram_id": 104218629,
+          "timestamp": "2026-07-01T06:13:11.733",
+          "victim_name": "221B",
+          "victim_telegram_id": 107610907
+        },
+        {
+          "day": 4,
+          "kill_method": "LoverDied",
+          "killer_name": "221B",
+          "killer_telegram_id": 107610907,
+          "timestamp": "2026-07-01T06:13:11.780",
+          "victim_name": "20F6",
+          "victim_telegram_id": 102040054
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "E251",
+          "killer_telegram_id": 106152785,
+          "timestamp": "2026-07-01T06:16:15.220",
+          "victim_name": "5F05",
+          "victim_telegram_id": 104218629
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "4246",
+          "killer_telegram_id": 107291462,
+          "timestamp": "2026-07-01T06:16:15.417",
+          "victim_name": "5F05",
+          "victim_telegram_id": 104218629
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "8B5F",
+          "killer_telegram_id": 107703391,
+          "timestamp": "2026-07-01T06:16:15.417",
+          "victim_name": "5F05",
+          "victim_telegram_id": 104218629
+        }
+      ],
+      "players": [
+        {
+          "name": "20F6",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 102040054,
+          "won": true
+        },
+        {
+          "name": "5F05",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 104218629,
+          "won": false
+        },
+        {
+          "name": "E251",
+          "role": "CultistHunter",
+          "survived": true,
+          "telegram_id": 106152785,
+          "won": true
+        },
+        {
+          "name": "DCDE",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 106479070,
+          "won": true
+        },
+        {
+          "name": "47C4",
+          "role": "Cultist",
+          "survived": false,
+          "telegram_id": 106637508,
+          "won": false
+        },
+        {
+          "name": "60C0",
+          "role": "Cupid",
+          "survived": false,
+          "telegram_id": 106971584,
+          "won": true
+        },
+        {
+          "name": "A0BB",
+          "role": "Cultist",
+          "survived": false,
+          "telegram_id": 107250107,
+          "won": false
+        },
+        {
+          "name": "4246",
+          "role": "Mason",
+          "survived": true,
+          "telegram_id": 107291462,
+          "won": true
+        },
+        {
+          "name": "987B",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 107379067,
+          "won": true
+        },
+        {
+          "name": "CDAB",
+          "role": "Villager",
+          "survived": true,
+          "telegram_id": 107589291,
+          "won": true
+        },
+        {
+          "name": "221B",
+          "role": "GuardianAngel",
+          "survived": false,
+          "telegram_id": 107610907,
+          "won": true
+        },
+        {
+          "name": "8B5F",
+          "role": "Cursed",
+          "survived": true,
+          "telegram_id": 107703391,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:16:15.417",
+      "time_started": "2026-07-01T05:59:41.267",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024117,
+      "game_mode": "Normal",
+      "group_name": "Group-901257883",
+      "group_telegram_id": 901257883,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "3B65",
+          "killer_telegram_id": 107682917,
+          "timestamp": "2026-07-01T06:11:11.727",
+          "victim_name": "41B5",
+          "victim_telegram_id": 107684533
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "E9DD",
+          "killer_telegram_id": 107662045,
+          "timestamp": "2026-07-01T06:13:20.140",
+          "victim_name": "3905",
+          "victim_telegram_id": 107682309
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "3B65",
+          "killer_telegram_id": 107682917,
+          "timestamp": "2026-07-01T06:13:20.170",
+          "victim_name": "3905",
+          "victim_telegram_id": 107682309
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "622D",
+          "killer_telegram_id": 107692845,
+          "timestamp": "2026-07-01T06:13:20.170",
+          "victim_name": "3905",
+          "victim_telegram_id": 107682309
+        }
+      ],
+      "players": [
+        {
+          "name": "9DDF",
+          "role": "Villager",
+          "survived": true,
+          "telegram_id": 107314911,
+          "won": false
+        },
+        {
+          "name": "E9DD",
+          "role": "GraveDigger",
+          "survived": true,
+          "telegram_id": 107662045,
+          "won": false
+        },
+        {
+          "name": "2B35",
+          "role": "Cupid",
+          "survived": true,
+          "telegram_id": 107678773,
+          "won": false
+        },
+        {
+          "name": "3905",
+          "role": "Tanner",
+          "survived": false,
+          "telegram_id": 107682309,
+          "won": true
+        },
+        {
+          "name": "3B65",
+          "role": "SerialKiller",
+          "survived": true,
+          "telegram_id": 107682917,
+          "won": false
+        },
+        {
+          "name": "41B5",
+          "role": "Harlot",
+          "survived": false,
+          "telegram_id": 107684533,
+          "won": false
+        },
+        {
+          "name": "622D",
+          "role": "Blacksmith",
+          "survived": true,
+          "telegram_id": 107692845,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:13:20.170",
+      "time_started": "2026-07-01T06:10:28.857",
+      "winner": "Tanner"
+    },
+    {
+      "game_id": 29024115,
+      "game_mode": "Chaos",
+      "group_name": "Group-901302864",
+      "group_telegram_id": 901302864,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "F271",
+          "killer_telegram_id": 107533169,
+          "timestamp": "2026-07-01T06:09:54.950",
+          "victim_name": "119D",
+          "victim_telegram_id": 104264349
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "911D",
+          "killer_telegram_id": 107704861,
+          "timestamp": "2026-07-01T06:12:28.707",
+          "victim_name": "80D1",
+          "victim_telegram_id": 107700689
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "F271",
+          "killer_telegram_id": 107533169,
+          "timestamp": "2026-07-01T06:12:35.610",
+          "victim_name": "43A9",
+          "victim_telegram_id": 106833065
+        }
+      ],
+      "players": [
+        {
+          "name": "119D",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 104264349,
+          "won": false
+        },
+        {
+          "name": "43A9",
+          "role": "Mayor",
+          "survived": false,
+          "telegram_id": 106833065,
+          "won": false
+        },
+        {
+          "name": "F271",
+          "role": "Lycan",
+          "survived": true,
+          "telegram_id": 107533169,
+          "won": true
+        },
+        {
+          "name": "80D1",
+          "role": "Augur",
+          "survived": false,
+          "telegram_id": 107700689,
+          "won": false
+        },
+        {
+          "name": "911D",
+          "role": "ClumsyGuy",
+          "survived": true,
+          "telegram_id": 107704861,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:12:35.687",
+      "time_started": "2026-07-01T06:09:43.227",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024107,
+      "game_mode": "Chaos",
+      "group_name": "Group-901236445",
+      "group_telegram_id": 901236445,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "E3AF",
+          "killer_telegram_id": 106480815,
+          "timestamp": "2026-07-01T06:06:18.263",
+          "victim_name": "DD77",
+          "victim_telegram_id": 107331191
+        },
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "D55F",
+          "killer_telegram_id": 107591263,
+          "timestamp": "2026-07-01T06:06:18.267",
+          "victim_name": "9BF9",
+          "victim_telegram_id": 107707641
+        },
+        {
+          "day": 1,
+          "kill_method": "VisitKiller",
+          "killer_name": "D55F",
+          "killer_telegram_id": 107591263,
+          "timestamp": "2026-07-01T06:06:18.273",
+          "victim_name": "9BFD",
+          "victim_telegram_id": 107707645
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "E3AF",
+          "killer_telegram_id": 106480815,
+          "timestamp": "2026-07-01T06:09:23.277",
+          "victim_name": "D626",
+          "victim_telegram_id": 107591462
+        },
+        {
+          "day": 2,
+          "kill_method": "SerialKilled",
+          "killer_name": "D55F",
+          "killer_telegram_id": 107591263,
+          "timestamp": "2026-07-01T06:09:23.310",
+          "victim_name": "E3AF",
+          "victim_telegram_id": 106480815
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "CDEC",
+          "killer_telegram_id": 107589356,
+          "timestamp": "2026-07-01T06:11:51.497",
+          "victim_name": "D55F",
+          "victim_telegram_id": 107591263
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "9BFC",
+          "killer_telegram_id": 107707644,
+          "timestamp": "2026-07-01T06:11:51.497",
+          "victim_name": "D55F",
+          "victim_telegram_id": 107591263
+        }
+      ],
+      "players": [
+        {
+          "name": "E3AF",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 106480815,
+          "won": false
+        },
+        {
+          "name": "DD77",
+          "role": "Augur",
+          "survived": false,
+          "telegram_id": 107331191,
+          "won": true
+        },
+        {
+          "name": "CDEC",
+          "role": "Cursed",
+          "survived": true,
+          "telegram_id": 107589356,
+          "won": true
+        },
+        {
+          "name": "D55F",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107591263,
+          "won": false
+        },
+        {
+          "name": "D626",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107591462,
+          "won": true
+        },
+        {
+          "name": "9BF9",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107707641,
+          "won": true
+        },
+        {
+          "name": "9BFC",
+          "role": "GraveDigger",
+          "survived": true,
+          "telegram_id": 107707644,
+          "won": true
+        },
+        {
+          "name": "9BFD",
+          "role": "GuardianAngel",
+          "survived": false,
+          "telegram_id": 107707645,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:11:51.497",
+      "time_started": "2026-07-01T06:05:53.367",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024112,
+      "game_mode": "Normal",
+      "group_name": "Group-901335097",
+      "group_telegram_id": 901335097,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:08:42.607",
+          "victim_name": "5248",
+          "victim_telegram_id": 107688776
+        },
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "559A",
+          "killer_telegram_id": 107689626,
+          "timestamp": "2026-07-01T06:08:42.607",
+          "victim_name": "9B82",
+          "victim_telegram_id": 107707522
+        },
+        {
+          "day": 1,
+          "kill_method": "VisitVictim",
+          "killer_name": "9B82",
+          "killer_telegram_id": 107707522,
+          "timestamp": "2026-07-01T06:08:42.620",
+          "victim_name": "4340",
+          "victim_telegram_id": 107684928
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "559A",
+          "killer_telegram_id": 107689626,
+          "timestamp": "2026-07-01T06:11:16.737",
+          "victim_name": "7CC4",
+          "victim_telegram_id": 107699652
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "4664",
+          "killer_telegram_id": 107685732,
+          "timestamp": "2026-07-01T06:11:16.737",
+          "victim_name": "7CC4",
+          "victim_telegram_id": 107699652
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:11:16.737",
+          "victim_name": "7CC4",
+          "victim_telegram_id": 107699652
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "559A",
+          "killer_telegram_id": 107689626,
+          "timestamp": "2026-07-01T06:11:27.283",
+          "victim_name": "4664",
+          "victim_telegram_id": 107685732
+        },
+        {
+          "day": 2,
+          "kill_method": "SerialKilled",
+          "killer_name": "4B40",
+          "killer_telegram_id": 107686976,
+          "timestamp": "2026-07-01T06:11:27.307",
+          "victim_name": "559A",
+          "victim_telegram_id": 107689626
+        }
+      ],
+      "players": [
+        {
+          "name": "4340",
+          "role": "Harlot",
+          "survived": false,
+          "telegram_id": 107684928,
+          "won": false
+        },
+        {
+          "name": "4664",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107685732,
+          "won": false
+        },
+        {
+          "name": "4B40",
+          "role": "SerialKiller",
+          "survived": true,
+          "telegram_id": 107686976,
+          "won": true
+        },
+        {
+          "name": "5248",
+          "role": "Detective",
+          "survived": false,
+          "telegram_id": 107688776,
+          "won": false
+        },
+        {
+          "name": "559A",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 107689626,
+          "won": false
+        },
+        {
+          "name": "7CC4",
+          "role": "Seer",
+          "survived": false,
+          "telegram_id": 107699652,
+          "won": false
+        },
+        {
+          "name": "9B82",
+          "role": "Mayor",
+          "survived": false,
+          "telegram_id": 107707522,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:11:27.287",
+      "time_started": "2026-07-01T06:07:08.007",
+      "winner": "SerialKiller"
+    },
+    {
+      "game_id": 29024102,
+      "game_mode": "Chaos",
+      "group_name": "Group-901342574",
+      "group_telegram_id": 901342574,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "3C06",
+          "killer_telegram_id": 103357702,
+          "timestamp": "2026-07-01T06:05:09.580",
+          "victim_name": "BFE1",
+          "victim_telegram_id": 105816289
+        },
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "9F90",
+          "killer_telegram_id": 107446416,
+          "timestamp": "2026-07-01T06:05:09.690",
+          "victim_name": "E193",
+          "victim_telegram_id": 107463315
+        },
+        {
+          "day": 1,
+          "kill_method": "LoverDied",
+          "killer_name": "E193",
+          "killer_telegram_id": 107463315,
+          "timestamp": "2026-07-01T06:05:09.870",
+          "victim_name": "9F90",
+          "victim_telegram_id": 107446416
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "5623",
+          "killer_telegram_id": 106903331,
+          "timestamp": "2026-07-01T06:08:13.743",
+          "victim_name": "4251",
+          "victim_telegram_id": 107488081
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "3C06",
+          "killer_telegram_id": 103357702,
+          "timestamp": "2026-07-01T06:08:27.020",
+          "victim_name": "A4CA",
+          "victim_telegram_id": 105678282
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "5623",
+          "killer_telegram_id": 106903331,
+          "timestamp": "2026-07-01T06:10:39.847",
+          "victim_name": "3C06",
+          "victim_telegram_id": 103357702
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "C57F",
+          "killer_telegram_id": 106538623,
+          "timestamp": "2026-07-01T06:10:40.053",
+          "victim_name": "3C06",
+          "victim_telegram_id": 103357702
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "16FC",
+          "killer_telegram_id": 107476988,
+          "timestamp": "2026-07-01T06:10:40.053",
+          "victim_name": "3C06",
+          "victim_telegram_id": 103357702
+        }
+      ],
+      "players": [
+        {
+          "name": "3C06",
+          "role": "Wolf",
+          "survived": false,
+          "telegram_id": 103357702,
+          "won": false
+        },
+        {
+          "name": "A4CA",
+          "role": "Prince",
+          "survived": false,
+          "telegram_id": 105678282,
+          "won": true
+        },
+        {
+          "name": "BFE1",
+          "role": "Oracle",
+          "survived": false,
+          "telegram_id": 105816289,
+          "won": true
+        },
+        {
+          "name": "C57F",
+          "role": "GuardianAngel",
+          "survived": true,
+          "telegram_id": 106538623,
+          "won": true
+        },
+        {
+          "name": "5623",
+          "role": "Hunter",
+          "survived": true,
+          "telegram_id": 106903331,
+          "won": true
+        },
+        {
+          "name": "9F90",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107446416,
+          "won": true
+        },
+        {
+          "name": "E193",
+          "role": "Cupid",
+          "survived": false,
+          "telegram_id": 107463315,
+          "won": true
+        },
+        {
+          "name": "16FC",
+          "role": "Chemist",
+          "survived": true,
+          "telegram_id": 107476988,
+          "won": true
+        },
+        {
+          "name": "4251",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107488081,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:10:40.053",
+      "time_started": "2026-07-01T06:02:56.387",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024072,
+      "game_mode": "Normal",
+      "group_name": "Group-900438828",
+      "group_telegram_id": 900438828,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "9EA9",
+          "killer_telegram_id": 107642793,
+          "timestamp": "2026-07-01T05:47:26.087",
+          "victim_name": "D78F",
+          "victim_telegram_id": 107657359
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "8B78",
+          "killer_telegram_id": 107703416,
+          "timestamp": "2026-07-01T05:50:31.847",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "0C70",
+          "killer_telegram_id": 107670896,
+          "timestamp": "2026-07-01T05:50:31.863",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "1FDE",
+          "killer_telegram_id": 107151582,
+          "timestamp": "2026-07-01T05:50:31.863",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "6C5A",
+          "killer_telegram_id": 107629914,
+          "timestamp": "2026-07-01T05:50:31.877",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "7532",
+          "killer_telegram_id": 107632178,
+          "timestamp": "2026-07-01T05:50:31.877",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "9EA9",
+          "killer_telegram_id": 107642793,
+          "timestamp": "2026-07-01T05:50:31.877",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T05:50:31.877",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "22DF",
+          "killer_telegram_id": 106759135,
+          "timestamp": "2026-07-01T05:50:31.877",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "124F",
+          "killer_telegram_id": 107672399,
+          "timestamp": "2026-07-01T05:50:31.877",
+          "victim_name": "8FAD",
+          "victim_telegram_id": 107704493
+        },
+        {
+          "day": 2,
+          "kill_method": "Chemistry",
+          "killer_name": "1FDE",
+          "killer_telegram_id": 107151582,
+          "timestamp": "2026-07-01T05:51:57.363",
+          "victim_name": "7532",
+          "victim_telegram_id": 107632178
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "6C5A",
+          "killer_telegram_id": 107629914,
+          "timestamp": "2026-07-01T05:55:01.767",
+          "victim_name": "1FDE",
+          "victim_telegram_id": 107151582
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "5387",
+          "killer_telegram_id": 106247303,
+          "timestamp": "2026-07-01T05:55:01.767",
+          "victim_name": "1FDE",
+          "victim_telegram_id": 107151582
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "1266",
+          "killer_telegram_id": 107672422,
+          "timestamp": "2026-07-01T05:55:01.767",
+          "victim_name": "1FDE",
+          "victim_telegram_id": 107151582
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "8F98",
+          "killer_telegram_id": 107704472,
+          "timestamp": "2026-07-01T05:55:01.767",
+          "victim_name": "1FDE",
+          "victim_telegram_id": 107151582
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "9EA9",
+          "killer_telegram_id": 107642793,
+          "timestamp": "2026-07-01T05:55:54.267",
+          "victim_name": "1266",
+          "victim_telegram_id": 107672422
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "9EA9",
+          "killer_telegram_id": 107642793,
+          "timestamp": "2026-07-01T05:58:40.800",
+          "victim_name": "0C70",
+          "victim_telegram_id": 107670896
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "22DF",
+          "killer_telegram_id": 106759135,
+          "timestamp": "2026-07-01T05:58:40.800",
+          "victim_name": "0C70",
+          "victim_telegram_id": 107670896
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "6C5A",
+          "killer_telegram_id": 107629914,
+          "timestamp": "2026-07-01T05:58:40.800",
+          "victim_name": "0C70",
+          "victim_telegram_id": 107670896
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "124F",
+          "killer_telegram_id": 107672399,
+          "timestamp": "2026-07-01T05:58:40.800",
+          "victim_name": "0C70",
+          "victim_telegram_id": 107670896
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "124F",
+          "killer_telegram_id": 107672399,
+          "timestamp": "2026-07-01T06:03:40.977",
+          "victim_name": "9EA9",
+          "victim_telegram_id": 107642793
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "8B78",
+          "killer_telegram_id": 107703416,
+          "timestamp": "2026-07-01T06:03:40.977",
+          "victim_name": "9EA9",
+          "victim_telegram_id": 107642793
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "22DF",
+          "killer_telegram_id": 106759135,
+          "timestamp": "2026-07-01T06:03:40.977",
+          "victim_name": "9EA9",
+          "victim_telegram_id": 107642793
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "5387",
+          "killer_telegram_id": 106247303,
+          "timestamp": "2026-07-01T06:03:40.977",
+          "victim_name": "9EA9",
+          "victim_telegram_id": 107642793
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T06:03:40.977",
+          "victim_name": "9EA9",
+          "victim_telegram_id": 107642793
+        },
+        {
+          "day": 4,
+          "kill_method": "Lynch",
+          "killer_name": "6C5A",
+          "killer_telegram_id": 107629914,
+          "timestamp": "2026-07-01T06:03:40.977",
+          "victim_name": "9EA9",
+          "victim_telegram_id": 107642793
+        },
+        {
+          "day": 5,
+          "kill_method": "Eat",
+          "killer_name": "8B78",
+          "killer_telegram_id": 107703416,
+          "timestamp": "2026-07-01T06:04:47.537",
+          "victim_name": "124F",
+          "victim_telegram_id": 107672399
+        },
+        {
+          "day": 5,
+          "kill_method": "Lynch",
+          "killer_name": "8B78",
+          "killer_telegram_id": 107703416,
+          "timestamp": "2026-07-01T06:07:51.357",
+          "victim_name": "6C5A",
+          "victim_telegram_id": 107629914
+        },
+        {
+          "day": 5,
+          "kill_method": "Lynch",
+          "killer_name": "369B",
+          "killer_telegram_id": 100210587,
+          "timestamp": "2026-07-01T06:07:51.357",
+          "victim_name": "6C5A",
+          "victim_telegram_id": 107629914
+        },
+        {
+          "day": 5,
+          "kill_method": "Lynch",
+          "killer_name": "5387",
+          "killer_telegram_id": 106247303,
+          "timestamp": "2026-07-01T06:07:51.357",
+          "victim_name": "6C5A",
+          "victim_telegram_id": 107629914
+        },
+        {
+          "day": 5,
+          "kill_method": "Lynch",
+          "killer_name": "22DF",
+          "killer_telegram_id": 106759135,
+          "timestamp": "2026-07-01T06:07:51.357",
+          "victim_name": "6C5A",
+          "victim_telegram_id": 107629914
+        }
+      ],
+      "players": [
+        {
+          "name": "369B",
+          "role": "WolfMan",
+          "survived": true,
+          "telegram_id": 100210587,
+          "won": false
+        },
+        {
+          "name": "5387",
+          "role": "CultistHunter",
+          "survived": true,
+          "telegram_id": 106247303,
+          "won": false
+        },
+        {
+          "name": "22DF",
+          "role": "Oracle",
+          "survived": true,
+          "telegram_id": 106759135,
+          "won": false
+        },
+        {
+          "name": "1FDE",
+          "role": "Chemist",
+          "survived": false,
+          "telegram_id": 107151582,
+          "won": false
+        },
+        {
+          "name": "6C5A",
+          "role": "Tanner",
+          "survived": false,
+          "telegram_id": 107629914,
+          "won": true
+        },
+        {
+          "name": "7532",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107632178,
+          "won": false
+        },
+        {
+          "name": "9EA9",
+          "role": "AlphaWolf",
+          "survived": false,
+          "telegram_id": 107642793,
+          "won": false
+        },
+        {
+          "name": "D78F",
+          "role": "ClumsyGuy",
+          "survived": false,
+          "telegram_id": 107657359,
+          "won": false
+        },
+        {
+          "name": "0C70",
+          "role": "Hunter",
+          "survived": false,
+          "telegram_id": 107670896,
+          "won": false
+        },
+        {
+          "name": "124F",
+          "role": "Seer",
+          "survived": false,
+          "telegram_id": 107672399,
+          "won": false
+        },
+        {
+          "name": "1266",
+          "role": "Blacksmith",
+          "survived": false,
+          "telegram_id": 107672422,
+          "won": false
+        },
+        {
+          "name": "8B78",
+          "role": "Drunk",
+          "survived": true,
+          "telegram_id": 107703416,
+          "won": false
+        },
+        {
+          "name": "8F98",
+          "role": "Chef",
+          "survived": true,
+          "telegram_id": 107704472,
+          "won": false
+        },
+        {
+          "name": "8FAD",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 107704493,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:07:51.373",
+      "time_started": "2026-07-01T05:45:49.317",
+      "winner": "Tanner"
+    },
+    {
+      "game_id": 29024099,
+      "game_mode": "Chaos",
+      "group_name": "Group-900231695",
+      "group_telegram_id": 900231695,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "B367",
+          "killer_telegram_id": 107123815,
+          "timestamp": "2026-07-01T06:02:48.977",
+          "victim_name": "70A5",
+          "victim_telegram_id": 103305637
+        },
+        {
+          "day": 1,
+          "kill_method": "Shoot",
+          "killer_name": "D87C",
+          "killer_telegram_id": 102480252,
+          "timestamp": "2026-07-01T06:04:20.230",
+          "victim_name": "22BE",
+          "victim_telegram_id": 107479998
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "B367",
+          "killer_telegram_id": 107123815,
+          "timestamp": "2026-07-01T06:05:25.453",
+          "victim_name": "8256",
+          "victim_telegram_id": 102327126
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "D87C",
+          "killer_telegram_id": 102480252,
+          "timestamp": "2026-07-01T06:05:25.887",
+          "victim_name": "8256",
+          "victim_telegram_id": 102327126
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "812C",
+          "killer_telegram_id": 107700780,
+          "timestamp": "2026-07-01T06:05:26.500",
+          "victim_name": "8256",
+          "victim_telegram_id": 102327126
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "8754",
+          "killer_telegram_id": 107702356,
+          "timestamp": "2026-07-01T06:05:26.897",
+          "victim_name": "8256",
+          "victim_telegram_id": 102327126
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "B367",
+          "killer_telegram_id": 107123815,
+          "timestamp": "2026-07-01T06:05:47.967",
+          "victim_name": "8754",
+          "victim_telegram_id": 107702356
+        },
+        {
+          "day": 2,
+          "kill_method": "Shoot",
+          "killer_name": "D87C",
+          "killer_telegram_id": 102480252,
+          "timestamp": "2026-07-01T06:07:19.143",
+          "victim_name": "B367",
+          "victim_telegram_id": 107123815
+        }
+      ],
+      "players": [
+        {
+          "name": "8256",
+          "role": "Sorcerer",
+          "survived": false,
+          "telegram_id": 102327126,
+          "won": false
+        },
+        {
+          "name": "D87C",
+          "role": "Gunner",
+          "survived": true,
+          "telegram_id": 102480252,
+          "won": true
+        },
+        {
+          "name": "70A5",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 103305637,
+          "won": true
+        },
+        {
+          "name": "B367",
+          "role": "Lycan",
+          "survived": false,
+          "telegram_id": 107123815,
+          "won": false
+        },
+        {
+          "name": "22BE",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107479998,
+          "won": true
+        },
+        {
+          "name": "812C",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 107700780,
+          "won": true
+        },
+        {
+          "name": "8754",
+          "role": "Drunk",
+          "survived": false,
+          "telegram_id": 107702356,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:07:19.143",
+      "time_started": "2026-07-01T06:01:39.237",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024081,
+      "game_mode": "Chaos",
+      "group_name": "Group-901355063",
+      "group_telegram_id": 901355063,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "9BA8",
+          "killer_telegram_id": 107707560,
+          "timestamp": "2026-07-01T05:55:19.473",
+          "victim_name": "56C7",
+          "victim_telegram_id": 106379207
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "9BA8",
+          "killer_telegram_id": 107707560,
+          "timestamp": "2026-07-01T06:00:19.400",
+          "victim_name": "DEAE",
+          "victim_telegram_id": 105955246
+        },
+        {
+          "day": 2,
+          "kill_method": "Spotted",
+          "killer_name": "9BA8",
+          "killer_telegram_id": 107707560,
+          "timestamp": "2026-07-01T06:00:19.557",
+          "victim_name": "60E4",
+          "victim_telegram_id": 106775012
+        },
+        {
+          "day": 2,
+          "kill_method": "Idle",
+          "killer_name": "B5C7",
+          "killer_telegram_id": 106665671,
+          "timestamp": "2026-07-01T06:04:24.817",
+          "victim_name": "B5C7",
+          "victim_telegram_id": 106665671
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "2DF9",
+          "killer_telegram_id": 107089657,
+          "timestamp": "2026-07-01T06:04:24.893",
+          "victim_name": "9700",
+          "victim_telegram_id": 107706368
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "6A25",
+          "killer_telegram_id": 106842917,
+          "timestamp": "2026-07-01T06:04:24.910",
+          "victim_name": "9700",
+          "victim_telegram_id": 107706368
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "9BA8",
+          "killer_telegram_id": 107707560,
+          "timestamp": "2026-07-01T06:04:37.447",
+          "victim_name": "6A25",
+          "victim_telegram_id": 106842917
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "9BA8",
+          "killer_telegram_id": 107707560,
+          "timestamp": "2026-07-01T06:07:18.350",
+          "victim_name": "2DF9",
+          "victim_telegram_id": 107089657
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "A9C7",
+          "killer_telegram_id": 106662599,
+          "timestamp": "2026-07-01T06:07:18.367",
+          "victim_name": "2DF9",
+          "victim_telegram_id": 107089657
+        }
+      ],
+      "players": [
+        {
+          "name": "DEAE",
+          "role": "Seer",
+          "survived": false,
+          "telegram_id": 105955246,
+          "won": false
+        },
+        {
+          "name": "56C7",
+          "role": "Detective",
+          "survived": false,
+          "telegram_id": 106379207,
+          "won": false
+        },
+        {
+          "name": "A9C7",
+          "role": "Drunk",
+          "survived": true,
+          "telegram_id": 106662599,
+          "won": false
+        },
+        {
+          "name": "B5C7",
+          "role": "Hunter",
+          "survived": false,
+          "telegram_id": 106665671,
+          "won": false
+        },
+        {
+          "name": "60E4",
+          "role": "GraveDigger",
+          "survived": false,
+          "telegram_id": 106775012,
+          "won": false
+        },
+        {
+          "name": "6A25",
+          "role": "Mayor",
+          "survived": false,
+          "telegram_id": 106842917,
+          "won": false
+        },
+        {
+          "name": "2DF9",
+          "role": "Pacifist",
+          "survived": false,
+          "telegram_id": 107089657,
+          "won": false
+        },
+        {
+          "name": "9700",
+          "role": "Augur",
+          "survived": false,
+          "telegram_id": 107706368,
+          "won": false
+        },
+        {
+          "name": "9BA8",
+          "role": "WolfCub",
+          "survived": true,
+          "telegram_id": 107707560,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:07:18.367",
+      "time_started": "2026-07-01T05:53:11.417",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024100,
+      "game_mode": "Chaos",
+      "group_name": "Group-901341898",
+      "group_telegram_id": 901341898,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "70FF",
+          "killer_telegram_id": 107631103,
+          "timestamp": "2026-07-01T06:02:21.747",
+          "victim_name": "723E",
+          "victim_telegram_id": 103371582
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "70FF",
+          "killer_telegram_id": 107631103,
+          "timestamp": "2026-07-01T06:04:49.183",
+          "victim_name": "B0D7",
+          "victim_telegram_id": 100766167
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "E240",
+          "killer_telegram_id": 107594560,
+          "timestamp": "2026-07-01T06:04:49.243",
+          "victim_name": "B0D7",
+          "victim_telegram_id": 100766167
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "AA0C",
+          "killer_telegram_id": 102271756,
+          "timestamp": "2026-07-01T06:04:49.263",
+          "victim_name": "B0D7",
+          "victim_telegram_id": 100766167
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "E240",
+          "killer_telegram_id": 107594560,
+          "timestamp": "2026-07-01T06:07:00.737",
+          "victim_name": "70FF",
+          "victim_telegram_id": 107631103
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "AA0C",
+          "killer_telegram_id": 102271756,
+          "timestamp": "2026-07-01T06:07:00.750",
+          "victim_name": "70FF",
+          "victim_telegram_id": 107631103
+        }
+      ],
+      "players": [
+        {
+          "name": "B0D7",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 100766167,
+          "won": true
+        },
+        {
+          "name": "AA0C",
+          "role": "Fool",
+          "survived": true,
+          "telegram_id": 102271756,
+          "won": true
+        },
+        {
+          "name": "723E",
+          "role": "Pacifist",
+          "survived": false,
+          "telegram_id": 103371582,
+          "won": true
+        },
+        {
+          "name": "E240",
+          "role": "Sandman",
+          "survived": true,
+          "telegram_id": 107594560,
+          "won": true
+        },
+        {
+          "name": "70FF",
+          "role": "AlphaWolf",
+          "survived": false,
+          "telegram_id": 107631103,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:07:00.750",
+      "time_started": "2026-07-01T06:01:43.560",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024101,
+      "game_mode": "Chaos",
+      "group_name": "Group-901350691",
+      "group_telegram_id": 901350691,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "5136",
+          "killer_telegram_id": 107688502,
+          "timestamp": "2026-07-01T06:02:40.720",
+          "victim_name": "935D",
+          "victim_telegram_id": 107705437
+        },
+        {
+          "day": 1,
+          "kill_method": "SerialKilled",
+          "killer_name": "47C4",
+          "killer_telegram_id": 107686084,
+          "timestamp": "2026-07-01T06:02:40.737",
+          "victim_name": "BB10",
+          "victim_telegram_id": 107518992
+        },
+        {
+          "day": 1,
+          "kill_method": "Shoot",
+          "killer_name": "65A8",
+          "killer_telegram_id": 107693736,
+          "timestamp": "2026-07-01T06:04:42.570",
+          "victim_name": "47C4",
+          "victim_telegram_id": 107686084
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "5136",
+          "killer_telegram_id": 107688502,
+          "timestamp": "2026-07-01T06:04:53.457",
+          "victim_name": "65A8",
+          "victim_telegram_id": 107693736
+        }
+      ],
+      "players": [
+        {
+          "name": "BB10",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 107518992,
+          "won": false
+        },
+        {
+          "name": "47C4",
+          "role": "SerialKiller",
+          "survived": false,
+          "telegram_id": 107686084,
+          "won": false
+        },
+        {
+          "name": "5136",
+          "role": "Lycan",
+          "survived": true,
+          "telegram_id": 107688502,
+          "won": true
+        },
+        {
+          "name": "65A8",
+          "role": "Gunner",
+          "survived": false,
+          "telegram_id": 107693736,
+          "won": false
+        },
+        {
+          "name": "935D",
+          "role": "Troublemaker",
+          "survived": false,
+          "telegram_id": 107705437,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:04:53.457",
+      "time_started": "2026-07-01T06:02:30.723",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024082,
+      "game_mode": "Normal",
+      "group_name": "Group-901355339",
+      "group_telegram_id": 901355339,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "6540",
+          "killer_telegram_id": 107693632,
+          "timestamp": "2026-07-01T05:58:00.187",
+          "victim_name": "A8BD",
+          "victim_telegram_id": 107645373
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "7861",
+          "killer_telegram_id": 107698529,
+          "timestamp": "2026-07-01T05:58:00.203",
+          "victim_name": "A8BD",
+          "victim_telegram_id": 107645373
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "6290",
+          "killer_telegram_id": 107627408,
+          "timestamp": "2026-07-01T05:58:00.203",
+          "victim_name": "A8BD",
+          "victim_telegram_id": 107645373
+        },
+        {
+          "day": 1,
+          "kill_method": "Lynch",
+          "killer_name": "90CB",
+          "killer_telegram_id": 107704779,
+          "timestamp": "2026-07-01T05:58:00.203",
+          "victim_name": "A8BD",
+          "victim_telegram_id": 107645373
+        },
+        {
+          "day": 2,
+          "kill_method": "Burn",
+          "killer_name": "6540",
+          "killer_telegram_id": 107693632,
+          "timestamp": "2026-07-01T05:59:32.630",
+          "victim_name": "7861",
+          "victim_telegram_id": 107698529
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "6290",
+          "killer_telegram_id": 107627408,
+          "timestamp": "2026-07-01T06:03:04.210",
+          "victim_name": "6540",
+          "victim_telegram_id": 107693632
+        },
+        {
+          "day": 2,
+          "kill_method": "Lynch",
+          "killer_name": "81F6",
+          "killer_telegram_id": 107700982,
+          "timestamp": "2026-07-01T06:03:04.210",
+          "victim_name": "6540",
+          "victim_telegram_id": 107693632
+        }
+      ],
+      "players": [
+        {
+          "name": "6290",
+          "role": "Beholder",
+          "survived": true,
+          "telegram_id": 107627408,
+          "won": true
+        },
+        {
+          "name": "A8BD",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107645373,
+          "won": true
+        },
+        {
+          "name": "6540",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 107693632,
+          "won": false
+        },
+        {
+          "name": "7861",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 107698529,
+          "won": true
+        },
+        {
+          "name": "81F6",
+          "role": "ClumsyGuy",
+          "survived": true,
+          "telegram_id": 107700982,
+          "won": true
+        },
+        {
+          "name": "90CB",
+          "role": "Oracle",
+          "survived": true,
+          "telegram_id": 107704779,
+          "won": true
+        }
+      ],
+      "time_ended": "2026-07-01T06:03:04.210",
+      "time_started": "2026-07-01T05:54:04.697",
+      "winner": "Village"
+    },
+    {
+      "game_id": 29024074,
+      "game_mode": "Normal",
+      "group_name": "Group-901236445",
+      "group_telegram_id": 901236445,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "9BF9",
+          "killer_telegram_id": 107707641,
+          "timestamp": "2026-07-01T05:47:03.390",
+          "victim_name": "9C1C",
+          "victim_telegram_id": 107707676
+        },
+        {
+          "day": 2,
+          "kill_method": "Eat",
+          "killer_name": "9BF9",
+          "killer_telegram_id": 107707641,
+          "timestamp": "2026-07-01T05:51:12.520",
+          "victim_name": "9BFA",
+          "victim_telegram_id": 107707642
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "9BF9",
+          "killer_telegram_id": 107707641,
+          "timestamp": "2026-07-01T05:55:40.040",
+          "victim_name": "9BFC",
+          "victim_telegram_id": 107707644
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "DD77",
+          "killer_telegram_id": 107331191,
+          "timestamp": "2026-07-01T05:59:13.377",
+          "victim_name": "9BF8",
+          "victim_telegram_id": 107707640
+        },
+        {
+          "day": 3,
+          "kill_method": "Idle",
+          "killer_name": "CDEC",
+          "killer_telegram_id": 107589356,
+          "timestamp": "2026-07-01T05:59:13.377",
+          "victim_name": "CDEC",
+          "victim_telegram_id": 107589356
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "D55F",
+          "killer_telegram_id": 107591263,
+          "timestamp": "2026-07-01T05:59:13.377",
+          "victim_name": "9BF8",
+          "victim_telegram_id": 107707640
+        },
+        {
+          "day": 4,
+          "kill_method": "Eat",
+          "killer_name": "9BF9",
+          "killer_telegram_id": 107707641,
+          "timestamp": "2026-07-01T06:00:46.253",
+          "victim_name": "D55F",
+          "victim_telegram_id": 107591263
+        },
+        {
+          "day": 4,
+          "kill_method": "LoverDied",
+          "killer_name": "D55F",
+          "killer_telegram_id": 107591263,
+          "timestamp": "2026-07-01T06:00:46.257",
+          "victim_name": "DD77",
+          "victim_telegram_id": 107331191
+        }
+      ],
+      "players": [
+        {
+          "name": "DD77",
+          "role": "Mason",
+          "survived": false,
+          "telegram_id": 107331191,
+          "won": false
+        },
+        {
+          "name": "CDEC",
+          "role": "Prince",
+          "survived": false,
+          "telegram_id": 107589356,
+          "won": false
+        },
+        {
+          "name": "D55F",
+          "role": "Seer",
+          "survived": false,
+          "telegram_id": 107591263,
+          "won": false
+        },
+        {
+          "name": "9BF8",
+          "role": "Augur",
+          "survived": false,
+          "telegram_id": 107707640,
+          "won": false
+        },
+        {
+          "name": "9BF9",
+          "role": "WolfCub",
+          "survived": true,
+          "telegram_id": 107707641,
+          "won": true
+        },
+        {
+          "name": "9BFA",
+          "role": "Arsonist",
+          "survived": false,
+          "telegram_id": 107707642,
+          "won": false
+        },
+        {
+          "name": "9BFC",
+          "role": "Fool",
+          "survived": false,
+          "telegram_id": 107707644,
+          "won": false
+        },
+        {
+          "name": "9C1C",
+          "role": "Cupid",
+          "survived": false,
+          "telegram_id": 107707676,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:00:46.260",
+      "time_started": "2026-07-01T05:46:07.190",
+      "winner": "Wolf"
+    },
+    {
+      "game_id": 29024078,
+      "game_mode": "Normal",
+      "group_name": "Group-901354243",
+      "group_telegram_id": 901354243,
+      "kills": [
+        {
+          "day": 1,
+          "kill_method": "Eat",
+          "killer_name": "BF7D",
+          "killer_telegram_id": 106864765,
+          "timestamp": "2026-07-01T05:49:43.470",
+          "victim_name": "6FA4",
+          "victim_telegram_id": 107696292
+        },
+        {
+          "day": 3,
+          "kill_method": "Eat",
+          "killer_name": "BF7D",
+          "killer_telegram_id": 106864765,
+          "timestamp": "2026-07-01T05:57:52.113",
+          "victim_name": "83FC",
+          "victim_telegram_id": 107701500
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "BF7D",
+          "killer_telegram_id": 106864765,
+          "timestamp": "2026-07-01T06:00:11.480",
+          "victim_name": "857D",
+          "victim_telegram_id": 107701885
+        },
+        {
+          "day": 3,
+          "kill_method": "Lynch",
+          "killer_name": "4E38",
+          "killer_telegram_id": 107687736,
+          "timestamp": "2026-07-01T06:00:11.480",
+          "victim_name": "857D",
+          "victim_telegram_id": 107701885
+        }
+      ],
+      "players": [
+        {
+          "name": "BF7D",
+          "role": "Lycan",
+          "survived": true,
+          "telegram_id": 106864765,
+          "won": true
+        },
+        {
+          "name": "4E38",
+          "role": "Seer",
+          "survived": true,
+          "telegram_id": 107687736,
+          "won": false
+        },
+        {
+          "name": "6FA4",
+          "role": "Villager",
+          "survived": false,
+          "telegram_id": 107696292,
+          "won": false
+        },
+        {
+          "name": "83FC",
+          "role": "Detective",
+          "survived": false,
+          "telegram_id": 107701500,
+          "won": false
+        },
+        {
+          "name": "857D",
+          "role": "WolfMan",
+          "survived": false,
+          "telegram_id": 107701885,
+          "won": false
+        }
+      ],
+      "time_ended": "2026-07-01T06:00:11.480",
+      "time_started": "2026-07-01T05:48:48.813",
+      "winner": "Wolf"
+    }
+  ]
+}

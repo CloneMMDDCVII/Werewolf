@@ -1,0 +1,14 @@
+# `cargo deny check advisories`, run by `cargo xtask ci`: fails on a crate
+# in the dependency tree with a RustSec advisory (vulnerable, unsound,
+# unmaintained or yanked). Licences and duplicate versions are not checked.
+#
+# An advisory with no fixed version to move to goes in `ignore` with its
+# id and a comment saying why it does not affect the bot.
+
+[advisories]
+ignore = [
+    # proc-macro-error2 is unmaintained, with no replacement release; it is
+    # a build-time proc-macro helper pulled in by teloxide (via aquamarine),
+    # not code that runs in the bot.
+    { id = "RUSTSEC-2026-0173", reason = "unmaintained, no fixed release" },
+]

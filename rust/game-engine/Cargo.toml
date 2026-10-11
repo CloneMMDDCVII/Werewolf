@@ -1,0 +1,18 @@
+[package]
+name = "game-engine"
+version = "0.1.0"
+edition.workspace = true
+
+[features]
+# `game_engine::testing`: a scripted presenter for other crates' tests.
+testing = []
+
+[dependencies]
+shared = { path = "../shared" }
+async-trait.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+# Turns on `testing` for this crate's own integration tests.
+game-engine = { path = ".", features = ["testing"] }

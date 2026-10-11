@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "shared",
+    "game-engine",
+    "sim",
+    "i18n",
+    "moderation",
+    "control",
+    "db",
+    "bot",
+    "xtask",
+]
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
+sysinfo = "0.32"
+async-trait = "0.1"
+rand = "0.8"
+sqlx = { version = "0.9", default-features = false, features = ["any", "sqlite-bundled", "postgres", "runtime-tokio", "tls-rustls-ring-webpki"] }
+
+# The release workflow ships these binaries; smaller and a little faster.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true

@@ -1,0 +1,224 @@
+//! End-to-end proof that the dependency-ordered orchestrator actually
+//! works, not just that individual role files do. Uses a small scripted
+//! `Presenter` — standing in for the same role `sim`'s test-double
+//! presenter or a real Telegram presenter would play — to drive a full
+//! night: two Wolves vote, the orchestrator tallies their target, and
+//! only then asks Witch her heal question with that target filled in.
+
+use async_trait::async_trait;
+use game_engine::orchestrator::{resolve_night_with_freeze, AlivePlayer, Presenter, Prompt};
+use game_engine::roles::{NightAction, PlayerId, RoleState};
+use shared::Role;
+use std::collections::HashMap;
+
+/// Asks one night with no freeze, skips or doused houses, and drops each
+/// action's actor.
+async fn ask_night(
+    players: &[AlivePlayer],
+    states: &mut HashMap<PlayerId, RoleState>,
+    presenter: &mut dyn Presenter,
+) -> (Vec<NightAction>, Option<PlayerId>) {
+    let (actions, wolf_target, _) = resolve_night_with_freeze(players, states, None, presenter, &[], &[]).await;
+    (actions.into_iter().map(|(_, action)| action).collect(), wolf_target)
+}
+
+/// A presenter with every answer decided in advance, keyed by (player,
+/// prompt). Standing in for wherever real answers would come from —
+/// Telegram, or a replayed historical game — without the orchestrator
+/// under test ever knowing the difference.
+struct ScriptedPresenter {
+    one_target_answers: HashMap<(PlayerId, Prompt), PlayerId>,
+    /// Deliberately untyped as `Vec` (not a tuple) so a test can script a
+    /// malformed answer, e.g. the same player picked twice, to prove
+    /// `ask_exact`'s distinctness check rejects it before it ever reaches
+    /// Cupid's own logic.
+    two_target_answer: Option<Vec<PlayerId>>,
+}
+
+#[async_trait(?Send)]
+impl Presenter for ScriptedPresenter {
+    async fn ask_targets(
+        &mut self,
+        player: PlayerId,
+        prompt: Prompt,
+        _options: &[PlayerId],
+        count: usize,
+    ) -> Option<Vec<PlayerId>> {
+        if count == 2 {
+            return self.two_target_answer.clone();
+        }
+        self.one_target_answers.get(&(player, prompt)).copied().map(|p| vec![p])
+    }
+}
+
+const WOLF_A: PlayerId = PlayerId(1);
+const WOLF_B: PlayerId = PlayerId(2);
+const VICTIM: PlayerId = PlayerId(3);
+const WITCH: PlayerId = PlayerId(4);
+const SEER: PlayerId = PlayerId(5);
+
+#[tokio::test]
+async fn witch_is_asked_only_after_the_wolves_target_resolves() {
+    let players = vec![
+        AlivePlayer {
+            id: WOLF_A,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: WOLF_B,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: VICTIM,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: WITCH,
+            role: Role::Witch,
+        },
+        AlivePlayer {
+            id: SEER,
+            role: Role::Seer,
+        },
+    ];
+
+    let mut answers = HashMap::new();
+    // Both wolves agree on the same target -> unambiguous majority.
+    answers.insert((WOLF_A, Prompt::WolfEat), VICTIM);
+    answers.insert((WOLF_B, Prompt::WolfEat), VICTIM);
+    // Witch's heal choice matches the (not-yet-known-to-her) wolf target.
+    answers.insert((WITCH, Prompt::WitchHeal), VICTIM);
+    // Seer checks the victim, just to prove stage 1 runs independent
+    // roles too, not just the wolves.
+    answers.insert((SEER, Prompt::SeerCheck), VICTIM);
+
+    let mut presenter = ScriptedPresenter {
+        one_target_answers: answers,
+        two_target_answer: None,
+    };
+    let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
+
+    let (actions, wolf_target) = ask_night(&players, &mut states, &mut presenter).await;
+
+    assert_eq!(wolf_target, Some(VICTIM), "the wolf vote should resolve");
+
+    assert!(
+        actions.contains(&NightAction::EatVote { target: VICTIM }),
+        "expected wolf eat votes in the action list: {actions:?}"
+    );
+    assert!(
+        actions.contains(&NightAction::CheckTeam { target: VICTIM }),
+        "expected the Seer's independent check to resolve in stage 1: {actions:?}"
+    );
+    assert!(
+        actions.contains(&NightAction::Heal { target: VICTIM }),
+        "Witch's heal should fire once the wolf target she depends on is resolved: {actions:?}"
+    );
+}
+
+#[tokio::test]
+async fn witch_heal_does_not_fire_if_her_choice_disagrees_with_the_resolved_wolf_target() {
+    let players = vec![
+        AlivePlayer {
+            id: WOLF_A,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: VICTIM,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: WITCH,
+            role: Role::Witch,
+        },
+    ];
+
+    let mut answers = HashMap::new();
+    answers.insert((WOLF_A, Prompt::WolfEat), VICTIM);
+    // Witch guesses a different (nonexistent) target than the real wolf pick.
+    answers.insert((WITCH, Prompt::WitchHeal), PlayerId(99));
+
+    let mut presenter = ScriptedPresenter {
+        one_target_answers: answers,
+        two_target_answer: None,
+    };
+    let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
+
+    let (actions, wolf_target) = ask_night(&players, &mut states, &mut presenter).await;
+
+    assert_eq!(wolf_target, Some(VICTIM));
+    assert!(
+        !actions.iter().any(|a| matches!(a, NightAction::Heal { .. })),
+        "heal shouldn't fire when it targets someone other than the resolved wolf target: {actions:?}"
+    );
+}
+
+/// The legacy count (Werewolf.cs:3246-3260): a tie goes to whoever is
+/// first in the player list.
+#[tokio::test]
+async fn a_tied_wolf_vote_goes_to_the_first_player_in_the_list() {
+    let wolf_c = PlayerId(6);
+    let other_victim = PlayerId(7);
+    let players = vec![
+        AlivePlayer {
+            id: WOLF_A,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: wolf_c,
+            role: Role::Wolf,
+        },
+        AlivePlayer {
+            id: VICTIM,
+            role: Role::Villager,
+        },
+        AlivePlayer {
+            id: other_victim,
+            role: Role::Villager,
+        },
+    ];
+
+    let mut answers = HashMap::new();
+    answers.insert((WOLF_A, Prompt::WolfEat), VICTIM);
+    answers.insert((wolf_c, Prompt::WolfEat), other_victim);
+
+    let mut presenter = ScriptedPresenter {
+        one_target_answers: answers,
+        two_target_answer: None,
+    };
+    let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
+
+    let (_actions, wolf_target) = ask_night(&players, &mut states, &mut presenter).await;
+    assert_eq!(wolf_target, Some(VICTIM), "a tie goes to the first of the tied players");
+}
+
+/// Proves the distinctness check lives in the orchestrator's shared
+/// `ask_exact`, not just in Cupid's own role logic — a presenter
+/// misbehaving (or a future two-target role's presenter side) can't slip
+/// a duplicate past the orchestrator before it ever reaches a role file.
+#[tokio::test]
+async fn cupid_link_is_rejected_if_the_presenter_returns_a_duplicate_target() {
+    let target = PlayerId(8);
+    let players = vec![
+        AlivePlayer {
+            id: PlayerId(9),
+            role: Role::Cupid,
+        },
+        AlivePlayer {
+            id: target,
+            role: Role::Villager,
+        },
+    ];
+
+    let mut presenter = ScriptedPresenter {
+        one_target_answers: HashMap::new(),
+        two_target_answer: Some(vec![target, target]),
+    };
+    let mut states: HashMap<PlayerId, RoleState> = HashMap::new();
+
+    let (actions, _) = ask_night(&players, &mut states, &mut presenter).await;
+    assert!(
+        !actions.iter().any(|a| matches!(a, NightAction::LinkLovers { .. })),
+        "a duplicate-target answer should never produce a LinkLovers action: {actions:?}"
+    );
+}

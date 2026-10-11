@@ -1,0 +1,57 @@
+# systemd unit for werewolf-bot on Linux. Install:
+#
+#   sudo useradd --system --home /srv/werewolf --create-home werewolf
+#   sudo cp werewolf-bot werewolf.toml /srv/werewolf/
+#   sudo cp werewolf-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now werewolf-bot
+#
+# Logs go to the journal:  journalctl -u werewolf-bot -f
+# Adjust the paths and user below to match your machine.
+
+[Unit]
+Description=Werewolf for Telegram bot
+Wants=network-online.target
+After=network-online.target
+# With Postgres on the same machine, also wait for it:
+# After=network-online.target postgresql.service
+
+[Service]
+# The bot tells systemd when it is ready (READY=1, after the database is
+# open and polling has started) and keeps telling it it is alive from the
+# polling loop (WATCHDOG=1, about every 30 seconds). If polling hangs for
+# WatchdogSec, systemd kills the bot and Restart= starts it again.
+Type=notify
+WatchdogSec=180
+Restart=always
+RestartSec=5
+
+User=werewolf
+Group=werewolf
+WorkingDirectory=/srv/werewolf
+ExecStart=/srv/werewolf/werewolf-bot --config /srv/werewolf/werewolf.toml
+
+# Keep the token out of werewolf.toml if you prefer:
+# Environment=WEREWOLF_BOT_TOKEN=123456789:AAAA-your-token-here
+# or put it in a root-only file:
+# EnvironmentFile=/etc/werewolf-bot.env
+
+# More detail in the journal (error, warn, info, debug, trace):
+# Environment=RUST_LOG=debug
+
+# `systemctl stop` sends what Ctrl+C sends, so running games finish before
+# the bot exits (and no new ones start). Anything still running after
+# TimeoutStopSec is killed; those groups are told when the bot next starts.
+KillSignal=SIGINT
+TimeoutStopSec=15min
+
+# Optional sandboxing. The bot only needs to write its own folder (the
+# SQLite database, uploaded language files).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/werewolf
+
+[Install]
+WantedBy=multi-user.target

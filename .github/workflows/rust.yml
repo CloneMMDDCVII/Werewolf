@@ -1,0 +1,96 @@
+name: Rust
+
+on:
+  # Every branch, so work in progress is checked before a PR exists.
+  push:
+    paths: ["rust/**", ".github/workflows/rust.yml"]
+  pull_request:
+    paths: ["rust/**", ".github/workflows/rust.yml"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      # The db crate's tests run every storage scenario against SQLite and,
+      # when WEREWOLF_TEST_POSTGRES_URL is set, against this server too.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wolf
+          POSTGRES_PASSWORD: wolf
+          POSTGRES_DB: werewolf_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wolf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      WEREWOLF_TEST_POSTGRES_URL: postgres://wolf:wolf@localhost:5432/werewolf_test
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      # So xtask's advisory check always runs here instead of being skipped.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      # The same entry point developers run locally and the pre-push hook
+      # runs: rustfmt --check, clippy -D warnings, the full test suite,
+      # rustdoc, cargo deny check advisories.
+      - run: cargo xtask ci
+
+  # The bot as a single download per platform: unzip, run, follow the
+  # instructions it prints. Linux builds are static (musl), so they run on
+  # any distribution without installing anything.
+  release-build:
+    needs: ci
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: macos-latest, target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ${{ matrix.target }}
+      - run: cargo build --release --locked -p bot --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          dir="werewolf-bot-${{ matrix.target }}"
+          mkdir -p "$dir/Languages"
+          exe=werewolf-bot
+          if [[ "${{ matrix.target }}" == *windows* ]]; then exe=werewolf-bot.exe; fi
+          cp "target/${{ matrix.target }}/release/$exe" "$dir/"
+          cp "../Werewolf for Telegram/Languages/"*.xml "$dir/Languages/"
+          cp bot/README.md "$dir/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: werewolf-bot-${{ matrix.target }}
+          path: rust/werewolf-bot-${{ matrix.target }}
